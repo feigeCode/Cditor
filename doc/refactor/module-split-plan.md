@@ -195,3 +195,4 @@ src/storage/postgres/types/
 - 2026-07-06：继续细拆 `core/rich_text/markdown.rs`：拆出 `block.rs`、`table.rs`、`export.rs`，主文件保留 parse orchestration 和 public API；验证 `cargo fmt && cargo test core::rich_text::markdown --lib && cargo check` 通过，仅保留原有 crate 命名 warning。
 - 2026-07-06：拆分后较完整自动化验证通过：`cargo fmt && cargo test runtime::document_runtime --lib && cargo test gui::app --lib && cargo test gui::text --lib && cargo test core::edit --lib && cargo test core::rich_text::markdown --lib && cargo test storage::postgres::types --lib && cargo check`。`cargo run --example minimal_postgres_editor` 可启动并收到滚轮事件；完整 IME/粘贴/图片拖拽仍需人工窗口验证。
 - 2026-07-06：发现 minimal editor 光标不可见/无法编辑，回滚 `gui/text/element.rs` 拆分，恢复单文件实现；该项重新标记为未完成，后续需先补 GUI 手动验证再拆。
+- 2026-07-06：定位无法编辑的直接原因：Postgres cold start 初始 payload window 小于首屏 planned render range，导致 `projection_for_window_planned` 输出 `blocks=0 placeholder=true`；修复为 cold start 至少加载 256 个 payload，并让 minimal editor 修复 metadata 已存在但 index/payload 缺失的半初始化文档。

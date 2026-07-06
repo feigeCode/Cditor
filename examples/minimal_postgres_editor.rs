@@ -67,7 +67,7 @@ fn main() {
                         Cditor::new()
                             .with_document_id(document_id)
                             .with_postgres_url(database_url.clone())
-                            .with_payload_window_size(64)
+                            .with_payload_window_size(256)
                             .with_debug_overlay(false)
                             .with_autosave(autosave_secs)
                             .build_view(cx)
@@ -89,12 +89,61 @@ async fn ensure_minimal_document(
     let document_store = PostgresDocumentStore::new(pool.clone());
     let payload_store = PostgresPayloadStore::new(pool.clone());
 
-    match document_store.load_document_metadata(pg_document_id).await {
-        Ok(_) => return Ok(()),
-        Err(PostgresStorageError::NotFound { .. }) => {}
+    let metadata = match document_store.load_document_metadata(pg_document_id).await {
+        Ok(metadata) => Some(metadata),
+        Err(PostgresStorageError::NotFound { .. }) => None,
         Err(error) => return Err(error),
+    };
+
+    if let Some(metadata) = metadata {
+        let index_records = document_store
+            .load_block_index_records(pg_document_id)
+            .await?;
+        let block_ids = index_records
+            .iter()
+            .map(|record| record.id)
+            .collect::<Vec<_>>();
+        let loaded_payloads = payload_store.load_block_payloads(&block_ids).await?;
+        if !index_records.is_empty() && loaded_payloads.missing_block_ids.is_empty() {
+            return Ok(());
+        }
+        eprintln!(
+            "[cditor][minimal] repairing document {document_id}: blocks={} payloads_loaded={} payloads_missing={}",
+            index_records.len(),
+            loaded_payloads.records.len(),
+            loaded_payloads.missing_block_ids.len()
+        );
+        write_minimal_document(
+            &document_store,
+            &payload_store,
+            pg_document_id,
+            metadata.workspace_id,
+            document_id,
+            &metadata.title,
+        )
+        .await?;
+        return Ok(());
     }
 
+    write_minimal_document(
+        &document_store,
+        &payload_store,
+        pg_document_id,
+        workspace_uuid(workspace_id),
+        document_id,
+        title,
+    )
+    .await
+}
+
+async fn write_minimal_document(
+    document_store: &PostgresDocumentStore,
+    payload_store: &PostgresPayloadStore,
+    pg_document_id: Uuid,
+    workspace_id: Uuid,
+    document_id: u64,
+    title: &str,
+) -> PostgresStorageResult<()> {
     let root_block_id = initial_root_block_id(document_id);
     let mut document = RichTextDocument::empty(document_id);
     document.push_root_block(RichBlockRecord::paragraph(root_block_id, ""));
@@ -106,7 +155,7 @@ async fn ensure_minimal_document(
     document_store
         .save_document_metadata(&DocumentRow {
             id: pg_document_id,
-            workspace_id: workspace_uuid(workspace_id),
+            workspace_id,
             title: title.to_owned(),
             structure_version,
             content_version: 1,

@@ -186,9 +186,13 @@ async fn seed_postgres_if_requested(
     Ok(())
 }
 
+const MIN_INTERACTIVE_COLD_START_PAYLOAD_BLOCKS: usize = 256;
+
 fn cold_start_options(options: &CditorOptions) -> DocumentRuntimeFromStoreOptions {
     DocumentRuntimeFromStoreOptions {
-        initial_payload_window_blocks: options.payload_window_size,
+        initial_payload_window_blocks: options
+            .payload_window_size
+            .max(MIN_INTERACTIVE_COLD_START_PAYLOAD_BLOCKS),
         ..DocumentRuntimeFromStoreOptions::default()
     }
 }
