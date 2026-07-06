@@ -71,12 +71,12 @@ V1 已有能力：
 
 ### 阶段 B：cell 文本输入基础
 
-- [ ] `TablePayload` 提供 cell plain text 读写 helper。
-- [ ] runtime 实现 `replace_focused_table_cell_range`。
-- [ ] keyboard/input 插入字符优先写入 focused table cell。
-- [ ] Backspace/Delete 作用于 focused table cell。
-- [ ] 修改后 content_version 增加，并触发 dirty/autosave。
-- [ ] 添加 table cell 输入测试。
+- [x] `TablePayload` 提供 cell plain text 读写 helper。
+- [x] runtime 实现 `replace_focused_table_cell_range`。
+- [x] keyboard/input 插入字符优先写入 focused table cell。
+- [x] Backspace/Delete 作用于 focused table cell。
+- [x] 修改后 content_version 增加，并触发 dirty/autosave。
+- [x] 添加 table cell 输入测试。
 
 ### 阶段 C：cell 光标和选区
 

@@ -220,6 +220,9 @@ impl DocumentRuntime {
         range: Option<Range<usize>>,
         text: &str,
     ) -> Result<bool, String> {
+        if self.focused_table_cell.is_some() {
+            return self.replace_text_in_focused_table_cell_range(range, text);
+        }
         let Some(block_id) = self.focused_block_id() else {
             return Ok(false);
         };
@@ -315,6 +318,10 @@ impl DocumentRuntime {
     }
 
     pub fn insert_char(&mut self, ch: char) -> Result<(), String> {
+        if self.focused_table_cell.is_some() {
+            self.replace_text_in_focused_table_cell_range(None, &ch.to_string())?;
+            return Ok(());
+        }
         if self.focused_text_selection_range().is_some() {
             self.replace_text_in_focused_range(None, &ch.to_string())?;
             return Ok(());
@@ -352,6 +359,10 @@ impl DocumentRuntime {
     }
 
     pub fn insert_space_or_markdown_shortcut(&mut self) -> Result<(), String> {
+        if self.focused_table_cell.is_some() {
+            self.replace_text_in_focused_table_cell_range(None, " ")?;
+            return Ok(());
+        }
         let block_id = self.focused_block_id().unwrap_or(1);
         if self.editing.is_none() {
             self.focus_block(block_id);
@@ -374,6 +385,9 @@ impl DocumentRuntime {
 
     pub fn insert_soft_line_break(&mut self) -> Result<(), String> {
         self.insert_char('\n')?;
+        if self.focused_table_cell.is_some() {
+            return Ok(());
+        }
         let _ = self.refresh_focused_text_block_height()?;
         Ok(())
     }
@@ -423,6 +437,119 @@ impl DocumentRuntime {
             .set_displayed_total_height(total_height)
             .map_err(|error| error.to_string())?;
         Ok(true)
+    }
+
+    fn replace_text_in_focused_table_cell_range(
+        &mut self,
+        range: Option<Range<usize>>,
+        text: &str,
+    ) -> Result<bool, String> {
+        let Some(focused) = self.focused_table_cell else {
+            return Ok(false);
+        };
+        let current = self
+            .table_cell_plain_text(focused.block_id, focused.row, focused.col)
+            .ok_or_else(|| {
+                format!(
+                    "missing focused table cell {}:{} in block {}",
+                    focused.row, focused.col, focused.block_id
+                )
+            })?;
+        let range = range
+            .map(|range| safe_char_range(&current, range))
+            .unwrap_or_else(|| {
+                let offset = previous_char_boundary(&current, focused.offset.min(current.len()));
+                offset..offset
+            });
+        if range.is_empty() && text.is_empty() {
+            return Ok(false);
+        }
+
+        let mut next = current;
+        next.replace_range(range.clone(), text);
+        let next_offset = range.start + text.len();
+        self.cancel_composition();
+        self.document_selection = None;
+        self.focused_text_selection = None;
+        self.selected_block_ids.clear();
+
+        let next_content_version = {
+            let payload = self
+                .payload_window
+                .payloads
+                .get_mut(&focused.block_id)
+                .ok_or_else(|| format!("missing payload for block {}", focused.block_id))?;
+            let BlockPayload::Table(table) = &mut payload.payload else {
+                return Err(format!("block {} is not a table", focused.block_id));
+            };
+            table
+                .set_cell_plain_text(focused.row, focused.col, next)
+                .ok_or_else(|| {
+                    format!(
+                        "missing table cell {}:{} in block {}",
+                        focused.row, focused.col, focused.block_id
+                    )
+                })?;
+            payload.content_version = payload.content_version.saturating_add(1);
+            payload.content_version
+        };
+
+        if let Some(model) = self.text_models.get_mut(&focused.block_id)
+            && let Some(payload) = self.payload_window.get(focused.block_id)
+        {
+            *model = PieceTableTextModel::new(payload.plain_text());
+        }
+        if let Some(editing) = self.editing.as_mut()
+            && editing.block_id == focused.block_id
+        {
+            editing.content_version = next_content_version;
+            editing.caret_anchor.text_offset = 0;
+        }
+        self.focused_table_cell = Some(FocusedTableCell {
+            offset: next_offset,
+            ..focused
+        });
+        Ok(true)
+    }
+
+    fn delete_backward_in_focused_table_cell(&mut self) -> Result<bool, String> {
+        let Some(focused) = self.focused_table_cell else {
+            return Ok(false);
+        };
+        let Some(text) = self.table_cell_plain_text(focused.block_id, focused.row, focused.col)
+        else {
+            return Ok(false);
+        };
+        let caret = previous_char_boundary(&text, focused.offset.min(text.len()));
+        if caret == 0 {
+            return Ok(false);
+        }
+        let previous = previous_grapheme_boundary(&text, caret);
+        self.replace_text_in_focused_table_cell_range(Some(previous..caret), "")
+    }
+
+    fn delete_forward_in_focused_table_cell(&mut self) -> Result<bool, String> {
+        let Some(focused) = self.focused_table_cell else {
+            return Ok(false);
+        };
+        let Some(text) = self.table_cell_plain_text(focused.block_id, focused.row, focused.col)
+        else {
+            return Ok(false);
+        };
+        let caret = previous_char_boundary(&text, focused.offset.min(text.len()));
+        let next = next_grapheme_boundary(&text, caret);
+        if caret == next {
+            return Ok(false);
+        }
+        self.replace_text_in_focused_table_cell_range(Some(caret..next), "")
+    }
+
+    fn table_cell_plain_text(&self, block_id: BlockId, row: usize, col: usize) -> Option<String> {
+        let payload = self.payload_window.get(block_id)?;
+        let BlockPayload::Table(table) = &payload.payload else {
+            return None;
+        };
+        table.cell_plain_text(row, col)
     }
 
     pub(super) fn insert_soft_tab_in_focused_block(&mut self) -> Result<bool, String> {
@@ -477,6 +604,9 @@ impl DocumentRuntime {
     }
 
     pub fn delete_backward(&mut self) -> Result<bool, String> {
+        if self.focused_table_cell.is_some() {
+            return self.delete_backward_in_focused_table_cell();
+        }
         if self
             .document_selection
             .is_some_and(|selection| !selection.is_caret())
@@ -572,6 +702,9 @@ impl DocumentRuntime {
     }
 
     pub fn delete_forward(&mut self) -> Result<bool, String> {
+        if self.focused_table_cell.is_some() {
+            return self.delete_forward_in_focused_table_cell();
+        }
         if self.focused_text_selection_range().is_some() {
             return self.replace_text_in_focused_range(None, "");
         }

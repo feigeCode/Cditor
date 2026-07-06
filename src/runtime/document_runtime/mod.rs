@@ -4190,8 +4190,7 @@ mod tests {
         assert_eq!(report.payloads_missing, 1);
     }
 
-    #[test]
-    fn table_cell_focus_is_projected_without_ui_entity_state() {
+    fn sample_table_payload() -> BlockPayloadRecord {
         let table = crate::core::rich_text::TablePayload {
             rows: vec![crate::core::rich_text::TableRowPayload {
                 cells: vec![
@@ -4206,16 +4205,17 @@ mod tests {
             header_rows: 1,
             header_cols: 0,
         };
-        let mut runtime = DocumentRuntime::from_payloads(
-            1,
-            vec![BlockPayloadRecord {
-                block_id: 10,
-                content_version: 1,
-                kind: RichBlockKind::Table,
-                payload: BlockPayload::Table(table),
-            }],
-            720.0,
-        );
+        BlockPayloadRecord {
+            block_id: 10,
+            content_version: 1,
+            kind: RichBlockKind::Table,
+            payload: BlockPayload::Table(table),
+        }
+    }
+
+    #[test]
+    fn table_cell_focus_is_projected_without_ui_entity_state() {
+        let mut runtime = DocumentRuntime::from_payloads(1, vec![sample_table_payload()], 720.0);
 
         runtime.focus_table_cell(10, 0, 1).unwrap();
         let projection = runtime.projection_for_window();
@@ -4226,6 +4226,46 @@ mod tests {
             projection.blocks[0].focused_table_cell,
             Some(TableCellPosition { row: 0, col: 1 })
         );
+    }
+
+    #[test]
+    fn insert_char_updates_focused_table_cell_payload() {
+        let mut runtime = DocumentRuntime::from_payloads(1, vec![sample_table_payload()], 720.0);
+
+        runtime.focus_table_cell(10, 0, 1).unwrap();
+        runtime.insert_char('!').unwrap();
+
+        let payload = runtime.block_payload_record(10).unwrap();
+        let BlockPayload::Table(table) = payload.payload else {
+            panic!("expected table payload");
+        };
+        assert_eq!(table.cell_plain_text(0, 1), Some("B!".to_owned()));
+        assert_eq!(payload.content_version, 2);
+        assert_eq!(runtime.focused_table_cell_offset(), Some((10, 0, 1, 2)));
+    }
+
+    #[test]
+    fn delete_backward_and_forward_update_focused_table_cell_payload() {
+        let mut runtime = DocumentRuntime::from_payloads(1, vec![sample_table_payload()], 720.0);
+
+        runtime.focus_table_cell(10, 0, 1).unwrap();
+        runtime.insert_char('中').unwrap();
+        assert!(runtime.delete_backward().unwrap());
+        assert_eq!(runtime.focused_table_cell_offset(), Some((10, 0, 1, 1)));
+        runtime.insert_char('x').unwrap();
+        runtime.focused_table_cell = Some(FocusedTableCell {
+            block_id: 10,
+            row: 0,
+            col: 1,
+            offset: 1,
+        });
+        assert!(runtime.delete_forward().unwrap());
+
+        let payload = runtime.block_payload_record(10).unwrap();
+        let BlockPayload::Table(table) = payload.payload else {
+            panic!("expected table payload");
+        };
+        assert_eq!(table.cell_plain_text(0, 1), Some("B".to_owned()));
     }
 
     async fn postgres_runtime_fixture(
