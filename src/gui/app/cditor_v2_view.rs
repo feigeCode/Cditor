@@ -1,25 +1,20 @@
 use gpui::prelude::FluentBuilder;
 use std::{
     collections::HashMap,
-    ops::Range,
     time::{Duration, Instant},
 };
 
 use gpui::{
-    AppContext, Bounds, ClipboardItem, Context, EntityInputHandler, FocusHandle,
-    InteractiveElement, IntoElement, KeyDownEvent, MouseButton, MouseMoveEvent, MouseUpEvent,
-    ParentElement, Pixels, Point, Render, ScrollDelta, ScrollWheelEvent, Size, Styled,
-    UTF16Selection, Window, div, px, rgb,
+    AppContext, Context, FocusHandle, InteractiveElement, IntoElement, MouseButton, ParentElement,
+    Pixels, Point, Render, Styled, Window, div, rgb,
 };
 
 use crate::core::block::GutterBlockDragState;
 use crate::core::ids::BlockId;
-use crate::core::rich_text::InlineMark;
-use crate::editor::scroll::{
-    HeightCorrectionPriority, ScrollAccumulator, ScrollDeltaMode, ScrollDevice, ScrollInput,
-    ScrollPhase,
-};
+
+use crate::editor::scroll::{HeightCorrectionPriority, ScrollAccumulator};
 use crate::gui::GuiTheme;
+use crate::gui::app::input::text_drag::GuiTextDragSelection;
 use crate::gui::app::input_trace::trace_input;
 use crate::gui::app::interaction::geometry::{
     FallbackViewportOrigin, ProjectedBlockRect, projected_block_rects_from_projection,
@@ -29,26 +24,19 @@ use crate::gui::app::interaction::scrollbar::{
     GuiScrollbarDrag, render_scrollbar, scrollbar_policy,
 };
 
-use crate::gui::clipboard_assets::image_asset_from_clipboard_item;
 use crate::gui::document::{
     DocumentBlockActionProjection, DocumentDebugHeader, DocumentEditorView,
 };
-use crate::gui::image_preview::{
-    close_active_preview_if_escape_enabled, render_image_preview_overlay,
-};
-use crate::gui::input::ime::{
-    marked_preview_range_to_base_range, utf8_range_to_utf16_range, utf8_to_utf16_offset,
-    utf16_range_to_utf8_range,
-};
-use crate::gui::input::{BlockDragSelectionController, GuiInputCommand, command_for_key_down};
+use crate::gui::image_preview::render_image_preview_overlay;
+use crate::gui::input::BlockDragSelectionController;
+
 use crate::gui::persistence::{
     DEFAULT_POSTGRES_SAVE_DEBOUNCE, EditorLoadStateLabel, EditorSaveStatus,
     PostgresPersistenceState, PostgresPersistenceTarget, mark_dirty_and_schedule_postgres_save,
     render_load_state, render_save_indicator, save_postgres_batch,
 };
 use crate::gui::text::{
-    RichTextLayoutInput, RichTextPlatformLayout, platform_index_for_point, platform_range_bounds,
-    wrap_rich_text,
+    RichTextLayoutInput, RichTextPlatformLayout, platform_index_for_point, wrap_rich_text,
 };
 use crate::runtime::DocumentRuntime;
 use crate::storage::postgres::block_on_postgres;
@@ -73,12 +61,6 @@ pub struct CditorV2View {
     pub(in crate::gui::app) projected_block_rects: Vec<ProjectedBlockRect>,
     pub(in crate::gui::app) postgres_persistence: PostgresPersistenceState,
     pub(in crate::gui::app) autosave_interval: Duration,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(in crate::gui::app) struct GuiTextDragSelection {
-    pub(in crate::gui::app) anchor_block_id: BlockId,
-    pub(in crate::gui::app) anchor_offset: usize,
 }
 
 pub enum CditorViewState {
@@ -480,7 +462,7 @@ impl CditorV2View {
         }
     }
 
-    fn current_text_layout_cache(
+    pub(in crate::gui::app) fn current_text_layout_cache(
         &self,
         runtime: &DocumentRuntime,
         block_id: BlockId,
@@ -569,571 +551,6 @@ impl CditorV2View {
                     - rect.text_origin_y_in_block_px,
             })
         })
-    }
-
-    fn text_position_at_point(&self, position: Point<Pixels>) -> Option<(BlockId, usize)> {
-        let runtime = self.ready_runtime_ref()?;
-        self.text_layouts.iter().find_map(|(block_id, cache)| {
-            if runtime.block_content_version(*block_id)? != cache.content_version {
-                return None;
-            }
-            let within_y = position.y >= cache.bounds.top() && position.y <= cache.bounds.bottom();
-            within_y.then(|| (*block_id, platform_index_for_point(cache, position)))
-        })
-    }
-
-    fn update_text_drag_selection(&mut self, position: Point<Pixels>, cx: &mut Context<Self>) {
-        let Some(drag) = self.text_drag_selection else {
-            return;
-        };
-        let Some((focus_block_id, focus_offset)) = self.text_position_at_point(position) else {
-            return;
-        };
-        if let CditorViewState::Ready(runtime) = &mut self.state {
-            let _ = runtime.set_document_text_selection(
-                drag.anchor_block_id,
-                drag.anchor_offset,
-                focus_block_id,
-                focus_offset,
-            );
-            cx.stop_propagation();
-            cx.notify();
-        }
-    }
-
-    fn finish_text_drag_selection(&mut self) {
-        self.text_drag_selection = None;
-    }
-
-    fn on_scroll_wheel(
-        &mut self,
-        event: &ScrollWheelEvent,
-        _window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        self.last_wheel_delta_y = scroll_delta_y(event);
-        if let CditorViewState::Ready(runtime) = &mut self.state {
-            let before = runtime.scroll.global_scroll_top;
-            let start = Instant::now();
-            self.scroll_accumulator.push_input(
-                ScrollInput {
-                    delta_y: self.last_wheel_delta_y,
-                    mode: ScrollDeltaMode::Pixel,
-                    phase: scroll_phase_from_touch(event.touch_phase),
-                    device: ScrollDevice::Trackpad,
-                    timestamp: start,
-                },
-                runtime.scroll.viewport_height,
-            );
-            let _ = self.scroll_accumulator.apply_frame(&mut runtime.scroll);
-            eprintln!(
-                "[cditor][wheel] delta_y={:.2} scroll_top {:.2}->{:.2} interaction={:?} elapsed_ms={:.2}",
-                self.last_wheel_delta_y,
-                before,
-                runtime.scroll.global_scroll_top,
-                self.scroll_accumulator.interaction_state,
-                start.elapsed().as_secs_f64() * 1000.0
-            );
-        }
-        cx.stop_propagation();
-        cx.notify();
-    }
-
-    fn on_key_down(&mut self, event: &KeyDownEvent, _window: &mut Window, cx: &mut Context<Self>) {
-        if event.keystroke.key.as_str() == "escape" && close_active_preview_if_escape_enabled(cx) {
-            cx.stop_propagation();
-            cx.notify();
-            return;
-        }
-        let command = command_for_key_down(event);
-        if command.should_stop_propagation() {
-            self.apply_input_command(command, cx);
-            cx.stop_propagation();
-            cx.notify();
-        }
-    }
-
-    fn on_scrollbar_mouse_move(
-        &mut self,
-        event: &MouseMoveEvent,
-        _window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        if event.dragging() && self.image_resize_drag.is_some() {
-            if self.update_image_resize_drag(event.position, cx) {
-                cx.stop_propagation();
-            }
-            return;
-        }
-        if event.dragging() && self.gutter_block_drag.is_some() {
-            if self.update_gutter_block_drag(event.position, cx) {
-                cx.stop_propagation();
-            }
-            return;
-        }
-        let Some(drag) = self.scrollbar_drag else {
-            if event.dragging() {
-                if !self.block_drag_selection.is_dragging() {
-                    self.update_text_drag_selection(event.position, cx);
-                }
-            } else {
-                self.finish_text_drag_selection();
-                self.finish_block_drag_selection();
-            }
-            return;
-        };
-        if !event.dragging() {
-            self.finish_gui_scrollbar_drag(cx);
-            self.finish_text_drag_selection();
-            self.finish_block_drag_selection();
-            return;
-        }
-        let CditorViewState::Ready(runtime) = &mut self.state else {
-            self.scrollbar_drag = None;
-            return;
-        };
-        let policy = scrollbar_policy(runtime);
-        let thumb_top = f64::from(event.position.y) - drag.pointer_y_offset_in_thumb;
-        let _ = runtime.drag_scrollbar_to_thumb_top(policy, thumb_top);
-        cx.stop_propagation();
-        cx.notify();
-    }
-
-    fn on_scrollbar_mouse_up(
-        &mut self,
-        _event: &MouseUpEvent,
-        _window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        if self.commit_image_resize_drag(cx) {
-            cx.stop_propagation();
-        }
-        if self.commit_gutter_block_drag(cx) {
-            cx.stop_propagation();
-        }
-        self.finish_gui_scrollbar_drag(cx);
-        self.finish_text_drag_selection();
-        self.finish_block_drag_selection();
-    }
-
-    fn finish_block_drag_selection(&mut self) {
-        let _ = self.block_drag_selection.finish();
-    }
-
-    fn apply_input_command(&mut self, command: GuiInputCommand, cx: &mut Context<Self>) {
-        if matches!(command, GuiInputCommand::ToggleDebugOverlay) {
-            self.show_debug = !self.show_debug;
-            return;
-        }
-        if self.readonly {
-            return;
-        }
-        let CditorViewState::Ready(runtime) = &mut self.state else {
-            return;
-        };
-        match command {
-            GuiInputCommand::Ignore | GuiInputCommand::ToggleDebugOverlay => {}
-            GuiInputCommand::SelectAllFocusedText => {
-                runtime.select_focused_text_all();
-            }
-            GuiInputCommand::CopySelection => {
-                if let Some(text) = runtime.selected_focused_text() {
-                    cx.write_to_clipboard(ClipboardItem::new_string(text));
-                }
-            }
-            GuiInputCommand::CutSelection => {
-                if let Some(text) = runtime.selected_focused_text() {
-                    cx.write_to_clipboard(ClipboardItem::new_string(text));
-                    let changed = if runtime.has_cross_block_text_selection() {
-                        runtime.delete_document_selection().unwrap_or(false)
-                    } else {
-                        runtime
-                            .replace_text_in_focused_range(None, "")
-                            .unwrap_or(false)
-                    };
-                    if changed {
-                        self.mark_dirty(cx);
-                    }
-                }
-            }
-            GuiInputCommand::PasteClipboard => {
-                if let Some(item) = cx.read_from_clipboard() {
-                    let changed = if let Some(asset) = image_asset_from_clipboard_item(&item) {
-                        runtime
-                            .insert_image_asset_after_focused(asset.payload)
-                            .is_ok()
-                    } else if let Some(text) = item.text() {
-                        match runtime.insert_markdown_paste(&text) {
-                            Ok(true) => true,
-                            Ok(false) | Err(_) => runtime
-                                .replace_text_in_focused_range(None, &text)
-                                .unwrap_or(false),
-                        }
-                    } else {
-                        false
-                    };
-                    if changed {
-                        self.mark_dirty(cx);
-                    }
-                }
-            }
-            GuiInputCommand::UndoFocusedBlock => {
-                if runtime.undo_focused_block().is_ok() {
-                    self.mark_dirty(cx);
-                }
-            }
-            GuiInputCommand::RedoFocusedBlock => {
-                if runtime.redo_focused_block().is_ok() {
-                    self.mark_dirty(cx);
-                }
-            }
-            GuiInputCommand::InsertParagraphAfterFocused => {
-                if runtime.insert_paragraph_after_focused().is_ok() {
-                    self.mark_dirty(cx);
-                }
-            }
-            GuiInputCommand::InsertSoftLineBreak => {
-                if runtime.insert_soft_line_break().is_ok() {
-                    self.mark_dirty(cx);
-                }
-            }
-            GuiInputCommand::HandleEnter => {
-                if runtime.handle_enter().is_ok() {
-                    self.mark_dirty(cx);
-                }
-            }
-            GuiInputCommand::IndentBlock => {
-                if runtime.indent_focused_block().unwrap_or(false) {
-                    self.mark_dirty(cx);
-                }
-            }
-            GuiInputCommand::OutdentBlock => {
-                if runtime.outdent_focused_block().unwrap_or(false) {
-                    self.mark_dirty(cx);
-                }
-            }
-            GuiInputCommand::InsertSpaceOrMarkdownShortcut => {
-                if runtime.insert_space_or_markdown_shortcut().is_ok() {
-                    self.mark_dirty(cx);
-                }
-            }
-            GuiInputCommand::DeleteBackward => {
-                if runtime.delete_backward().is_ok() {
-                    self.mark_dirty(cx);
-                }
-            }
-            GuiInputCommand::DeleteForward => {
-                if runtime.delete_forward().is_ok() {
-                    self.mark_dirty(cx);
-                }
-            }
-            GuiInputCommand::MoveCaretLeft { extend_selection } => {
-                let _ = runtime.move_caret_left(extend_selection);
-            }
-            GuiInputCommand::MoveCaretRight { extend_selection } => {
-                let _ = runtime.move_caret_right(extend_selection);
-            }
-            GuiInputCommand::MoveCaretUp { extend_selection } => {
-                let moved_in_block = move_caret_vertically_in_focused_block(
-                    &self.text_layouts,
-                    runtime,
-                    -1,
-                    extend_selection,
-                )
-                .unwrap_or(false);
-                if !moved_in_block {
-                    let _ = runtime.move_caret_up(extend_selection);
-                }
-            }
-            GuiInputCommand::MoveCaretDown { extend_selection } => {
-                let moved_in_block = move_caret_vertically_in_focused_block(
-                    &self.text_layouts,
-                    runtime,
-                    1,
-                    extend_selection,
-                )
-                .unwrap_or(false);
-                if !moved_in_block {
-                    let _ = runtime.move_caret_down(extend_selection);
-                }
-            }
-            GuiInputCommand::ToggleBold => {
-                if runtime
-                    .toggle_inline_mark_on_selection(InlineMark::Bold)
-                    .is_ok()
-                {
-                    self.mark_dirty(cx);
-                }
-            }
-            GuiInputCommand::ToggleItalic => {
-                if runtime
-                    .toggle_inline_mark_on_selection(InlineMark::Italic)
-                    .is_ok()
-                {
-                    self.mark_dirty(cx);
-                }
-            }
-            GuiInputCommand::ToggleUnderline => {
-                if runtime
-                    .toggle_inline_mark_on_selection(InlineMark::Underline)
-                    .is_ok()
-                {
-                    self.mark_dirty(cx);
-                }
-            }
-            GuiInputCommand::ToggleInlineCode => {
-                if runtime
-                    .toggle_inline_mark_on_selection(InlineMark::Code)
-                    .is_ok()
-                {
-                    self.mark_dirty(cx);
-                }
-            }
-            GuiInputCommand::InsertChar(ch) => {
-                ensure_runtime_focus_for_insert_char(runtime);
-                if runtime.insert_char(ch).is_ok() {
-                    self.mark_dirty(cx);
-                }
-            }
-        }
-    }
-}
-
-fn ensure_runtime_focus_for_insert_char(runtime: &mut DocumentRuntime) {
-    if runtime.focused_block_id().is_none()
-        && let Some(block_id) = runtime.first_visible_block_id()
-    {
-        runtime.focus_block(block_id);
-    }
-}
-
-fn move_caret_vertically_in_focused_block(
-    text_layouts: &HashMap<BlockId, RichTextPlatformLayout>,
-    runtime: &mut DocumentRuntime,
-    direction: i32,
-    extend_selection: bool,
-) -> Result<bool, String> {
-    let Some(block_id) = runtime.focused_block_id() else {
-        return Ok(false);
-    };
-    let Some(cache) = text_layouts.get(&block_id) else {
-        return Ok(false);
-    };
-    let Some(current_content_version) = runtime.block_content_version(block_id) else {
-        return Ok(false);
-    };
-    if cache.content_version != current_content_version {
-        return Ok(false);
-    }
-    let Some(caret) = runtime.caret_offset_for_block(block_id) else {
-        return Ok(false);
-    };
-    let Some(caret_bounds) = platform_range_bounds(cache, caret..caret) else {
-        return Ok(false);
-    };
-    let target_y = if direction < 0 {
-        caret_bounds.top() - cache.line_height * 0.5
-    } else {
-        caret_bounds.top() + cache.line_height * 1.5
-    };
-    if target_y < cache.bounds.top() || target_y >= cache.bounds.bottom() {
-        return Ok(false);
-    }
-    let target_offset = platform_index_for_point(
-        cache,
-        Point {
-            x: caret_bounds.left(),
-            y: target_y,
-        },
-    );
-    runtime.move_focused_caret_to_offset(block_id, target_offset, extend_selection)
-}
-
-impl EntityInputHandler for CditorV2View {
-    fn text_for_range(
-        &mut self,
-        range_utf16: Range<usize>,
-        actual_range: &mut Option<Range<usize>>,
-        _window: &mut Window,
-        _cx: &mut Context<Self>,
-    ) -> Option<String> {
-        let runtime = self.ready_runtime()?;
-        let (block_id, text) = runtime.focused_text_for_platform_input()?;
-        let range = utf16_range_to_utf8_range(&text, &range_utf16);
-        let actual = utf8_range_to_utf16_range(&text, &range);
-        actual_range.replace(actual.clone());
-        trace_input(
-            "text_for_range",
-            format_args!(
-                "block={block_id} range_utf16={range_utf16:?} utf8_range={range:?} actual_utf16={actual:?} text_len={}",
-                text.len()
-            ),
-        );
-        text.get(range).map(ToOwned::to_owned)
-    }
-
-    fn selected_text_range(
-        &mut self,
-        _ignore_disabled_input: bool,
-        _window: &mut Window,
-        _cx: &mut Context<Self>,
-    ) -> Option<UTF16Selection> {
-        let runtime = self.ready_runtime()?;
-        let selection = platform_selected_text_range(runtime);
-        trace_input(
-            "selected_text_range",
-            format_args!(
-                "focused={:?} selection={selection:?}",
-                runtime.focused_block_id()
-            ),
-        );
-        selection
-    }
-
-    fn marked_text_range(
-        &self,
-        _window: &mut Window,
-        _cx: &mut Context<Self>,
-    ) -> Option<Range<usize>> {
-        let runtime = self.ready_runtime_ref()?;
-        let (block_id, text) = runtime.focused_text_for_platform_input()?;
-        let marked = runtime
-            .active_composition_marked_range()
-            .map(|range| utf8_range_to_utf16_range(&text, &range));
-        trace_input(
-            "marked_text_range",
-            format_args!(
-                "block={block_id} marked_utf16={marked:?} text_len={}",
-                text.len()
-            ),
-        );
-        marked
-    }
-
-    fn unmark_text(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
-        if let Some(runtime) = self.ready_runtime() {
-            runtime.cancel_composition();
-            cx.notify();
-        }
-    }
-
-    fn replace_text_in_range(
-        &mut self,
-        range_utf16: Option<Range<usize>>,
-        text: &str,
-        _window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        if self.readonly {
-            return;
-        }
-        let Some(runtime) = self.ready_runtime() else {
-            return;
-        };
-        let focused = runtime.focused_block_id();
-        let range = ime_replacement_range(runtime, range_utf16.clone());
-        trace_input(
-            "replace_text_in_range",
-            format_args!(
-                "focused={focused:?} range_utf16={range_utf16:?} resolved_utf8={range:?} text_len={}",
-                text.len()
-            ),
-        );
-        match runtime.replace_text_in_focused_range(range, text) {
-            Ok(true) => {
-                self.mark_dirty(cx);
-                cx.notify();
-            }
-            Ok(false) => {}
-            Err(error) => {
-                self.save_status = EditorSaveStatus::Failed(error);
-                cx.notify();
-            }
-        }
-    }
-
-    fn replace_and_mark_text_in_range(
-        &mut self,
-        range_utf16: Option<Range<usize>>,
-        new_text: &str,
-        new_selected_range: Option<Range<usize>>,
-        _window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        if self.readonly {
-            return;
-        }
-        let Some(runtime) = self.ready_runtime() else {
-            return;
-        };
-        let Some(block_id) = runtime.focused_block_id() else {
-            return;
-        };
-        let range_from_ime = ime_replacement_range(runtime, range_utf16.clone());
-        let range = range_from_ime
-            .clone()
-            .unwrap_or_else(|| platform_input_fallback_range(runtime, block_id));
-        let selected_range = new_selected_range
-            .clone()
-            .map(|range| utf16_range_to_utf8_range(new_text, &range));
-        trace_input(
-            "replace_and_mark_text_in_range",
-            format_args!(
-                "block={block_id} range_utf16={range_utf16:?} range_from_ime={range_from_ime:?} resolved_utf8={range:?} new_text_len={} new_selected_utf16={new_selected_range:?} selected_utf8={selected_range:?}",
-                new_text.len()
-            ),
-        );
-        if runtime
-            .begin_or_update_composition_with_selection(block_id, range, new_text, selected_range)
-            .is_ok()
-        {
-            cx.notify();
-        }
-    }
-
-    fn bounds_for_range(
-        &mut self,
-        range_utf16: Range<usize>,
-        element_bounds: Bounds<Pixels>,
-        _window: &mut Window,
-        _cx: &mut Context<Self>,
-    ) -> Option<Bounds<Pixels>> {
-        let runtime = self.ready_runtime_ref()?;
-        let (block_id, text) = runtime.focused_text_for_platform_input()?;
-        let range = utf16_range_to_utf8_range(&text, &range_utf16);
-        let cache = self.current_text_layout_cache(runtime, block_id)?;
-        platform_range_bounds(cache, range).or(Some(Bounds {
-            origin: element_bounds.origin,
-            size: Size {
-                width: px(1.0),
-                height: px(24.0),
-            },
-        }))
-    }
-
-    fn character_index_for_point(
-        &mut self,
-        point: Point<Pixels>,
-        _window: &mut Window,
-        _cx: &mut Context<Self>,
-    ) -> Option<usize> {
-        let runtime = self.ready_runtime_ref()?;
-        let (block_id, text) = runtime.focused_text_for_platform_input()?;
-        let cache = self.current_text_layout_cache(runtime, block_id)?;
-        let utf8 = platform_index_for_point(cache, point).min(text.len());
-        let utf16 = utf8_to_utf16_offset(&text, utf8);
-        trace_input(
-            "character_index_for_point",
-            format_args!(
-                "block={block_id} point={point:?} utf8={utf8} utf16={utf16} text_len={}",
-                text.len()
-            ),
-        );
-        Some(utf16)
-    }
-
-    fn accepts_text_input(&self, _window: &mut Window, _cx: &mut Context<Self>) -> bool {
-        !self.readonly && matches!(self.state, CditorViewState::Ready(_))
     }
 }
 
@@ -1267,75 +684,6 @@ impl Render for CditorV2View {
     }
 }
 
-fn platform_selected_text_range(runtime: &DocumentRuntime) -> Option<UTF16Selection> {
-    let (_block_id, text) = runtime.focused_text_for_platform_input()?;
-    if let Some(selection) = runtime.active_composition_selected_range() {
-        return Some(UTF16Selection {
-            range: utf8_range_to_utf16_range(&text, &selection),
-            reversed: false,
-        });
-    }
-    if let Some(marked_range) = runtime.active_composition_marked_range() {
-        let caret = utf8_to_utf16_offset(&text, marked_range.end.min(text.len()));
-        return Some(UTF16Selection {
-            range: caret..caret,
-            reversed: false,
-        });
-    }
-    if let Some(selection) = runtime.focused_text_selection_range() {
-        return Some(UTF16Selection {
-            range: utf8_range_to_utf16_range(&text, &selection),
-            reversed: false,
-        });
-    }
-    let caret = runtime
-        .editing
-        .as_ref()
-        .map(|editing| editing.caret_anchor.text_offset as usize)
-        .unwrap_or(text.len())
-        .min(text.len());
-    let caret = utf8_to_utf16_offset(&text, caret);
-    Some(UTF16Selection {
-        range: caret..caret,
-        reversed: false,
-    })
-}
-
-fn platform_input_fallback_range(runtime: &DocumentRuntime, block_id: BlockId) -> Range<usize> {
-    runtime
-        .active_composition()
-        .filter(|composition| composition.block_id == block_id)
-        .map(|composition| composition.range_start as usize..composition.range_end as usize)
-        .or_else(|| runtime.focused_text_selection_range())
-        .unwrap_or_else(|| {
-            let caret = runtime
-                .editing
-                .as_ref()
-                .map(|editing| editing.caret_anchor.text_offset as usize)
-                .unwrap_or_else(|| runtime.focused_text().map(str::len).unwrap_or(0));
-            caret..caret
-        })
-}
-
-fn ime_replacement_range(
-    runtime: &DocumentRuntime,
-    range_utf16: Option<Range<usize>>,
-) -> Option<Range<usize>> {
-    let range_utf16 = range_utf16?;
-    let (_block_id, text) = runtime.focused_text_for_platform_input()?;
-    let preview_range = utf16_range_to_utf8_range(&text, &range_utf16);
-    let Some(composition) = runtime.active_composition() else {
-        return Some(preview_range);
-    };
-    let preview_marked_range = runtime.active_composition_marked_range()?;
-    let base_marked_range = composition.range_start as usize..composition.range_end as usize;
-    Some(marked_preview_range_to_base_range(
-        preview_range,
-        base_marked_range,
-        preview_marked_range,
-    ))
-}
-
 fn save_status_for_mode(readonly: bool) -> EditorSaveStatus {
     if readonly {
         EditorSaveStatus::Readonly
@@ -1344,31 +692,22 @@ fn save_status_for_mode(readonly: bool) -> EditorSaveStatus {
     }
 }
 
-fn scroll_delta_y(event: &ScrollWheelEvent) -> f64 {
-    match event.delta {
-        ScrollDelta::Pixels(delta) => -(f32::from(delta.y) as f64),
-        ScrollDelta::Lines(delta) => -(delta.y as f64 * 16.0),
-    }
-}
-
-fn scroll_phase_from_touch(phase: gpui::TouchPhase) -> ScrollPhase {
-    match phase {
-        gpui::TouchPhase::Started => ScrollPhase::Began,
-        gpui::TouchPhase::Moved => ScrollPhase::Changed,
-        gpui::TouchPhase::Ended => ScrollPhase::Ended,
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::core::block::BlockDropTarget;
+    use crate::gui::app::input::ime::{
+        platform_input_fallback_range, platform_selected_text_range,
+    };
+    use crate::gui::app::input::keyboard::ensure_runtime_focus_for_insert_char;
+    use crate::gui::app::input::mouse::scroll_delta_y;
     use crate::gui::app::interaction::geometry::{
         ParentDropTarget, drop_target_for_document_y_from_rects, fallback_text_metrics_for_block,
         parent_drop_target_from_rects,
     };
     use crate::gui::app::interaction::gutter_drag::gutter_drag_auto_scroll_delta;
     use crate::gui::block::code::{V1_CODE_CONTENT_PADDING_TOP_PX, V1_CODE_CONTENT_PADDING_X_PX};
+    use gpui::{ScrollDelta, ScrollWheelEvent};
 
     #[test]
     fn save_status_for_mode_respects_readonly() {

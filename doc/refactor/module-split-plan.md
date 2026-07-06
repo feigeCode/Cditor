@@ -125,13 +125,13 @@ src/storage/postgres/types/
 
 ### Phase 3：拆 GUI input
 
-- [ ] 拆出 `src/gui/app/input/keyboard.rs`
-- [ ] 拆出 `src/gui/app/input/mouse.rs`
-- [ ] 拆出 `src/gui/app/input/text_drag.rs`
-- [ ] 拆出 `src/gui/app/input/ime.rs`
-- [ ] 跑 `cargo test gui::app --lib`
-- [ ] 跑 `cargo check`
-- [ ] 提交：`Refactor gui app input modules`
+- [x] 拆出 `src/gui/app/input/keyboard.rs`
+- [x] 拆出 `src/gui/app/input/mouse.rs`
+- [x] 拆出 `src/gui/app/input/text_drag.rs`
+- [x] 拆出 `src/gui/app/input/ime.rs`
+- [x] 跑 `cargo test gui::app --lib`
+- [x] 跑 `cargo check`
+- [x] 提交：`Refactor gui app input modules`
 
 ### Phase 4：拆 Runtime 非 hot path
 
@@ -173,3 +173,4 @@ src/storage/postgres/types/
 - 2026-07-06：创建本计划文档，准备开始 Phase 1。
 - 2026-07-06：完成 Phase 1 第一组：拆出 `input_trace`、`interaction/geometry`、`interaction/image_resize`；验证 `cargo fmt && cargo test gui::app --lib && cargo check` 通过，仅保留原有 crate 命名 warning。
 - 2026-07-06：完成 Phase 2 代码拆分：拆出 `interaction/scrollbar`、`interaction/gutter_drag`；验证 `cargo fmt && cargo test gui::app --lib && cargo check` 通过，仅保留原有 crate 命名 warning。
+- 2026-07-06：完成 Phase 3：拆出 `input/keyboard`、`input/mouse`、`input/text_drag`、`input/ime`；验证 `cargo fmt && cargo test gui::app --lib && cargo check` 通过，仅保留原有 crate 命名 warning。

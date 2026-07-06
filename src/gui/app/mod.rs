@@ -1,5 +1,6 @@
 pub mod cditor_v2_view;
 
+mod input;
 mod input_trace;
 mod interaction;
 
