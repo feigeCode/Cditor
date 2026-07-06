@@ -16,7 +16,7 @@ const MINIMAL_WORKSPACE_NAMESPACE: u128 = 0x9400_0000_0000_0000_0000_0000_0000_0
 
 fn main() {
     let database_url = env::var("CDITOR_DATABASE_URL")
-        .unwrap_or_else(|_| "postgres://cditor:cditor@localhost:5432/cditor_dev".to_owned());
+        .unwrap_or_else(|_| "postgres://cditor:cditor@localhost:5433/cditor_test".to_owned());
     let document_id = env_u64("CDITOR_DOCUMENT_ID").unwrap_or(DEFAULT_DOCUMENT_ID);
     let workspace_id = env_u64("CDITOR_WORKSPACE_ID").unwrap_or(DEFAULT_WORKSPACE_ID);
     let title = env::var("CDITOR_DOCUMENT_TITLE").unwrap_or_else(|_| "Untitled".to_owned());

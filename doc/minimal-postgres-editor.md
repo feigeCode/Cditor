@@ -10,7 +10,7 @@ cargo run --example minimal_postgres_editor
 
 ## 默认行为
 
-- 默认数据库：`postgres://cditor:cditor@localhost:5432/cditor_dev`
+- 默认数据库：`postgres://cditor:cditor@localhost:5433/cditor_test`
 - 默认文档 ID：`1`
 - 默认 workspace ID：`1`
 - 如果文档不存在，会自动创建一个空白真实 Postgres 文档：
@@ -44,7 +44,7 @@ CDITOR_POSTGRES_TIMEOUT_SECS=30 cargo run --example minimal_postgres_editor
 ## 指定文档打开
 
 ```sh
-CDITOR_DATABASE_URL=postgres://cditor:cditor@localhost:5432/cditor_dev \
+CDITOR_DATABASE_URL=postgres://cditor:cditor@localhost:5433/cditor_test \
 CDITOR_DOCUMENT_ID=42 \
 CDITOR_WORKSPACE_ID=1 \
 CDITOR_DOCUMENT_TITLE="我的真实文档" \

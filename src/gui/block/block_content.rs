@@ -5,6 +5,7 @@ use crate::core::rich_text::{BlockPayload, BlockPayloadView};
 use crate::gui::app::CditorV2View;
 use crate::gui::block::media::render_image_block;
 use crate::gui::block::placeholder::{render_error, render_loading, render_placeholder};
+use crate::gui::block::table::render_table_block;
 use crate::gui::text::{RichTextElement, RichTextLayoutInput};
 use crate::gui::{GuiTheme, rich_text::render_payload_text};
 use crate::runtime::ViewBlockSnapshot;
@@ -19,6 +20,9 @@ pub fn render_block_content(
 ) -> AnyElement {
     match &block.payload {
         BlockPayloadView::Loaded(payload) => {
+            if let BlockPayload::Table(table) = &payload.payload {
+                return render_table_block(table, theme);
+            }
             if let BlockPayload::Image(image) = &payload.payload {
                 return render_image_block(
                     block.block_id,

@@ -105,6 +105,7 @@ fn render_kind_content(
         RichBlockKind::Todo { .. } | RichBlockKind::BulletedList | RichBlockKind::NumberedList => {
             render_paragraph(content)
         }
+        RichBlockKind::Table => content,
         RichBlockKind::Divider | RichBlockKind::Separator => div()
             .my_2()
             .border_t_1()

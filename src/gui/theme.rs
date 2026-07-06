@@ -28,6 +28,8 @@ pub struct GuiTheme {
     pub code_toolbar_text: u32,
     pub code_toolbar_icon: u32,
     pub code_toolbar_hover: u32,
+    pub table_header_background: u32,
+    pub table_active_border: u32,
 }
 
 impl GuiTheme {
@@ -61,6 +63,8 @@ impl GuiTheme {
             code_toolbar_text: 0x6b625a,
             code_toolbar_icon: 0x6b7280,
             code_toolbar_hover: 0xf4f4f5,
+            table_header_background: 0xf1f5f9,
+            table_active_border: 0x60a5fa,
         }
     }
 }
