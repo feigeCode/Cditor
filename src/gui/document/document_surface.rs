@@ -66,6 +66,7 @@ impl DocumentSurface {
                     .my_6()
                     .p_6()
                     .w(px(self.page_width_px))
+                    .h_full()
                     .min_h(px(self.min_height_px))
                     .rounded(px(12.0))
                     .border_1()

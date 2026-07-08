@@ -1,6 +1,6 @@
 use gpui::{
-    AnyElement, App, Entity, FocusHandle, IntoElement, ParentElement, Styled, div,
-    prelude::FluentBuilder, px,
+    AnyElement, App, Entity, FocusHandle, InteractiveElement, IntoElement, MouseButton,
+    ParentElement, Styled, div, prelude::FluentBuilder, px, rgb,
 };
 
 use crate::core::ids::BlockId;
@@ -117,6 +117,19 @@ impl DocumentEditorView {
                     .into_any_element()
             })
             .collect::<Vec<_>>();
+        if projection
+            .blocks
+            .last()
+            .is_some_and(|block| block.visible_index + 1 == projection.total_visible_blocks)
+        {
+            block_elements.push(render_down_placer(
+                block_y,
+                projection.down_placer_height,
+                self.theme,
+                view.clone(),
+            ));
+            block_y += projection.down_placer_height;
+        }
         block_elements.push(div().h(px(block_y as f32)).into_any_element());
 
         let overlay = div()
@@ -137,6 +150,37 @@ impl DocumentEditorView {
         )
         .render(self.theme, block_elements, Some(overlay))
     }
+}
+
+fn render_down_placer(
+    top: f64,
+    height: f64,
+    theme: GuiTheme,
+    view: Entity<CditorV2View>,
+) -> AnyElement {
+    div()
+        .id("cditor-down-placer")
+        .absolute()
+        .left_0()
+        .right_0()
+        .top(px(top as f32))
+        .h(px(height as f32))
+        .cursor_text()
+        .on_mouse_down(MouseButton::Left, move |_event, window, cx| {
+            let _ = view.update(cx, |view, cx| {
+                view.focus_down_placer_from_gui(window, cx);
+            });
+            cx.stop_propagation();
+        })
+        .child(
+            div()
+                .mx_auto()
+                .mt_4()
+                .w(px(160.0))
+                .h(px(1.0))
+                .bg(rgb(theme.border)),
+        )
+        .into_any_element()
 }
 
 #[cfg(test)]

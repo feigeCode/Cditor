@@ -43,173 +43,184 @@ impl CditorV2View {
         if self.readonly {
             return;
         }
-        let CditorViewState::Ready(runtime) = &mut self.state else {
-            return;
-        };
-        match command {
-            GuiInputCommand::Ignore | GuiInputCommand::ToggleDebugOverlay => {}
-            GuiInputCommand::SelectAllFocusedText => {
-                runtime.select_focused_text_all();
-            }
-            GuiInputCommand::CopySelection => {
-                if let Some(text) = runtime.selected_focused_text() {
-                    cx.write_to_clipboard(ClipboardItem::new_string(text));
+        let should_scroll_focus = !matches!(
+            command,
+            GuiInputCommand::Ignore
+                | GuiInputCommand::ToggleDebugOverlay
+                | GuiInputCommand::CopySelection
+        );
+        {
+            let CditorViewState::Ready(runtime) = &mut self.state else {
+                return;
+            };
+            match command {
+                GuiInputCommand::Ignore | GuiInputCommand::ToggleDebugOverlay => {}
+                GuiInputCommand::SelectAllFocusedText => {
+                    runtime.select_focused_text_all();
                 }
-            }
-            GuiInputCommand::CutSelection => {
-                if let Some(text) = runtime.selected_focused_text() {
-                    cx.write_to_clipboard(ClipboardItem::new_string(text));
-                    let changed = if runtime.has_cross_block_text_selection() {
-                        runtime.delete_document_selection().unwrap_or(false)
-                    } else {
-                        runtime
-                            .replace_text_in_focused_range(None, "")
-                            .unwrap_or(false)
-                    };
-                    if changed {
-                        self.mark_dirty(cx);
+                GuiInputCommand::CopySelection => {
+                    if let Some(text) = runtime.selected_focused_text() {
+                        cx.write_to_clipboard(ClipboardItem::new_string(text));
                     }
                 }
-            }
-            GuiInputCommand::PasteClipboard => {
-                if let Some(item) = cx.read_from_clipboard() {
-                    let changed = if let Some(asset) = image_asset_from_clipboard_item(&item) {
-                        runtime
-                            .insert_image_asset_after_focused(asset.payload)
-                            .is_ok()
-                    } else if let Some(text) = item.text() {
-                        match runtime.insert_markdown_paste(&text) {
-                            Ok(true) => true,
-                            Ok(false) | Err(_) => runtime
-                                .replace_text_in_focused_range(None, &text)
-                                .unwrap_or(false),
+                GuiInputCommand::CutSelection => {
+                    if let Some(text) = runtime.selected_focused_text() {
+                        cx.write_to_clipboard(ClipboardItem::new_string(text));
+                        let changed = if runtime.has_cross_block_text_selection() {
+                            runtime.delete_document_selection().unwrap_or(false)
+                        } else {
+                            runtime
+                                .replace_text_in_focused_range(None, "")
+                                .unwrap_or(false)
+                        };
+                        if changed {
+                            self.mark_dirty(cx);
                         }
-                    } else {
-                        false
-                    };
-                    if changed {
+                    }
+                }
+                GuiInputCommand::PasteClipboard => {
+                    if let Some(item) = cx.read_from_clipboard() {
+                        let changed = if let Some(asset) = image_asset_from_clipboard_item(&item) {
+                            runtime
+                                .insert_image_asset_after_focused(asset.payload)
+                                .is_ok()
+                        } else if let Some(text) = item.text() {
+                            match runtime.insert_markdown_paste(&text) {
+                                Ok(true) => true,
+                                Ok(false) | Err(_) => runtime
+                                    .replace_text_in_focused_range(None, &text)
+                                    .unwrap_or(false),
+                            }
+                        } else {
+                            false
+                        };
+                        if changed {
+                            self.mark_dirty(cx);
+                        }
+                    }
+                }
+                GuiInputCommand::UndoFocusedBlock => {
+                    if runtime.undo_focused_block().is_ok() {
+                        self.mark_dirty(cx);
+                    }
+                }
+                GuiInputCommand::RedoFocusedBlock => {
+                    if runtime.redo_focused_block().is_ok() {
+                        self.mark_dirty(cx);
+                    }
+                }
+                GuiInputCommand::InsertParagraphAfterFocused => {
+                    if runtime.insert_paragraph_after_focused().is_ok() {
+                        self.mark_dirty(cx);
+                    }
+                }
+                GuiInputCommand::InsertSoftLineBreak => {
+                    if runtime.insert_soft_line_break().is_ok() {
+                        self.mark_dirty(cx);
+                    }
+                }
+                GuiInputCommand::HandleEnter => {
+                    if runtime.handle_enter().is_ok() {
+                        self.mark_dirty(cx);
+                    }
+                }
+                GuiInputCommand::IndentBlock => {
+                    if runtime.indent_focused_block().unwrap_or(false) {
+                        self.mark_dirty(cx);
+                    }
+                }
+                GuiInputCommand::OutdentBlock => {
+                    if runtime.outdent_focused_block().unwrap_or(false) {
+                        self.mark_dirty(cx);
+                    }
+                }
+                GuiInputCommand::InsertSpaceOrMarkdownShortcut => {
+                    if runtime.insert_space_or_markdown_shortcut().is_ok() {
+                        self.mark_dirty(cx);
+                    }
+                }
+                GuiInputCommand::DeleteBackward => {
+                    if runtime.delete_backward().is_ok() {
+                        self.mark_dirty(cx);
+                    }
+                }
+                GuiInputCommand::DeleteForward => {
+                    if runtime.delete_forward().is_ok() {
+                        self.mark_dirty(cx);
+                    }
+                }
+                GuiInputCommand::MoveCaretLeft { extend_selection } => {
+                    let _ = runtime.move_caret_left(extend_selection);
+                }
+                GuiInputCommand::MoveCaretRight { extend_selection } => {
+                    let _ = runtime.move_caret_right(extend_selection);
+                }
+                GuiInputCommand::MoveCaretUp { extend_selection } => {
+                    let moved_in_block = move_caret_vertically_in_focused_block(
+                        &self.text_layouts,
+                        runtime,
+                        -1,
+                        extend_selection,
+                    )
+                    .unwrap_or(false);
+                    if !moved_in_block {
+                        let _ = runtime.move_caret_up(extend_selection);
+                    }
+                }
+                GuiInputCommand::MoveCaretDown { extend_selection } => {
+                    let moved_in_block = move_caret_vertically_in_focused_block(
+                        &self.text_layouts,
+                        runtime,
+                        1,
+                        extend_selection,
+                    )
+                    .unwrap_or(false);
+                    if !moved_in_block {
+                        let _ = runtime.move_caret_down(extend_selection);
+                    }
+                }
+                GuiInputCommand::ToggleBold => {
+                    if runtime
+                        .toggle_inline_mark_on_selection(InlineMark::Bold)
+                        .is_ok()
+                    {
+                        self.mark_dirty(cx);
+                    }
+                }
+                GuiInputCommand::ToggleItalic => {
+                    if runtime
+                        .toggle_inline_mark_on_selection(InlineMark::Italic)
+                        .is_ok()
+                    {
+                        self.mark_dirty(cx);
+                    }
+                }
+                GuiInputCommand::ToggleUnderline => {
+                    if runtime
+                        .toggle_inline_mark_on_selection(InlineMark::Underline)
+                        .is_ok()
+                    {
+                        self.mark_dirty(cx);
+                    }
+                }
+                GuiInputCommand::ToggleInlineCode => {
+                    if runtime
+                        .toggle_inline_mark_on_selection(InlineMark::Code)
+                        .is_ok()
+                    {
+                        self.mark_dirty(cx);
+                    }
+                }
+                GuiInputCommand::InsertChar(ch) => {
+                    ensure_runtime_focus_for_insert_char(runtime);
+                    if runtime.insert_char(ch).is_ok() {
                         self.mark_dirty(cx);
                     }
                 }
             }
-            GuiInputCommand::UndoFocusedBlock => {
-                if runtime.undo_focused_block().is_ok() {
-                    self.mark_dirty(cx);
-                }
-            }
-            GuiInputCommand::RedoFocusedBlock => {
-                if runtime.redo_focused_block().is_ok() {
-                    self.mark_dirty(cx);
-                }
-            }
-            GuiInputCommand::InsertParagraphAfterFocused => {
-                if runtime.insert_paragraph_after_focused().is_ok() {
-                    self.mark_dirty(cx);
-                }
-            }
-            GuiInputCommand::InsertSoftLineBreak => {
-                if runtime.insert_soft_line_break().is_ok() {
-                    self.mark_dirty(cx);
-                }
-            }
-            GuiInputCommand::HandleEnter => {
-                if runtime.handle_enter().is_ok() {
-                    self.mark_dirty(cx);
-                }
-            }
-            GuiInputCommand::IndentBlock => {
-                if runtime.indent_focused_block().unwrap_or(false) {
-                    self.mark_dirty(cx);
-                }
-            }
-            GuiInputCommand::OutdentBlock => {
-                if runtime.outdent_focused_block().unwrap_or(false) {
-                    self.mark_dirty(cx);
-                }
-            }
-            GuiInputCommand::InsertSpaceOrMarkdownShortcut => {
-                if runtime.insert_space_or_markdown_shortcut().is_ok() {
-                    self.mark_dirty(cx);
-                }
-            }
-            GuiInputCommand::DeleteBackward => {
-                if runtime.delete_backward().is_ok() {
-                    self.mark_dirty(cx);
-                }
-            }
-            GuiInputCommand::DeleteForward => {
-                if runtime.delete_forward().is_ok() {
-                    self.mark_dirty(cx);
-                }
-            }
-            GuiInputCommand::MoveCaretLeft { extend_selection } => {
-                let _ = runtime.move_caret_left(extend_selection);
-            }
-            GuiInputCommand::MoveCaretRight { extend_selection } => {
-                let _ = runtime.move_caret_right(extend_selection);
-            }
-            GuiInputCommand::MoveCaretUp { extend_selection } => {
-                let moved_in_block = move_caret_vertically_in_focused_block(
-                    &self.text_layouts,
-                    runtime,
-                    -1,
-                    extend_selection,
-                )
-                .unwrap_or(false);
-                if !moved_in_block {
-                    let _ = runtime.move_caret_up(extend_selection);
-                }
-            }
-            GuiInputCommand::MoveCaretDown { extend_selection } => {
-                let moved_in_block = move_caret_vertically_in_focused_block(
-                    &self.text_layouts,
-                    runtime,
-                    1,
-                    extend_selection,
-                )
-                .unwrap_or(false);
-                if !moved_in_block {
-                    let _ = runtime.move_caret_down(extend_selection);
-                }
-            }
-            GuiInputCommand::ToggleBold => {
-                if runtime
-                    .toggle_inline_mark_on_selection(InlineMark::Bold)
-                    .is_ok()
-                {
-                    self.mark_dirty(cx);
-                }
-            }
-            GuiInputCommand::ToggleItalic => {
-                if runtime
-                    .toggle_inline_mark_on_selection(InlineMark::Italic)
-                    .is_ok()
-                {
-                    self.mark_dirty(cx);
-                }
-            }
-            GuiInputCommand::ToggleUnderline => {
-                if runtime
-                    .toggle_inline_mark_on_selection(InlineMark::Underline)
-                    .is_ok()
-                {
-                    self.mark_dirty(cx);
-                }
-            }
-            GuiInputCommand::ToggleInlineCode => {
-                if runtime
-                    .toggle_inline_mark_on_selection(InlineMark::Code)
-                    .is_ok()
-                {
-                    self.mark_dirty(cx);
-                }
-            }
-            GuiInputCommand::InsertChar(ch) => {
-                ensure_runtime_focus_for_insert_char(runtime);
-                if runtime.insert_char(ch).is_ok() {
-                    self.mark_dirty(cx);
-                }
-            }
+        }
+        if should_scroll_focus && let CditorViewState::Ready(runtime) = &mut self.state {
+            let _ = runtime.scroll_focused_block_into_view();
         }
     }
 }

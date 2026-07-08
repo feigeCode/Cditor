@@ -14,6 +14,74 @@ const GUTTER_DRAG_AUTO_SCROLL_EDGE_PX: f64 = 40.0;
 const GUTTER_DRAG_AUTO_SCROLL_MAX_STEP_PX: f64 = 24.0;
 const GUTTER_DRAG_AUTO_SCROLL_TICK_MS: u64 = 16;
 
+fn gutter_drag_guideline_y_px(
+    rects: &[super::geometry::ProjectedBlockRect],
+    target: Option<BlockDropTarget>,
+    pointer_document_y: f32,
+) -> f32 {
+    target
+        .and_then(|target| {
+            if let Some(block_id) = target.insert_before_block_id {
+                rects
+                    .iter()
+                    .find(|rect| rect.block_id == block_id)
+                    .map(|rect| rect.document_top as f32)
+            } else {
+                rects.last().map(|rect| {
+                    if pointer_document_y > rect.document_bottom as f32 {
+                        pointer_document_y
+                    } else {
+                        rect.document_bottom as f32
+                    }
+                })
+            }
+        })
+        .unwrap_or(pointer_document_y)
+}
+
+fn gutter_drag_pointer_document_y(viewport_y: f32, scroll_top: f64) -> f32 {
+    viewport_y + scroll_top as f32
+}
+
+fn gutter_drag_target_indent_px(
+    rects: &[super::geometry::ProjectedBlockRect],
+    target: Option<BlockDropTarget>,
+) -> f32 {
+    target
+        .and_then(|target| {
+            if let Some(block_id) = target.insert_before_block_id {
+                rects
+                    .iter()
+                    .find(|rect| rect.block_id == block_id)
+                    .map(|rect| rect.indent_px)
+            } else {
+                rects.last().map(|rect| rect.indent_px)
+            }
+        })
+        .unwrap_or(0.0)
+}
+
+fn gutter_drag_pointer_document_y_for_view(view: &CditorV2View, viewport_y: f32) -> f32 {
+    gutter_drag_pointer_document_y(
+        viewport_y,
+        view.ready_runtime_ref()
+            .map(|runtime| runtime.scroll.global_scroll_top)
+            .unwrap_or(0.0),
+    )
+}
+
+fn gutter_drag_guideline_for_view(view: &CditorV2View, drag: GutterBlockDragState) -> f32 {
+    gutter_drag_guideline_y_px(
+        &view.projected_block_rects,
+        drag.target,
+        gutter_drag_pointer_document_y_for_view(view, drag.current_position.y),
+    )
+}
+
+fn gutter_drag_indent_for_view(view: &CditorV2View, target: Option<BlockDropTarget>) -> f32 {
+    gutter_drag_target_indent_px(&view.projected_block_rects, target)
+}
+
 pub(in crate::gui::app) fn gutter_drag_auto_scroll_delta(
     pointer_y: f64,
     viewport_height: f64,
@@ -223,22 +291,77 @@ impl CditorV2View {
         &self,
     ) -> Option<BlockDragOverlaySnapshot> {
         let drag = self.gutter_block_drag?;
-        let target = drag.target.filter(|_| drag.exceeded_threshold)?;
-        let (y_px, indent_px) = match target.insert_before_block_id {
-            Some(block_id) => self
-                .projected_block_rects
-                .iter()
-                .find(|rect| rect.block_id == block_id)
-                .map(|rect| (rect.document_top as f32, rect.indent_px))?,
-            None => self
-                .projected_block_rects
-                .last()
-                .map(|rect| (rect.document_bottom as f32, rect.indent_px))?,
-        };
+        if !drag.exceeded_threshold {
+            return None;
+        }
+
+        let y_px = gutter_drag_guideline_for_view(self, drag);
+        let indent_px = gutter_drag_indent_for_view(self, drag.target);
+
         Some(BlockDragOverlaySnapshot {
             y_px,
             indent_px,
             visible: true,
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::gui::app::interaction::geometry::ProjectedBlockRect;
+
+    fn rect(block_id: BlockId, top: f64, bottom: f64) -> ProjectedBlockRect {
+        ProjectedBlockRect {
+            block_id,
+            visible_index: block_id as usize - 1,
+            depth: 0,
+            document_top: top,
+            document_bottom: bottom,
+            indent_px: 0.0,
+            text_origin_x_in_block_px: 0.0,
+            text_origin_y_in_block_px: 0.0,
+            text_width_px: 860.0,
+            supports_children: false,
+        }
+    }
+
+    #[test]
+    fn gutter_drag_guideline_uses_document_target_coordinates() {
+        let rects = vec![rect(1, 100.0, 132.0), rect(2, 132.0, 164.0)];
+
+        assert_eq!(
+            gutter_drag_guideline_y_px(
+                &rects,
+                Some(BlockDropTarget {
+                    insert_before_block_id: Some(2),
+                    target_visible_index: 1,
+                }),
+                12.0,
+            ),
+            132.0,
+        );
+        assert_eq!(
+            gutter_drag_guideline_y_px(
+                &rects,
+                Some(BlockDropTarget {
+                    insert_before_block_id: None,
+                    target_visible_index: 2,
+                }),
+                150.0,
+            ),
+            164.0,
+        );
+        assert_eq!(
+            gutter_drag_guideline_y_px(
+                &rects,
+                Some(BlockDropTarget {
+                    insert_before_block_id: None,
+                    target_visible_index: 2,
+                }),
+                220.0,
+            ),
+            220.0,
+        );
     }
 }

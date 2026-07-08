@@ -457,6 +457,39 @@ impl CditorV2View {
         }
     }
 
+    pub(crate) fn focus_down_placer_from_gui(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        window.focus(&self.focus, cx);
+        if self.readonly {
+            return;
+        }
+        let result = {
+            let CditorViewState::Ready(runtime) = &mut self.state else {
+                return;
+            };
+            let result = runtime.focus_or_create_down_placer_paragraph();
+            if result.is_ok() {
+                let _ = runtime.scroll_focused_block_into_view();
+            }
+            result
+        };
+        match result {
+            Ok(changed) => {
+                if changed {
+                    self.mark_dirty(cx);
+                }
+                cx.notify();
+            }
+            Err(error) => {
+                self.save_status = EditorSaveStatus::Failed(error);
+                cx.notify();
+            }
+        }
+    }
+
     pub(crate) fn hover_block_from_gui(
         &mut self,
         block_id: BlockId,
@@ -611,6 +644,9 @@ impl Render for CditorV2View {
 
         match &mut self.state {
             CditorViewState::Ready(runtime) => {
+                let viewport_height =
+                    (f32::from(window.viewport_size().height) as f64 - 56.0).max(1.0);
+                let _ = runtime.sync_viewport_height(viewport_height);
                 self.scroll_accumulator.maybe_mark_idle(Instant::now());
                 let height_correction_priority = if self.scrollbar_drag.is_some() {
                     HeightCorrectionPriority::DeferUntilIdle

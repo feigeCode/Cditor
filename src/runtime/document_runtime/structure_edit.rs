@@ -92,6 +92,33 @@ impl DocumentRuntime {
         self.split_focused_block_at_caret(EnterSplitMode::ForceParagraph)
     }
 
+    pub fn focus_or_create_down_placer_paragraph(&mut self) -> Result<bool, String> {
+        let Some(last_block_id) = self.visible_index.visible_block_ids.last().copied() else {
+            return Ok(false);
+        };
+        let text_len = self
+            .text_models
+            .get(&last_block_id)
+            .map(PieceTableTextModel::len)
+            .or_else(|| {
+                self.payload_window
+                    .get(last_block_id)
+                    .map(BlockPayloadRecord::plain_text)
+                    .map(|text| text.len())
+            })
+            .unwrap_or(0);
+        let is_empty_paragraph =
+            matches!(self.kind_for_block(last_block_id), RichBlockKind::Paragraph) && text_len == 0;
+        if is_empty_paragraph {
+            self.focus_block_at_offset(last_block_id, 0)?;
+            return Ok(false);
+        }
+
+        self.focus_block_at_offset(last_block_id, text_len)?;
+        self.insert_paragraph_after_focused()?;
+        Ok(true)
+    }
+
     pub(super) fn split_focused_block_at_caret(
         &mut self,
         mode: EnterSplitMode,
@@ -796,7 +823,7 @@ impl DocumentRuntime {
         self.page_layout =
             PageLayoutIndex::from_block_height_index(&self.height_index, PagePolicy::default())
                 .map_err(|error| error.to_string())?;
-        let total_height = self.height_index.total_height();
+        let total_height = self.scroll_extent_height(self.height_index.total_height());
         self.scroll
             .set_model_total_height(total_height)
             .map_err(|error| error.to_string())?;
@@ -898,7 +925,7 @@ impl DocumentRuntime {
         self.page_layout =
             PageLayoutIndex::from_block_height_index(&self.height_index, PagePolicy::default())
                 .map_err(|error| error.to_string())?;
-        let total_height = self.height_index.total_height();
+        let total_height = self.scroll_extent_height(self.height_index.total_height());
         self.scroll
             .set_model_total_height(total_height)
             .map_err(|error| error.to_string())?;

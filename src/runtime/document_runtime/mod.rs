@@ -475,8 +475,11 @@ impl DocumentRuntime {
             .offset_of_block(render_window.block_range.start)
             .unwrap_or(0.0);
         let window_height = render_window.height();
-        let after_window_height =
-            (self.page_layout.total_height() - before_window_height - window_height).max(0.0);
+        let down_placer_height = self.down_placer_height();
+        let after_window_height = (self.scroll_extent_height(self.page_layout.total_height())
+            - before_window_height
+            - window_height)
+            .max(0.0);
         let debug = DebugOverlaySnapshot::from_scroll_state(
             &self.scroll,
             0,
@@ -494,6 +497,7 @@ impl DocumentRuntime {
             before_window_height,
             placeholder_window_height: None,
             after_window_height,
+            down_placer_height,
             total_visible_blocks,
             debug,
         }
@@ -538,8 +542,11 @@ impl DocumentRuntime {
                     viewport_y: 0.0,
                 }),
         });
-        let after_window_height =
-            (self.page_layout.total_height() - before_window_height - placeholder_height).max(0.0);
+        let down_placer_height = self.down_placer_height();
+        let after_window_height = (self.scroll_extent_height(self.page_layout.total_height())
+            - before_window_height
+            - placeholder_height)
+            .max(0.0);
         let debug = DebugOverlaySnapshot::from_scroll_state(
             &self.scroll,
             0,
@@ -554,6 +561,7 @@ impl DocumentRuntime {
             before_window_height,
             placeholder_window_height: Some(placeholder_height),
             after_window_height,
+            down_placer_height,
             total_visible_blocks,
             debug,
         }

@@ -1,12 +1,79 @@
 use super::*;
 
+const DOWN_PLACER_MIN_HEIGHT_PX: f64 = 180.0;
+const DOWN_PLACER_MAX_HEIGHT_PX: f64 = 360.0;
+const DOWN_PLACER_VIEWPORT_RATIO: f64 = 0.5;
+
 impl DocumentRuntime {
+    pub fn down_placer_height(&self) -> f64 {
+        (self.scroll.viewport_height * DOWN_PLACER_VIEWPORT_RATIO)
+            .clamp(DOWN_PLACER_MIN_HEIGHT_PX, DOWN_PLACER_MAX_HEIGHT_PX)
+    }
+
+    pub(super) fn scroll_extent_height(&self, content_height: f64) -> f64 {
+        content_height + self.down_placer_height()
+    }
+
+    pub fn sync_viewport_height(&mut self, viewport_height: f64) -> Result<bool, String> {
+        let viewport_height = viewport_height.max(1.0);
+        if (self.scroll.viewport_height - viewport_height).abs() < 0.5 {
+            return Ok(false);
+        }
+        self.scroll
+            .set_viewport_height(viewport_height)
+            .map_err(|error| error.to_string())?;
+        let total_height = self.scroll_extent_height(self.height_index.total_height());
+        self.scroll
+            .set_model_total_height(total_height)
+            .map_err(|error| error.to_string())?;
+        self.scroll
+            .set_displayed_total_height(total_height)
+            .map_err(|error| error.to_string())?;
+        Ok(true)
+    }
+
     pub fn scroll_by_delta(&mut self, delta_y: f64) -> Result<(), String> {
         self.scroll
             .scroll_by_delta(delta_y, ScrollOrigin::UserWheel)
             .map(|_| ())
             .map_err(|error| error.to_string())?;
         Ok(())
+    }
+
+    pub fn scroll_focused_block_into_view(&mut self) -> Result<bool, String> {
+        let Some(block_id) = self.focused_block_id() else {
+            return Ok(false);
+        };
+        let Some(visible_index) = self.visible_index.visible_index_of(block_id) else {
+            return Ok(false);
+        };
+        let Some(block_top) = self.height_index.offset_of_block(visible_index) else {
+            return Ok(false);
+        };
+        let block_height = self
+            .height_index
+            .heights
+            .get(visible_index)
+            .copied()
+            .unwrap_or(0.0);
+        let block_bottom = block_top + block_height;
+        let viewport_top = self.scroll.global_scroll_top;
+        let viewport_height = self.scroll.viewport_height.max(1.0);
+        let viewport_bottom = viewport_top + viewport_height;
+        let margin = 48.0_f64.min((viewport_height / 4.0).max(8.0));
+
+        let next_scroll_top = if block_bottom + margin > viewport_bottom {
+            block_bottom + margin - viewport_height
+        } else if block_top - margin < viewport_top {
+            block_top - margin
+        } else {
+            return Ok(false);
+        };
+        let before = self.scroll.global_scroll_top;
+        self.scroll
+            .scroll_to_global_offset(next_scroll_top, ScrollOrigin::ProgrammaticVirtualScroll)
+            .map_err(|error| error.to_string())?;
+        Ok((self.scroll.global_scroll_top - before).abs() > 0.5)
     }
 
     pub fn scrollbar_visual_state(&self, policy: ScrollbarPolicy) -> ScrollbarVisualState {
@@ -146,5 +213,64 @@ impl DocumentRuntime {
             }
         }
         pages
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn scroll_focused_block_into_view_reveals_block_below_viewport() {
+        let payloads = (1..=10)
+            .map(|block_id| {
+                BlockPayloadRecord::rich_text(block_id, RichBlockKind::Paragraph, "line")
+            })
+            .collect::<Vec<_>>();
+        let mut runtime = DocumentRuntime::from_payloads(1, payloads, 100.0);
+        runtime.focus_block_at_offset(10, 0).unwrap();
+
+        assert_eq!(runtime.scroll.global_scroll_top, 0.0);
+        assert!(runtime.scroll_focused_block_into_view().unwrap());
+        assert!(runtime.scroll.global_scroll_top > 0.0);
+    }
+
+    #[test]
+    fn sync_viewport_height_updates_scroll_state() {
+        let mut runtime = DocumentRuntime::demo();
+
+        assert!(runtime.sync_viewport_height(480.0).unwrap());
+        assert_eq!(runtime.scroll.viewport_height, 480.0);
+        assert!(runtime.scroll.model_total_height > runtime.height_index.total_height());
+        assert!(!runtime.sync_viewport_height(480.25).unwrap());
+    }
+
+    #[test]
+    fn down_placer_focus_creates_trailing_paragraph_once() {
+        let mut runtime = DocumentRuntime::from_payloads(
+            1,
+            vec![BlockPayloadRecord::rich_text(
+                1,
+                RichBlockKind::Paragraph,
+                "hello",
+            )],
+            320.0,
+        );
+
+        assert!(runtime.focus_or_create_down_placer_paragraph().unwrap());
+        let trailing = runtime
+            .visible_index
+            .visible_block_ids
+            .last()
+            .copied()
+            .unwrap();
+        assert_eq!(runtime.focused_block_id(), Some(trailing));
+        assert_eq!(
+            runtime.payload_window.get(trailing).unwrap().plain_text(),
+            ""
+        );
+
+        assert!(!runtime.focus_or_create_down_placer_paragraph().unwrap());
+        assert_eq!(runtime.visible_index.total_visible_count(), 2);
     }
 }
