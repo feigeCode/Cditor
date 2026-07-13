@@ -1,8 +1,15 @@
 mod document;
 mod error;
+mod events;
+mod persistence;
 
 pub use document::{EditorBlock, EditorDocument};
 pub use error::EditorError;
+pub use events::EditorEvent;
+pub use persistence::{
+    EditorPersistence, EditorPersistenceError, EditorSaveReason, EditorSaveRequest,
+    EditorSaveState,
+};
 
 #[cfg(test)]
 mod tests {

@@ -1,5 +1,7 @@
 use std::fmt::{Display, Formatter};
 
+use super::EditorPersistenceError;
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum EditorError {
     NotReady,
@@ -11,6 +13,7 @@ pub enum EditorError {
     IncompleteDocument,
     DocumentIdMismatch { expected: String, actual: String },
     EntityUpdate(String),
+    Persistence(EditorPersistenceError),
 }
 
 impl Display for EditorError {
@@ -34,8 +37,15 @@ impl Display for EditorError {
                 "document id mismatch: expected {expected}, received {actual}"
             ),
             Self::EntityUpdate(message) => write!(formatter, "editor entity update failed: {message}"),
+            Self::Persistence(error) => write!(formatter, "editor persistence failed: {error}"),
         }
     }
 }
 
 impl std::error::Error for EditorError {}
+
+impl From<EditorPersistenceError> for EditorError {
+    fn from(error: EditorPersistenceError) -> Self {
+        Self::Persistence(error)
+    }
+}
