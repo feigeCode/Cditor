@@ -1,6 +1,24 @@
 use super::*;
+use std::hash::{Hash, Hasher};
 
 impl DocumentRuntime {
+    pub fn document_content_fingerprint(&self) -> u64 {
+        let mut hasher = std::collections::hash_map::DefaultHasher::new();
+        self.index.structure_version.hash(&mut hasher);
+        self.index.block_ids.hash(&mut hasher);
+        for block_id in &self.index.block_ids {
+            block_id.hash(&mut hasher);
+            match self.block_payload_record(*block_id) {
+                Some(payload) => {
+                    payload.content_version.hash(&mut hasher);
+                    payload.kind.hash(&mut hasher);
+                }
+                None => 0_u8.hash(&mut hasher),
+            }
+        }
+        hasher.finish()
+    }
+
     pub fn block_content_version(&self, block_id: BlockId) -> Option<u64> {
         self.payload_window
             .get(block_id)

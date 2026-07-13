@@ -2,6 +2,7 @@ pub mod cditor_v2_view;
 
 mod input;
 mod input_trace;
+mod integration_bridge;
 mod interaction;
 mod lifecycle;
 mod persistence_bridge;

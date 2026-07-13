@@ -2,6 +2,18 @@ use cditor_core::block::BlockPrefixSnapshot;
 
 use super::*;
 
+#[test]
+fn document_content_fingerprint_changes_only_for_document_edits() {
+    let mut runtime = DocumentRuntime::demo();
+    let initial = runtime.document_content_fingerprint();
+
+    runtime.focus_block_at_offset(2, 0).unwrap();
+    assert_eq!(runtime.document_content_fingerprint(), initial);
+
+    runtime.insert_char('X').unwrap();
+    assert_ne!(runtime.document_content_fingerprint(), initial);
+}
+
 fn runtime_with_paragraph_blocks(count: usize) -> DocumentRuntime {
     let records = (1..=count as BlockId)
         .map(|block_id| {

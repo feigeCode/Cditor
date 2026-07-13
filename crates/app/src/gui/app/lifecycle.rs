@@ -105,6 +105,8 @@ impl CditorV2View {
                 .unwrap_or_else(PostgresPersistenceState::disabled),
             autosave_interval,
             platform_input_target: None,
+            integration: None,
+            integration_focus_requested: false,
         }
     }
 
@@ -162,6 +164,8 @@ impl CditorV2View {
             postgres_persistence: PostgresPersistenceState::disabled(),
             autosave_interval,
             platform_input_target: None,
+            integration: None,
+            integration_focus_requested: false,
         }
     }
 
@@ -221,6 +225,8 @@ impl CditorV2View {
             postgres_persistence: PostgresPersistenceState::disabled(),
             autosave_interval: DEFAULT_POSTGRES_SAVE_DEBOUNCE,
             platform_input_target: None,
+            integration: None,
+            integration_focus_requested: false,
         }
     }
 
@@ -264,6 +270,7 @@ impl CditorV2View {
                 .mark_loaded_structure_version(runtime.structure_version());
         }
         self.save_status = save_status_for_mode(self.readonly);
+        self.refresh_integration_baseline();
     }
 
     pub fn apply_load_failed(&mut self, message: impl Into<String>) {

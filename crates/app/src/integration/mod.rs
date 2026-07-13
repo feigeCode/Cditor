@@ -1,15 +1,20 @@
+mod builder;
 mod document;
 mod error;
 mod events;
+mod handle;
 mod persistence;
 
 pub use document::{EditorBlock, EditorDocument};
 pub use error::EditorError;
 pub use events::EditorEvent;
+pub use builder::{Editor, EditorBuilder};
+pub use handle::EditorHandle;
 pub use persistence::{
     EditorPersistence, EditorPersistenceError, EditorSaveReason, EditorSaveRequest,
     EditorSaveState,
 };
+pub(crate) use persistence::IntegrationPersistenceState;
 
 #[cfg(test)]
 mod tests {

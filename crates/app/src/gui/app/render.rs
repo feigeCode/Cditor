@@ -24,8 +24,13 @@ use cditor_runtime::AiRequestPresentation;
 
 impl Render for CditorV2View {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        self.sync_integration_document_change(cx);
         let theme = GuiTheme::light();
         let focus = self.focus.clone();
+        if self.integration_focus_requested {
+            window.focus(&focus, cx);
+            self.integration_focus_requested = false;
+        }
         if self.ai_prompt.is_some() {
             if !self.ai_prompt_focus.is_focused(window) {
                 window.focus(&self.ai_prompt_focus, cx);

@@ -7,8 +7,9 @@ pub use cditor_core as core;
 pub use cditor_runtime as runtime;
 pub use cditor_storage_postgres as storage_postgres;
 pub use integration::{
-    EditorBlock, EditorDocument, EditorError, EditorEvent, EditorPersistence,
-    EditorPersistenceError, EditorSaveReason, EditorSaveRequest, EditorSaveState,
+    Editor, EditorBlock, EditorBuilder, EditorDocument, EditorError, EditorEvent, EditorHandle,
+    EditorPersistence, EditorPersistenceError, EditorSaveReason, EditorSaveRequest,
+    EditorSaveState,
 };
 
 pub mod storage {

@@ -29,6 +29,7 @@ use crate::gui::overlay::WhiteboardEditorSession;
 use crate::gui::persistence::{EditorSaveStatus, PostgresPersistenceState};
 use crate::gui::text::RichTextPlatformLayout;
 use cditor_runtime::DocumentRuntime;
+use crate::gui::app::integration_bridge::EditorIntegrationController;
 
 pub(in crate::gui::app) mod ai;
 mod block_actions;
@@ -88,6 +89,8 @@ pub struct CditorV2View {
     pub(in crate::gui::app) postgres_persistence: PostgresPersistenceState,
     pub(in crate::gui::app) autosave_interval: Duration,
     pub(in crate::gui::app) platform_input_target: Option<GuiPlatformInputTarget>,
+    pub(in crate::gui::app) integration: Option<EditorIntegrationController>,
+    pub(in crate::gui::app) integration_focus_requested: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
