@@ -1,7 +1,7 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use gpui::{App, AppContext};
+use gpui::AppContext;
 
 use crate::gui::CditorV2View;
 
@@ -99,7 +99,7 @@ impl EditorBuilder {
         self
     }
 
-    pub fn build(self, cx: &mut App) -> Result<EditorHandle, EditorError> {
+    pub fn build<C: AppContext>(self, cx: &mut C) -> Result<EditorHandle, EditorError> {
         let initial_document = self.resolve_initial_document()?;
         let runtime = initial_document.clone().into_runtime(720.0)?;
         let document_id = self.document_id.clone();

@@ -15,6 +15,7 @@
 
 ## 功能计划与验收
 
+- [第三方编辑器接入指南](guides/editor-integration.md)
 - [当前编辑器问题与任务清单](plans/current-editor-issues-deep-analysis-and-task-list.md)
 - [大文档任务清单](plans/large-document-rich-text-task-list.md)
 - [表格功能计划](plans/notion-table-feature-plan.md)

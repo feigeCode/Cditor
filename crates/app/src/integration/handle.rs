@@ -1,4 +1,4 @@
-use gpui::{App, Entity};
+use gpui::{AppContext, Entity};
 
 use crate::gui::CditorV2View;
 
@@ -18,26 +18,30 @@ impl EditorHandle {
         &self.entity
     }
 
-    pub fn set_markdown(
+    pub fn set_markdown<C: AppContext>(
         &self,
         markdown: impl Into<String>,
-        cx: &mut App,
+        cx: &mut C,
     ) -> Result<(), EditorError> {
         let document_id = self
             .entity
-            .read(cx)
-            .integration_document_id()
-            .ok_or(EditorError::NotReady)?
-            .to_owned();
+            .read_with(cx, |view, _| {
+                view.integration_document_id().map(str::to_owned)
+            })
+            .ok_or(EditorError::NotReady)?;
         let document = EditorDocument::from_markdown(document_id, &markdown.into())?;
         self.set_document(document, cx)
     }
 
-    pub fn get_markdown(&self, cx: &App) -> Result<String, EditorError> {
+    pub fn get_markdown<C: AppContext>(&self, cx: &C) -> Result<String, EditorError> {
         self.get_document(cx)?.to_markdown()
     }
 
-    pub fn set_document(&self, document: EditorDocument, cx: &mut App) -> Result<(), EditorError> {
+    pub fn set_document<C: AppContext>(
+        &self,
+        document: EditorDocument,
+        cx: &mut C,
+    ) -> Result<(), EditorError> {
         self.entity.update(cx, |view, cx| {
             let expected = view
                 .integration_document_id()
@@ -57,22 +61,23 @@ impl EditorHandle {
         })
     }
 
-    pub fn get_document(&self, cx: &App) -> Result<EditorDocument, EditorError> {
-        self.entity.read(cx).integration_document()
+    pub fn get_document<C: AppContext>(&self, cx: &C) -> Result<EditorDocument, EditorError> {
+        self.entity
+            .read_with(cx, |view, _| view.integration_document())
     }
 
-    pub fn save(&self, cx: &mut App) -> Result<(), EditorError> {
+    pub fn save<C: AppContext>(&self, cx: &mut C) -> Result<(), EditorError> {
         self.entity.update(cx, |view, cx| {
             view.start_integration_save(EditorSaveReason::Manual, cx)
         })
     }
 
-    pub fn reload(&self, cx: &mut App) -> Result<(), EditorError> {
+    pub fn reload<C: AppContext>(&self, cx: &mut C) -> Result<(), EditorError> {
         self.entity
             .update(cx, |view, cx| view.start_integration_reload(cx))
     }
 
-    pub fn focus(&self, cx: &mut App) -> Result<(), EditorError> {
+    pub fn focus<C: AppContext>(&self, cx: &mut C) -> Result<(), EditorError> {
         self.entity.update(cx, |view, cx| {
             view.request_integration_focus();
             cx.notify();
@@ -80,19 +85,26 @@ impl EditorHandle {
         Ok(())
     }
 
-    pub fn is_dirty(&self, cx: &App) -> bool {
-        self.entity.read(cx).integration_is_dirty()
+    pub fn is_dirty<C: AppContext>(&self, cx: &C) -> bool {
+        self.entity
+            .read_with(cx, |view, _| view.integration_is_dirty())
     }
 
-    pub fn save_state(&self, cx: &App) -> EditorSaveState {
-        self.entity.read(cx).integration_save_state()
+    pub fn save_state<C: AppContext>(&self, cx: &C) -> EditorSaveState {
+        self.entity
+            .read_with(cx, |view, _| view.integration_save_state())
     }
 
-    pub fn document_version(&self, cx: &App) -> u64 {
-        self.entity.read(cx).integration_document_version()
+    pub fn document_version<C: AppContext>(&self, cx: &C) -> u64 {
+        self.entity
+            .read_with(cx, |view, _| view.integration_document_version())
     }
 
-    pub fn set_readonly(&self, readonly: bool, cx: &mut App) -> Result<(), EditorError> {
+    pub fn set_readonly<C: AppContext>(
+        &self,
+        readonly: bool,
+        cx: &mut C,
+    ) -> Result<(), EditorError> {
         self.entity.update(cx, |view, cx| {
             view.set_integration_readonly(readonly);
             cx.notify();

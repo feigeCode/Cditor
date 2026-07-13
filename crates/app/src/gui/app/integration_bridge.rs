@@ -163,6 +163,7 @@ impl CditorV2View {
         EditorDocument::from_runtime(integration.document_id.clone(), runtime)
     }
 
+    #[cfg(test)]
     pub(crate) fn integration_runtime_mut(
         &mut self,
     ) -> Result<&mut cditor_runtime::DocumentRuntime, EditorError> {
