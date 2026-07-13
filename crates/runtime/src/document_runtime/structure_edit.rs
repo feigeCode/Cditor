@@ -370,6 +370,17 @@ impl DocumentRuntime {
             .collect()
     }
 
+    pub fn complete_document_snapshot(
+        &self,
+    ) -> Option<(Vec<BlockIndexRecord>, Vec<BlockPayloadRecord>)> {
+        let records = self.index_records_snapshot();
+        let payloads = records
+            .iter()
+            .map(|record| self.block_payload_record(record.id))
+            .collect::<Option<Vec<_>>>()?;
+        Some((records, payloads))
+    }
+
     pub fn drain_pending_structure_transactions(&mut self) -> Vec<EditTransaction> {
         self.pending_structure_transactions.drain(..).collect()
     }

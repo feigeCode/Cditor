@@ -91,6 +91,32 @@ impl DocumentRuntime {
         )
     }
 
+    pub fn from_index_payload_snapshot(
+        document_id: DocumentId,
+        records: Vec<BlockIndexRecord>,
+        payloads: Vec<BlockPayloadRecord>,
+        structure_version: u64,
+        viewport_height: f64,
+    ) -> Result<Self, String> {
+        if records.len() != payloads.len() {
+            return Err("index and payload counts do not match".to_owned());
+        }
+        if records
+            .iter()
+            .zip(&payloads)
+            .any(|(record, payload)| record.id != payload.block_id)
+        {
+            return Err("index and payload block ids do not match".to_owned());
+        }
+        Ok(Self::from_index_records(
+            document_id,
+            records,
+            payloads,
+            structure_version,
+            viewport_height,
+        ))
+    }
+
     pub(super) fn from_index_records(
         document_id: DocumentId,
         records: Vec<BlockIndexRecord>,
