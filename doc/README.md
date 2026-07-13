@@ -4,6 +4,7 @@
 
 ## 当前架构与状态
 
+- [项目理解与开发者导览](project-understanding.md)
 - [大文档富文本架构](large-document-rich-text-architecture.md)
 - [大文档实现状态](large-document-rich-text-implementation-status.md)
 - [当前工程结构](architecture/project-structure.md)
