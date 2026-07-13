@@ -5,16 +5,15 @@ mod events;
 mod handle;
 mod persistence;
 
+pub use builder::{Editor, EditorBuilder};
 pub use document::{EditorBlock, EditorDocument};
 pub use error::EditorError;
 pub use events::EditorEvent;
-pub use builder::{Editor, EditorBuilder};
 pub use handle::EditorHandle;
-pub use persistence::{
-    EditorPersistence, EditorPersistenceError, EditorSaveReason, EditorSaveRequest,
-    EditorSaveState,
-};
 pub(crate) use persistence::IntegrationPersistenceState;
+pub use persistence::{
+    EditorPersistence, EditorPersistenceError, EditorSaveReason, EditorSaveRequest, EditorSaveState,
+};
 
 #[cfg(test)]
 mod tests {
@@ -30,7 +29,8 @@ mod tests {
 
     #[test]
     fn editor_document_rejects_future_schema() {
-        let json = r#"{"schema_version":999,"document_id":"doc-1","structure_version":1,"blocks":[]}"#;
+        let json =
+            r#"{"schema_version":999,"document_id":"doc-1","structure_version":1,"blocks":[]}"#;
         assert!(matches!(
             EditorDocument::from_json(json),
             Err(EditorError::UnsupportedSchemaVersion { version: 999 })

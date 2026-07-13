@@ -26,10 +26,10 @@ use crate::gui::overlay::GuiToast;
 use crate::gui::overlay::SlashMenuState;
 use crate::gui::overlay::WhiteboardEditorSession;
 
+use crate::gui::app::integration_bridge::EditorIntegrationController;
 use crate::gui::persistence::{EditorSaveStatus, PostgresPersistenceState};
 use crate::gui::text::RichTextPlatformLayout;
 use cditor_runtime::DocumentRuntime;
-use crate::gui::app::integration_bridge::EditorIntegrationController;
 
 pub(in crate::gui::app) mod ai;
 mod block_actions;

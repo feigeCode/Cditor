@@ -1,12 +1,13 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use gpui::Context;
+use gpui::{AppContext, Context};
 
 use crate::gui::app::CditorV2View;
+use crate::gui::app::cditor_v2_view::CditorViewState;
 use crate::integration::{
-    EditorDocument, EditorError, EditorEvent, EditorPersistence, EditorSaveState,
-    IntegrationPersistenceState,
+    EditorDocument, EditorError, EditorEvent, EditorPersistence, EditorSaveReason,
+    EditorSaveRequest, EditorSaveState, IntegrationPersistenceState,
 };
 
 pub(crate) type EditorEventCallback = Arc<dyn Fn(EditorEvent) + Send + Sync>;
@@ -18,6 +19,7 @@ pub(crate) struct EditorIntegrationController {
     pub(crate) callback: Option<EditorEventCallback>,
     pub(crate) persistence_state: IntegrationPersistenceState,
     fingerprint: u64,
+    pending_reload: bool,
 }
 
 impl EditorIntegrationController {
@@ -35,6 +37,7 @@ impl EditorIntegrationController {
             autosave,
             callback,
             fingerprint,
+            pending_reload: false,
         }
     }
 
@@ -68,6 +71,7 @@ impl EditorIntegrationController {
             callback: None,
             persistence_state: IntegrationPersistenceState::new(true),
             fingerprint,
+            pending_reload: false,
         }
     }
 }
@@ -101,7 +105,7 @@ impl CditorV2View {
         else {
             return;
         };
-        let (event, state_event, callback) = {
+        let (event, state_event, callback, autosave_request) = {
             let Some(integration) = self.integration.as_mut() else {
                 return;
             };
@@ -109,7 +113,20 @@ impl CditorV2View {
             let state_event = event.as_ref().map(|_| EditorEvent::SaveStateChanged {
                 state: integration.save_state(),
             });
-            (event, state_event, integration.callback.clone())
+            let autosave_request = event.as_ref().and_then(|_| {
+                integration.autosave.map(|duration| {
+                    (
+                        integration.persistence_state.autosave_generation(),
+                        duration,
+                    )
+                })
+            });
+            (
+                event,
+                state_event,
+                integration.callback.clone(),
+                autosave_request,
+            )
         };
         let changed = event.is_some();
         if let Some(callback) = callback {
@@ -122,6 +139,9 @@ impl CditorV2View {
         }
         if changed {
             cx.notify();
+        }
+        if let Some((generation, duration)) = autosave_request {
+            self.schedule_integration_autosave(generation, duration, cx);
         }
     }
 
@@ -141,6 +161,17 @@ impl CditorV2View {
         let integration = self.integration.as_ref().ok_or(EditorError::NotReady)?;
         let runtime = self.ready_runtime_ref().ok_or(EditorError::NotReady)?;
         EditorDocument::from_runtime(integration.document_id.clone(), runtime)
+    }
+
+    pub(crate) fn integration_runtime_mut(
+        &mut self,
+    ) -> Result<&mut cditor_runtime::DocumentRuntime, EditorError> {
+        match &mut self.state {
+            CditorViewState::Ready(runtime) => Ok(runtime),
+            CditorViewState::Loading { .. } | CditorViewState::LoadFailed { .. } => {
+                Err(EditorError::NotReady)
+            }
+        }
     }
 
     pub(crate) fn integration_document_id(&self) -> Option<&str> {
@@ -175,6 +206,242 @@ impl CditorV2View {
 
     pub(crate) fn request_integration_focus(&mut self) {
         self.integration_focus_requested = true;
+    }
+
+    pub(crate) fn start_integration_save(
+        &mut self,
+        reason: EditorSaveReason,
+        cx: &mut Context<Self>,
+    ) -> Result<(), EditorError> {
+        let document = self.integration_document()?;
+        let (persistence, callback, document_id, version, state) = {
+            let integration = self.integration.as_mut().ok_or(EditorError::NotReady)?;
+            let persistence = integration
+                .persistence
+                .clone()
+                .ok_or(EditorError::PersistenceNotConfigured)?;
+            let Some(version) = integration.persistence_state.begin_save() else {
+                return Ok(());
+            };
+            (
+                persistence,
+                integration.callback.clone(),
+                integration.document_id.clone(),
+                version,
+                integration.save_state(),
+            )
+        };
+        if let Some(callback) = &callback {
+            callback(EditorEvent::SaveStateChanged { state });
+        }
+        let request = EditorSaveRequest {
+            document_id: document_id.clone(),
+            document,
+            document_version: version,
+            reason,
+        };
+        let save_task = cx.background_spawn(async move { persistence.save(request) });
+        cx.spawn(async move |view, cx| {
+            let result = save_task.await;
+            let _ = view.update(cx, |view, cx| {
+                let (callback, event, state, reload_after_save) = {
+                    let Some(integration) = view.integration.as_mut() else {
+                        return;
+                    };
+                    let callback = integration.callback.clone();
+                    match result {
+                        Ok(()) => {
+                            integration.persistence_state.save_succeeded(version);
+                            let reload = reason == EditorSaveReason::BeforeReload
+                                || integration.pending_reload;
+                            integration.pending_reload = false;
+                            (
+                                callback,
+                                EditorEvent::Saved {
+                                    document_id: document_id.clone(),
+                                    document_version: version,
+                                    reason,
+                                },
+                                integration.save_state(),
+                                reload,
+                            )
+                        }
+                        Err(error) => {
+                            let message = error.to_string();
+                            integration
+                                .persistence_state
+                                .save_failed(version, message.clone());
+                            integration.pending_reload = false;
+                            (
+                                callback,
+                                EditorEvent::SaveFailed {
+                                    document_id: document_id.clone(),
+                                    document_version: version,
+                                    message,
+                                },
+                                integration.save_state(),
+                                false,
+                            )
+                        }
+                    }
+                };
+                if let Some(callback) = callback {
+                    callback(event);
+                    callback(EditorEvent::SaveStateChanged { state });
+                }
+                cx.notify();
+                if reload_after_save {
+                    let _ = view.start_integration_load(None, cx);
+                }
+            });
+        })
+        .detach();
+        Ok(())
+    }
+
+    pub(crate) fn start_integration_reload(
+        &mut self,
+        cx: &mut Context<Self>,
+    ) -> Result<(), EditorError> {
+        let is_dirty = self.integration_is_dirty();
+        if is_dirty {
+            let integration = self.integration.as_mut().ok_or(EditorError::NotReady)?;
+            if integration.persistence.is_none() {
+                return Err(EditorError::PersistenceNotConfigured);
+            }
+            integration.pending_reload = true;
+            return self.start_integration_save(EditorSaveReason::BeforeReload, cx);
+        }
+        self.start_integration_load(None, cx)
+    }
+
+    pub(crate) fn start_integration_load(
+        &mut self,
+        fallback: Option<EditorDocument>,
+        cx: &mut Context<Self>,
+    ) -> Result<(), EditorError> {
+        let (persistence, callback, document_id, generation) = {
+            let integration = self.integration.as_mut().ok_or(EditorError::NotReady)?;
+            let persistence = integration
+                .persistence
+                .clone()
+                .ok_or(EditorError::PersistenceNotConfigured)?;
+            (
+                persistence,
+                integration.callback.clone(),
+                integration.document_id.clone(),
+                integration.persistence_state.next_load_generation(),
+            )
+        };
+        let requested_document_id = document_id.clone();
+        let load_task = cx.background_spawn(async move {
+            persistence
+                .load(&requested_document_id)
+                .map(|loaded| loaded.or(fallback))
+        });
+        cx.spawn(async move |view, cx| {
+            let result = load_task.await;
+            let _ = view.update(cx, |view, cx| {
+                let is_current = view.integration.as_ref().is_some_and(|integration| {
+                    integration
+                        .persistence_state
+                        .is_current_load_generation(generation)
+                });
+                if !is_current {
+                    return;
+                }
+                match result {
+                    Ok(document) => {
+                        let document = match document {
+                            Some(document) => document,
+                            None => match EditorDocument::from_markdown(&document_id, "") {
+                                Ok(document) => document,
+                                Err(error) => {
+                                    if let Some(callback) = &callback {
+                                        callback(EditorEvent::LoadFailed {
+                                            document_id: document_id.clone(),
+                                            message: error.to_string(),
+                                        });
+                                    }
+                                    return;
+                                }
+                            },
+                        };
+                        if document.document_id != document_id {
+                            if let Some(callback) = &callback {
+                                callback(EditorEvent::LoadFailed {
+                                    document_id: document_id.clone(),
+                                    message: EditorError::DocumentIdMismatch {
+                                        expected: document_id.clone(),
+                                        actual: document.document_id,
+                                    }
+                                    .to_string(),
+                                });
+                            }
+                            return;
+                        }
+                        match document.into_runtime(720.0) {
+                            Ok(runtime) => {
+                                view.apply_loaded_runtime(runtime);
+                                view.refresh_integration_baseline();
+                                if let Some(callback) = &callback {
+                                    callback(EditorEvent::Ready {
+                                        document_id: document_id.clone(),
+                                    });
+                                    callback(EditorEvent::SaveStateChanged {
+                                        state: view.integration_save_state(),
+                                    });
+                                }
+                                cx.notify();
+                            }
+                            Err(error) => {
+                                if let Some(callback) = &callback {
+                                    callback(EditorEvent::LoadFailed {
+                                        document_id: document_id.clone(),
+                                        message: error.to_string(),
+                                    });
+                                }
+                            }
+                        }
+                    }
+                    Err(error) => {
+                        if let Some(callback) = &callback {
+                            callback(EditorEvent::LoadFailed {
+                                document_id: document_id.clone(),
+                                message: error.to_string(),
+                            });
+                        }
+                    }
+                }
+            });
+        })
+        .detach();
+        Ok(())
+    }
+
+    fn schedule_integration_autosave(
+        &mut self,
+        generation: u64,
+        duration: Duration,
+        cx: &mut Context<Self>,
+    ) {
+        let timer = cx.background_spawn(async move {
+            std::thread::sleep(duration);
+        });
+        cx.spawn(async move |view, cx| {
+            let _ = timer.await;
+            let _ = view.update(cx, |view, cx| {
+                let should_save = view.integration.as_ref().is_some_and(|integration| {
+                    integration.persistence.is_some()
+                        && integration.persistence_state.is_dirty()
+                        && integration.persistence_state.autosave_generation() == generation
+                });
+                if should_save {
+                    let _ = view.start_integration_save(EditorSaveReason::Autosave, cx);
+                }
+            });
+        })
+        .detach();
     }
 }
 

@@ -28,10 +28,7 @@ impl Display for EditorPersistenceError {
 impl std::error::Error for EditorPersistenceError {}
 
 pub trait EditorPersistence: Send + Sync + 'static {
-    fn load(
-        &self,
-        document_id: &str,
-    ) -> Result<Option<EditorDocument>, EditorPersistenceError>;
+    fn load(&self, document_id: &str) -> Result<Option<EditorDocument>, EditorPersistenceError>;
 
     fn save(&self, request: EditorSaveRequest) -> Result<(), EditorPersistenceError>;
 }

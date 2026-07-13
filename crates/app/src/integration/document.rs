@@ -2,8 +2,8 @@ use cditor_core::document::BlockIndexRecord;
 use cditor_core::layout::BlockLayoutMeta;
 use cditor_core::rich_text::document::CURRENT_RICH_TEXT_FORMAT_VERSION;
 use cditor_core::rich_text::{
-    BlockPayloadRecord, DocumentMetadata, MarkdownImportOptions, RichBlockRecord,
-    RichTextDocument, export_plain_markdown, parse_markdown_document,
+    BlockPayloadRecord, DocumentMetadata, MarkdownImportOptions, RichBlockRecord, RichTextDocument,
+    export_plain_markdown, parse_markdown_document,
 };
 use cditor_runtime::DocumentRuntime;
 use serde::{Deserialize, Serialize};
@@ -95,8 +95,8 @@ impl EditorDocument {
     }
 
     pub fn from_json(json: &str) -> Result<Self, EditorError> {
-        let document: Self =
-            serde_json::from_str(json).map_err(|error| EditorError::InvalidJson(error.to_string()))?;
+        let document: Self = serde_json::from_str(json)
+            .map_err(|error| EditorError::InvalidJson(error.to_string()))?;
         document.validate()?;
         Ok(document)
     }
@@ -139,7 +139,11 @@ impl EditorDocument {
         self.validate()?;
         let runtime_id = runtime_document_id(&self.document_id);
         let records = self.blocks.iter().map(EditorBlock::index_record).collect();
-        let payloads = self.blocks.iter().map(|block| block.payload.clone()).collect();
+        let payloads = self
+            .blocks
+            .iter()
+            .map(|block| block.payload.clone())
+            .collect();
         DocumentRuntime::from_index_payload_snapshot(
             runtime_id,
             records,

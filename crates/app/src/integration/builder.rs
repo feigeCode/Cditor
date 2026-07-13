@@ -108,13 +108,11 @@ impl EditorBuilder {
         let callback = self.callback.clone();
         let readonly = self.readonly;
         let debug_overlay = self.debug_overlay;
+        let has_persistence = persistence.is_some();
+        let load_fallback = initial_document.clone();
         let entity = cx.new(|cx| {
-            let mut view = CditorV2View::from_runtime_with_options(
-                runtime,
-                debug_overlay,
-                readonly,
-                cx,
-            );
+            let mut view =
+                CditorV2View::from_runtime_with_options(runtime, debug_overlay, readonly, cx);
             view.install_editor_integration(
                 document_id.clone(),
                 persistence,
@@ -125,7 +123,11 @@ impl EditorBuilder {
             view
         });
         let handle = EditorHandle::new(entity);
-        if let Some(callback) = self.callback {
+        if has_persistence {
+            handle.entity().update(cx, |view, cx| {
+                view.start_integration_load(Some(load_fallback), cx)
+            })?;
+        } else if let Some(callback) = self.callback {
             callback(EditorEvent::Ready {
                 document_id: self.document_id,
             });

@@ -27,7 +27,10 @@ impl Display for EditorError {
             Self::InvalidDocument(message) => write!(formatter, "invalid document: {message}"),
             Self::InvalidJson(message) => write!(formatter, "invalid document JSON: {message}"),
             Self::UnsupportedSchemaVersion { version } => {
-                write!(formatter, "unsupported editor document schema version {version}")
+                write!(
+                    formatter,
+                    "unsupported editor document schema version {version}"
+                )
             }
             Self::IncompleteDocument => {
                 formatter.write_str("runtime does not contain every document payload")
@@ -36,7 +39,9 @@ impl Display for EditorError {
                 formatter,
                 "document id mismatch: expected {expected}, received {actual}"
             ),
-            Self::EntityUpdate(message) => write!(formatter, "editor entity update failed: {message}"),
+            Self::EntityUpdate(message) => {
+                write!(formatter, "editor entity update failed: {message}")
+            }
             Self::Persistence(error) => write!(formatter, "editor persistence failed: {error}"),
         }
     }
