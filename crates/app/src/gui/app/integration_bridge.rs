@@ -4,6 +4,7 @@ use std::time::Duration;
 use gpui::{AppContext, Context};
 
 use crate::gui::app::CditorV2View;
+#[cfg(test)]
 use crate::gui::app::cditor_v2_view::CditorViewState;
 use crate::integration::{
     EditorDocument, EditorError, EditorEvent, EditorPersistence, EditorSaveReason,
