@@ -1,6 +1,7 @@
 /target/
 /.env
 /minimal-editor-assets/
+/.worktrees/
 
 # macOS metadata
 .DS_Store
