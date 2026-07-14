@@ -19,8 +19,7 @@ cditor-gpui
 cditor-app (default features)
 ├── feature: postgres
 ├── cditor-storage-postgres
-├── sqlx
-└── cditor-runtime/postgres
+└── sqlx
 ```
 
 `cditor-gpui` re-exports only the supported editor integration surface. The application crate remains the implementation owner during this stage. A later source-layout-only migration may move `gui` and `integration` into `cditor-gpui` without changing the public API.
@@ -38,12 +37,12 @@ cditor-app (default features)
 
 ## Tasks
 
-### 1. Isolate runtime PostgreSQL support
+### 1. Remove runtime PostgreSQL coupling
 
-- Add a disabled-by-default `postgres` feature to `cditor-runtime`.
-- Make `cditor-storage-postgres` optional.
-- Compile PostgreSQL loading helpers and PostgreSQL-specific tests only with the feature.
-- Keep backend-neutral snapshot, editing, layout, projection, and persistence contracts always available.
+- Keep `cditor-runtime` entirely independent of `cditor-storage` and `cditor-storage-postgres`.
+- Keep cold-start construction and payload hydration inputs backend-neutral.
+- Load PostgreSQL rows and payload windows in `cditor-app`, the composition root.
+- Keep backend-neutral snapshot, editing, layout, projection, and persistence contracts in runtime.
 
 ### 2. Isolate application PostgreSQL support
 

@@ -13,7 +13,7 @@
 cditor-gpui = {
     git = "https://github.com/feigeCode/Cditor.git",
     package = "cditor-gpui",
-    rev = "cc20fa6"
+    rev = "e446dcc"
 }
 ```
 
@@ -43,7 +43,7 @@ cditor-gpui = {
 cditor-gpui = {
     git = "https://github.com/feigeCode/Cditor.git",
     package = "cditor-gpui",
-    rev = "cc20fa6",
+    rev = "e446dcc",
     features = ["ai-openai", "remote-media"]
 }
 ```
@@ -516,7 +516,7 @@ match editor.save(cx) {
 cditor-gpui = {
     git = "https://github.com/feigeCode/Cditor.git",
     package = "cditor-gpui",
-    rev = "cc20fa6"
+    rev = "e446dcc"
 }
 ```
 
