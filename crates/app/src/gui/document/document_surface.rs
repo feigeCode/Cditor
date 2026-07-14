@@ -2,15 +2,19 @@ use gpui::{AnyElement, IntoElement, ParentElement, Styled, div, prelude::FluentB
 
 use crate::gui::GuiTheme;
 use crate::gui::document::layout_metrics::DocumentLayoutMetrics;
-use crate::gui::document::skeleton_window::render_document_skeleton_window;
+use crate::gui::document::skeleton_window::{
+    render_document_skeleton_window, render_document_window_error,
+};
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct DocumentSurface {
     pub page_width_px: f32,
     pub content_width_px: f32,
     pub min_height_px: f32,
+    pub top_inset_px: f32,
     pub before_window_height: f64,
     pub placeholder_window_height: Option<f64>,
+    pub placeholder_window_error: Option<String>,
     pub after_window_height: f64,
     pub scroll_top: f64,
 }
@@ -33,6 +37,11 @@ impl DocumentSurface {
         )
     }
 
+    pub fn with_placeholder_error(mut self, message: Option<String>) -> Self {
+        self.placeholder_window_error = message;
+        self
+    }
+
     pub fn with_scroll(
         before_window_height: f64,
         placeholder_window_height: Option<f64>,
@@ -44,18 +53,20 @@ impl DocumentSurface {
             page_width_px: metrics.page_width_px,
             content_width_px: metrics.content_width_px,
             min_height_px: metrics.min_height_px,
+            top_inset_px: metrics.top_inset_px,
             before_window_height,
             placeholder_window_height,
+            placeholder_window_error: None,
             after_window_height,
             scroll_top,
         }
     }
 
-    fn window_top_px(self) -> f32 {
+    fn window_top_px(&self) -> f32 {
         (self.before_window_height - self.scroll_top) as f32
     }
 
-    fn overlay_top_px(self) -> f32 {
+    fn overlay_top_px(&self) -> f32 {
         -(self.scroll_top as f32)
     }
 
@@ -65,16 +76,25 @@ impl DocumentSurface {
         block_elements: Vec<AnyElement>,
         overlay: Option<AnyElement>,
     ) -> AnyElement {
+        let placeholder = self.placeholder_window_height.map(|height| {
+            self.placeholder_window_error
+                .as_deref()
+                .map(|message| render_document_window_error(height, message, theme))
+                .unwrap_or_else(|| render_document_skeleton_window(height, theme))
+        });
         div()
             .flex_1()
+            .flex()
+            .flex_col()
             .overflow_hidden()
             .bg(rgb(theme.page))
+            .pt(px(self.top_inset_px))
             .child(
                 div()
                     .relative()
                     .mx_auto()
                     .w(px(self.page_width_px))
-                    .h_full()
+                    .flex_1()
                     .min_h(px(self.min_height_px))
                     .child(
                         div()
@@ -89,8 +109,8 @@ impl DocumentSurface {
                                     .left_0()
                                     .right_0()
                                     .top(px(self.window_top_px()))
-                                    .when_some(self.placeholder_window_height, |this, height| {
-                                        this.child(render_document_skeleton_window(height, theme))
+                                    .when_some(placeholder, |this, placeholder| {
+                                        this.child(placeholder)
                                     })
                                     .children(block_elements),
                             )
@@ -121,6 +141,7 @@ mod tests {
         assert_eq!(surface.page_width_px, 860.0);
         assert_eq!(surface.content_width_px, 860.0);
         assert_eq!(surface.min_height_px, 640.0);
+        assert_eq!(surface.top_inset_px, 32.0);
         assert_eq!(surface.before_window_height, 10.0);
         assert_eq!(surface.placeholder_window_height, None);
         assert_eq!(surface.after_window_height, 20.0);

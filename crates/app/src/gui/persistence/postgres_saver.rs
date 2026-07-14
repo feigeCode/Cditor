@@ -7,15 +7,16 @@ use crate::gui::app::CditorV2View;
 use crate::gui::persistence::EditorSaveStatus;
 use cditor_core::document::BlockIndexRecord;
 use cditor_core::edit::EditTransaction;
-use cditor_core::rich_text::BlockPayloadRecord;
+use cditor_core::ids::BlockId;
+use cditor_core::rich_text::{BlockAttrs, BlockPayloadRecord};
 use cditor_runtime::DocumentRuntime;
+use cditor_storage::DOCUMENT_INDEX_VISIBLE_VERSION;
 use cditor_storage_postgres::{
     EditTransactionVersions, PgDocumentId, PostgresDocumentStore, PostgresPayloadStore,
     PostgresTransactionStore, pg_document_id_from_runtime,
 };
 
 pub const DEFAULT_POSTGRES_SAVE_DEBOUNCE: Duration = Duration::from_millis(250);
-const DOCUMENT_INDEX_VISIBLE_VERSION: i64 = 1;
 
 #[derive(Debug, Clone)]
 pub struct PostgresPersistenceTarget {
@@ -40,6 +41,7 @@ pub struct PostgresSaveBatch {
     index_records: Vec<BlockIndexRecord>,
     structure_version: u64,
     transactions: Vec<EditTransaction>,
+    block_attrs: Vec<(BlockId, BlockAttrs)>,
 }
 
 impl PostgresSaveBatch {
@@ -77,6 +79,10 @@ impl PostgresPersistenceState {
 
     pub fn is_enabled(&self) -> bool {
         self.target.is_some()
+    }
+
+    pub fn target(&self) -> Option<&PostgresPersistenceTarget> {
+        self.target.as_ref()
     }
 
     pub fn set_target(
@@ -133,6 +139,7 @@ impl PostgresPersistenceState {
         self.debounce_scheduled = false;
         let transactions = runtime.drain_pending_structure_transactions();
         let payloads = runtime.loaded_payload_records_snapshot();
+        let block_attrs = runtime.block_attrs_snapshot();
         let structure_version = runtime.structure_version();
         let should_save_structure = self
             .last_saved_structure_version
@@ -159,6 +166,7 @@ impl PostgresPersistenceState {
             index_records,
             structure_version,
             transactions,
+            block_attrs,
         })
     }
 
@@ -206,6 +214,11 @@ pub async fn save_postgres_batch(batch: PostgresSaveBatch) -> Result<Option<u64>
             .await
             .map_err(|error| error.to_string())?;
     }
+
+    document_store
+        .save_block_attrs(batch.document_id, &batch.block_attrs)
+        .await
+        .map_err(|error| error.to_string())?;
 
     // Payload rows reference `blocks`; persist structural changes first so newly
     // inserted/split blocks exist before `save_block_payloads` updates them.

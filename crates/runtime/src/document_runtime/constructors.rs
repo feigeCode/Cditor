@@ -82,13 +82,21 @@ impl DocumentRuntime {
     }
 
     pub fn from_rich_text_document(document: RichTextDocument, viewport_height: f64) -> Self {
-        Self::from_index_records(
+        let block_attrs = document
+            .blocks
+            .iter()
+            .filter(|block| block.attrs != BlockAttrs::default())
+            .map(|block| (block.id, block.attrs.clone()))
+            .collect();
+        let mut runtime = Self::from_index_records(
             document.id,
             document.index_records(),
             document.payload_records(),
             document.structure_version,
             viewport_height,
-        )
+        );
+        runtime.block_attrs = block_attrs;
+        runtime
     }
 
     pub fn from_index_payload_snapshot(
@@ -164,6 +172,15 @@ impl DocumentRuntime {
         page_policy: PagePolicy,
     ) -> Self {
         let record_count = records.len();
+        let loaded_kinds = payloads
+            .iter()
+            .map(|payload| (payload.block_id, &payload.kind))
+            .collect::<HashMap<_, _>>();
+        for record in &mut records {
+            if let Some(kind) = loaded_kinds.get(&record.id) {
+                record.kind_tag = kind_tag_for_rich_block_kind(kind);
+            }
+        }
         let loaded_table_heights = payloads
             .iter()
             .filter_map(|payload| match (&payload.kind, &payload.payload) {
@@ -183,19 +200,6 @@ impl DocumentRuntime {
             }
         }
         let start = Instant::now();
-        let height_estimates = records
-            .iter()
-            .map(|record| {
-                HeightEstimate::new(
-                    record.layout_meta.effective_height(),
-                    HeightConfidence::Historical,
-                    4.0,
-                )
-            })
-            .collect::<Vec<_>>();
-        log_runtime_timing("runtime.height_estimates", start, Some(record_count));
-
-        let start = Instant::now();
         let index = DocumentIndex::new(document_id, records, structure_version)
             .expect("document index is valid");
         log_runtime_timing("runtime.document_index", start, Some(record_count));
@@ -209,7 +213,8 @@ impl DocumentRuntime {
         log_runtime_timing("runtime.visible_index", start, Some(record_count));
 
         let start = Instant::now();
-        let height_index = BlockHeightIndex::new(height_estimates).expect("demo heights are valid");
+        let height_index = BlockHeightIndex::from_visible_document(&index, &visible_index)
+            .expect("demo heights are valid");
         log_runtime_timing("runtime.height_index", start, Some(record_count));
 
         let start = Instant::now();
@@ -248,6 +253,7 @@ impl DocumentRuntime {
             scroll,
             editing: None,
             payload_window,
+            block_attrs: HashMap::new(),
             table_runtimes,
             table_horizontal_scroll_offsets: HashMap::new(),
             text_models,

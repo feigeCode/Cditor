@@ -8,12 +8,13 @@ use gpui::{
 use crate::gui::GuiTheme;
 use crate::gui::app::CditorV2View;
 use crate::gui::app::cditor_v2_view::TableScrollSnapshot;
+use crate::gui::block::table::menu::TableMenuUiState;
 use crate::gui::block::{
-    BlockActionState, BlockDragOverlaySnapshot, BlockView, MermaidRenderCache, TableAxis,
-    TableAxisSelection, TableCellRangeSelection, TableReorderPreview, TableResizePreview,
-    WhiteboardThumbnailCache, render_block_drag_overlay, render_table_axis_overlays,
-    render_table_axis_toolbar, render_table_resize_overlays, table_axis_track_sizes,
-    table_content_editor_origin, table_toolbar_editor_origin,
+    BlockActionState, BlockDragOverlaySnapshot, BlockView, CodeHighlightCache, MermaidRenderCache,
+    TableAxis, TableAxisSelection, TableCellRangeSelection, TableReorderPreview,
+    TableResizePreview, WhiteboardThumbnailCache, render_block_drag_overlay,
+    render_table_axis_overlays, render_table_axis_toolbar, render_table_resize_overlays,
+    table_axis_track_sizes, table_content_editor_origin, table_toolbar_editor_origin,
 };
 use crate::gui::document::DocumentSurface;
 use crate::gui::input::CodeLanguageEditState;
@@ -100,12 +101,18 @@ impl DocumentEditorView {
         drag_overlay: Option<BlockDragOverlaySnapshot>,
         action: DocumentBlockActionProjection,
         table_axis_selection: Option<TableAxisSelection>,
+        table_menu_ui: &TableMenuUiState,
+        readonly: bool,
         image_resize_preview: Option<(BlockId, f32)>,
         table_resize_preview: Option<TableResizePreview>,
         table_reorder_preview: Option<TableReorderPreview>,
         table_range_selection: Option<TableCellRangeSelection>,
         code_language_edit: Option<&CodeLanguageEditState>,
+        code_theme_menu_block_id: Option<BlockId>,
+        code_highlight_theme: &'static str,
+        suppress_document_text_input: bool,
         table_scroll_snapshots: &HashMap<BlockId, TableScrollSnapshot>,
+        code_highlights: &CodeHighlightCache,
         mermaid_renders: &MermaidRenderCache,
         mermaid_source_blocks: &std::collections::HashSet<BlockId>,
         whiteboard_thumbnails: &WhiteboardThumbnailCache,
@@ -171,8 +178,11 @@ impl DocumentEditorView {
                             selection,
                             table_view,
                             grid_origin,
+                            table_menu_ui,
+                            readonly,
                             self.theme,
                             view.clone(),
+                            focus.clone(),
                         ));
                     }
                     if let Some(reorder_preview) = render_table_reorder_preview_overlay(
@@ -217,9 +227,13 @@ impl DocumentEditorView {
                             table_range_selection
                                 .filter(|selection| selection.block_id == block.block_id),
                             code_language_edit,
+                            code_theme_menu_block_id == Some(block.block_id),
+                            code_highlight_theme,
+                            suppress_document_text_input,
                             table_scroll_snapshots
                                 .get(&block.block_id)
                                 .map(|snapshot| snapshot.handle.clone()),
+                            code_highlights,
                             mermaid_renders,
                             mermaid_source_blocks.contains(&block.block_id),
                             whiteboard_thumbnails,
@@ -261,6 +275,7 @@ impl DocumentEditorView {
             projection.after_window_height,
             projection.scroll.global_scroll_top,
         )
+        .with_placeholder_error(projection.placeholder_window_error.clone())
         .render(self.theme, block_elements, Some(overlay))
     }
 }

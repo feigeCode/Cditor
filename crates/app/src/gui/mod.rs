@@ -1,12 +1,14 @@
 pub mod app;
 pub mod block;
 pub mod clipboard_assets;
+pub(crate) mod diagnostics;
 pub mod document;
 pub mod image_loader;
 pub mod image_preview;
 pub mod input;
 pub mod overlay;
 pub mod persistence;
+pub mod platform;
 pub mod rich_text;
 pub mod scroll;
 pub mod skeleton;

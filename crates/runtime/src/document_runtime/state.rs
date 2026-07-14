@@ -11,6 +11,8 @@ pub struct DocumentRuntime {
     pub scroll: VirtualScrollState,
     pub editing: Option<EditingSession>,
     pub payload_window: PayloadWindow,
+    /// Sparse, block-level visual attributes. Inline marks remain in payload spans.
+    pub(super) block_attrs: HashMap<BlockId, BlockAttrs>,
     pub(super) table_runtimes: HashMap<BlockId, TableRuntime>,
     pub(super) table_horizontal_scroll_offsets: HashMap<BlockId, f32>,
     pub(super) text_models: HashMap<BlockId, PieceTableTextModel>,
@@ -121,7 +123,11 @@ impl FocusedTableCell {
         selected_range: Range<usize>,
         selection_reversed: bool,
     ) -> Self {
-        self.offset = selected_range.end;
+        self.offset = if selection_reversed {
+            selected_range.start
+        } else {
+            selected_range.end
+        };
         self.selected_range_start = selected_range.start;
         self.selected_range_end = selected_range.end;
         self.selection_reversed = selection_reversed;

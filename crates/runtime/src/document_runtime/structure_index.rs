@@ -108,16 +108,9 @@ impl DocumentRuntime {
     }
 
     pub(super) fn rebuild_height_indexes_from_layout_meta(&mut self) -> Result<(), String> {
-        let height_estimates = self
-            .index
-            .layout_meta
-            .iter()
-            .map(|meta| {
-                HeightEstimate::new(meta.effective_height(), HeightConfidence::Historical, 4.0)
-            })
-            .collect::<Vec<_>>();
         self.height_index =
-            BlockHeightIndex::new(height_estimates).map_err(|error| error.to_string())?;
+            BlockHeightIndex::from_visible_document(&self.index, &self.visible_index)
+                .map_err(|error| error.to_string())?;
         self.page_layout =
             PageLayoutIndex::from_block_height_index(&self.height_index, PagePolicy::default())
                 .map_err(|error| error.to_string())?;
@@ -215,27 +208,47 @@ impl DocumentRuntime {
         self.visible_index = VisibleDocumentIndex::from_document_index(&self.index);
         self.list_projection_cache = ListProjectionCache::build(&self.index);
         self.payload_window.block_range = 0..self.visible_index.total_visible_count();
-        let height_estimates = self
-            .index
-            .layout_meta
-            .iter()
-            .map(|meta| {
-                HeightEstimate::new(meta.effective_height(), HeightConfidence::Historical, 4.0)
-            })
-            .collect::<Vec<_>>();
-        self.height_index =
-            BlockHeightIndex::new(height_estimates).map_err(|error| error.to_string())?;
-        self.page_layout =
-            PageLayoutIndex::from_block_height_index(&self.height_index, PagePolicy::default())
-                .map_err(|error| error.to_string())?;
-        let total_height = self.scroll_extent_height(self.height_index.total_height());
-        self.scroll
-            .set_model_total_height(total_height)
-            .map_err(|error| error.to_string())?;
-        self.scroll
-            .set_displayed_total_height(total_height)
-            .map_err(|error| error.to_string())?;
+        self.rebuild_height_indexes_from_layout_meta()?;
         self.selected_block_ids.clear();
+        Ok(())
+    }
+
+    pub(super) fn insert_runtime_blocks_batch(
+        &mut self,
+        insert_at: usize,
+        inserted_records: &[BlockIndexRecord],
+        payloads: Vec<BlockPayloadRecord>,
+    ) -> Result<(), String> {
+        if inserted_records.len() != payloads.len() {
+            return Err(format!(
+                "batch insert record/payload mismatch: records={} payloads={}",
+                inserted_records.len(),
+                payloads.len()
+            ));
+        }
+        if inserted_records.is_empty() {
+            return Ok(());
+        }
+        if inserted_records
+            .iter()
+            .zip(&payloads)
+            .any(|(record, payload)| record.id != payload.block_id)
+        {
+            return Err("batch insert record/payload block ids do not match".to_owned());
+        }
+
+        let mut records = self.index_records();
+        let insert_at = insert_at.min(records.len());
+        records.splice(insert_at..insert_at, inserted_records.iter().copied());
+        self.rebuild_structure_index(records)?;
+
+        for mut payload in payloads {
+            payload = normalize_payload_record_for_kind(payload);
+            if matches!(payload.kind, RichBlockKind::Table) {
+                self.sync_table_runtime_from_loaded_record(&mut payload);
+            }
+            self.payload_window.insert(payload);
+        }
         Ok(())
     }
 }

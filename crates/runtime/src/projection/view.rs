@@ -18,6 +18,7 @@ pub struct EditorViewProjection {
     pub ai_preview: Option<AiPreviewSnapshot>,
     pub before_window_height: f64,
     pub placeholder_window_height: Option<f64>,
+    pub placeholder_window_error: Option<String>,
     pub after_window_height: f64,
     pub down_placer_height: f64,
     pub total_visible_blocks: usize,
@@ -69,6 +70,7 @@ pub struct TableViewState {
     pub visible_cells: Vec<TableVisibleCell>,
     pub focused_cell: Option<TableCellPosition>,
     pub focused_cell_offset: Option<usize>,
+    pub focused_cell_selection_range: Option<std::ops::Range<usize>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
