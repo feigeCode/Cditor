@@ -70,6 +70,7 @@ For a detailed breakdown, refer to [Cditor Project Structure](doc/architecture/p
 | --- | --- | --- | --- |
 | `crates/core` | `cditor-core` | Base models: Blocks, DocumentIndex, RichText, Selections, Transactions, Layout | GPUI, SQLx, concrete database implementations |
 | `crates/editor` | `cditor-editor` | VirtualScroll, ScrollAnchor, WindowPlanner, HitTest, Trace Replay | GPUI Views, PostgreSQL logic |
+| `crates/gpui` | `cditor-gpui` | Stable third-party GPUI editor facade and embedding API | PostgreSQL backend and application startup |
 | `crates/runtime` | `cditor-runtime` | DocumentRuntime, editing sessions, projection, payload windows, task scheduling | Application windows, visual UI components |
 | `crates/store` | `cditor-storage` | Storage contracts, layout cache, debouncing, optimistic persistence | PostgreSQL SQL implementations, GPUI |
 | `crates/store-postgres` | `cditor-storage-postgres` | PostgreSQL connection pools, migrations, storage backends, sync queues, type mapping | Editor interaction logic, UI state |
@@ -87,19 +88,22 @@ cditor-core
 cditor-ai ─────────────────> cditor-runtime
 cditor-editor ─────────────> cditor-runtime
 cditor-storage ────────────> cditor-runtime
-cditor-storage-postgres ───> cditor-runtime   # Cold startup compatibility layer
+cditor-storage-postgres ───> cditor-runtime   # Optional `postgres` feature only
                                  ^
                                  |
                              cditor-app <───── ding-board
+                                 ^
+                                 |
+                            cditor-gpui       # cditor-app default features disabled
 ```
 
 Arrows point from dependent crates to the crates they consume. For example:
 `cditor-runtime` relies on `cditor-core`, `cditor-editor`, `cditor-storage`, `cditor-storage-postgres`, and `cditor-ai`.
-`cditor-app` serves as the final assembly layer, composing all above crates alongside `ding-board`.
+`cditor-gpui` is the recommended third-party embedding dependency and disables the PostgreSQL feature. `cditor-app` remains the final official application assembly layer, composing all above crates alongside `ding-board`.
 
 Naming note for `cditor-editor`: This crate is frequently misinterpreted. It contains only viewport calculation logic with no UI framework coupling. All GPUI rendering and user interaction entrypoints live in `cditor-app`.
 
-`cditor-runtime` currently contains PostgreSQL cold-start compatibility logic, creating a direct dependency on `cditor-storage-postgres`. This is a known architectural boundary limitation. Any new storage backends should be implemented against the `cditor-storage` abstraction layer to avoid propagating concrete database dependencies into the runtime crate.
+`cditor-runtime` retains PostgreSQL cold-start compatibility logic behind its disabled-by-default `postgres` feature. The third-party `cditor-gpui` dependency does not activate that feature. New storage integrations should use the backend-neutral `EditorPersistence` or `cditor-storage` contracts rather than propagating concrete database types into the component API.
 
 ## Environment Prerequisites
 ### Mandatory

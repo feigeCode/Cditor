@@ -1,0 +1,10 @@
+[package]
+name = "cditor-gpui"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Embeddable GPUI rich-text editor component for Cditor"
+
+[dependencies]
+cditor-app = { path = "../app", default-features = false }
+

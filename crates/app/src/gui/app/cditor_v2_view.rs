@@ -40,7 +40,10 @@ mod slash_menu;
 mod table_actions;
 mod whiteboard;
 
+#[cfg(feature = "postgres")]
 pub(in crate::gui::app) use super::persistence_bridge::save_status_for_mode;
+#[cfg(not(feature = "postgres"))]
+pub(in crate::gui::app) use super::persistence_bridge_stub::save_status_for_mode;
 pub use super::state::CditorViewState;
 pub(crate) use crate::gui::app::interaction::table_scroll::TableScrollSnapshot;
 pub(in crate::gui::app) use block_actions::block_focus_offset_after_missed_hit_test;

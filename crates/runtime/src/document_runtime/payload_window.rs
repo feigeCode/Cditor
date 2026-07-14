@@ -46,6 +46,7 @@ impl DocumentRuntime {
         }
     }
 
+    #[cfg(feature = "postgres")]
     pub async fn load_payload_window_request(
         payload_store: &PostgresPayloadStore,
         request: PayloadWindowLoadRequest,
@@ -60,6 +61,7 @@ impl DocumentRuntime {
         })
     }
 
+    #[cfg(feature = "postgres")]
     pub async fn load_payload_window_from_store(
         &mut self,
         payload_store: &PostgresPayloadStore,

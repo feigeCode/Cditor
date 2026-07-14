@@ -997,6 +997,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "cditor-gpui"
+version = "0.1.0"
+dependencies = [
+ "cditor-app",
+]
+
+[[package]]
 name = "cditor-runtime"
 version = "0.1.0"
 dependencies = [
@@ -1005,7 +1012,6 @@ dependencies = [
  "cditor-editor",
  "cditor-storage",
  "cditor-storage-postgres",
- "reqwest",
  "sqlx",
  "tokio",
 ]

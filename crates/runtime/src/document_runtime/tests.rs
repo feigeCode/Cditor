@@ -157,6 +157,7 @@ mod markdown;
 #[path = "tests/multi_block_delete.rs"]
 mod multi_block_delete;
 #[path = "tests/payload_window_store.rs"]
+#[cfg(feature = "postgres")]
 mod payload_window_store;
 #[path = "tests/rich_text_edit.rs"]
 mod rich_text_edit;

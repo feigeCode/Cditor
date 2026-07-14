@@ -11,6 +11,7 @@ mod projection;
 mod scroll;
 mod selection;
 mod state;
+#[cfg(feature = "postgres")]
 mod store_loading;
 mod structure_delete;
 mod structure_edit;
@@ -30,6 +31,7 @@ pub use ai::{
     AiApplyMode, AiRequestDispatch, AiRequestPresentation, AiSessionSnapshot, AiSessionStatus,
     AiStreamApplyResult, RuntimeAiTarget,
 };
+#[cfg(feature = "postgres")]
 pub use store_loading::{
     DocumentRuntimeColdStartReport, DocumentRuntimeFromStoreOptions, DocumentRuntimeIndexSource,
 };
@@ -80,8 +82,11 @@ use cditor_editor::window::{
     PlaceholderWindow, RenderWindow, ScrollDirection, WindowPlanDecision, WindowPlanRequest,
     WindowPlanner, WindowPlannerPolicy,
 };
+#[cfg(feature = "postgres")]
 use cditor_storage::layout_cache::{CacheSource, LayoutCacheKey};
+#[cfg(feature = "postgres")]
 use cditor_storage_postgres::types::runtime_document_id_from_pg;
+#[cfg(feature = "postgres")]
 use cditor_storage_postgres::{
     PgDocumentId, PostgresDocumentStore, PostgresLayoutCacheStore, PostgresPayloadStore,
     PostgresStorageError, PostgresStorageResult,

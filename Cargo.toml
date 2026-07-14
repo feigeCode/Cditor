@@ -5,6 +5,7 @@ members = [
     "crates/core",
     "crates/ding-board",
     "crates/editor",
+    "crates/gpui",
     "crates/runtime",
     "crates/store",
     "crates/store-postgres",
