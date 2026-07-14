@@ -1,4 +1,5 @@
 # Cditor
+<img width="1920" height="1140" alt="image" src="https://github.com/user-attachments/assets/7224e1ec-a13a-4d0c-987c-75d3db81289a" />
 
 Cditor is a large-document rich text editor built with Rust and GPUI. It is designed to support 100,000-level Blocks, sophisticated rich text, cross-page selections, stable virtual scrolling, and PostgreSQL persistence.
 
@@ -80,36 +81,50 @@ For a detailed breakdown, refer to [Cditor Project Structure](doc/architecture/p
 
 ### Dependency Graph
 ```text
-cditor-core
+cditor-app
+  ├──> cditor-runtime ───> cditor-editor ───> cditor-core
+  │          ├───────────> cditor-core
+  │          └───────────> cditor-ai
+  ├──> cditor-storage-postgres ───> cditor-storage ───> cditor-core
   ├──> cditor-editor
-  ├──> cditor-storage ──> cditor-storage-postgres
-  └──────────────────────────────┐
-                                 v
-cditor-ai ─────────────────> cditor-runtime
-cditor-editor ─────────────> cditor-runtime
-cditor-storage ────────────> cditor-runtime
-cditor-storage-postgres ───> cditor-runtime   # Optional `postgres` feature only
-                                 ^
-                                 |
-                             cditor-app <───── ding-board
-                                 ^
-                                 |
-                            cditor-gpui       # cditor-app default features disabled
+  ├──> cditor-ai
+  └──> ding-board
+
+cditor-gpui ───> cditor-app  # cditor-app default features disabled
 ```
 
 Arrows point from dependent crates to the crates they consume. For example:
-`cditor-runtime` relies on `cditor-core`, `cditor-editor`, `cditor-storage`, `cditor-storage-postgres`, and `cditor-ai`.
+`cditor-runtime` relies only on `cditor-core`, `cditor-editor`, and `cditor-ai`.
 `cditor-gpui` is the recommended third-party embedding dependency and disables PostgreSQL, OpenAI networking, remote-media networking, and the application launcher by default. `cditor-app` remains the final official application assembly layer, composing all above crates alongside `ding-board`.
 
 Naming note for `cditor-editor`: This crate is frequently misinterpreted. It contains only viewport calculation logic with no UI framework coupling. All GPUI rendering and user interaction entrypoints live in `cditor-app`.
 
-`cditor-runtime` retains PostgreSQL cold-start compatibility logic behind its disabled-by-default `postgres` feature. The third-party `cditor-gpui` dependency does not activate that feature. New storage integrations should use the backend-neutral `EditorPersistence` or `cditor-storage` contracts rather than propagating concrete database types into the component API.
+PostgreSQL cold-start and payload-window I/O live in `cditor-app`, the composition root. The app converts database rows into storage-neutral runtime inputs, so new storage backends do not propagate concrete database types into `cditor-runtime`.
 
 ## Environment Prerequisites
 ### Mandatory
 - Stable Rust toolchain supporting the Rust 2024 edition
 - Git: GPUI and Mermaid renderer are pinned to specific commits in the Zed repository; Git dependencies are fetched on initial build
 - Platform-native compilation tooling required for GPUI
+
+### Windows Toolchain
+
+Cditor uses the native MSVC GPUI backend on Windows. Install:
+
+- 64-bit Windows 10 or Windows 11
+- [Rustup](https://rustup.rs/) with the `stable-x86_64-pc-windows-msvc` toolchain
+- Visual Studio Build Tools with **Desktop development with C++**, MSVC v143 or newer, and a current Windows SDK
+- Git for Windows
+
+Verify the active host toolchain in PowerShell:
+
+```powershell
+rustup default stable-x86_64-pc-windows-msvc
+rustc -vV
+cargo --version
+```
+
+The GNU Rust target is not supported by the desktop build. Use the MSVC target shown above.
 
 ### Optional
 - Docker & Docker Compose: Local PostgreSQL deployment
@@ -134,11 +149,45 @@ Launch a small demo document:
 CDITOR_SMALL_DEMO=1 cargo run -p cditor-app
 ```
 
+PowerShell uses this equivalent syntax on Windows:
+
+```powershell
+$env:CDITOR_SMALL_DEMO = "1"
+cargo run -p cditor-app
+```
+
 Launch a large demo document with 100,000 Blocks:
 ```bash
 CDITOR_LARGE_DEMO=1 cargo run -p cditor-app
 ```
 The large demo constructs performance-testing large documents, resulting in longer startup times and higher memory usage than standard mode.
+
+### Keyboard and IME Architecture
+
+Cditor follows Zed's GPUI input architecture across macOS and Windows:
+
+1. GPUI's native platform backend translates physical keys to canonical keystrokes such as `enter`, `backspace`, and `home`.
+2. The Cditor keymap converts keystrokes into typed actions inside the `CditorEditor` key context.
+3. Context-aware action handlers route the action to the document, table cell, slash menu, table menu, code-language input, or AI prompt.
+4. Printable text and IME composition never depend on physical key names; they flow through GPUI's `EntityInputHandler` using UTF-16 platform ranges and UTF-8 document offsets.
+
+The editor keeps document line endings as LF internally. Windows TSF and clipboard input are normalized from CRLF at the platform boundary. The main editing bindings are:
+
+| Operation | macOS | Windows |
+| --- | --- | --- |
+| Create/split Block | `Enter` | `Enter` |
+| Soft line break | `Shift+Enter` | `Shift+Enter` |
+| Create Block below | `Command+Enter` | `Ctrl+Enter` |
+| Select current Block, then full document | `Command+A` once/twice | `Ctrl+A` once/twice |
+| Undo / redo | `Command+Z` / `Command+Shift+Z` | `Ctrl+Z` / `Ctrl+Y` or `Ctrl+Shift+Z` |
+| Line start / end | `Home`, `End`, or Zed's macOS aliases | `Home`, `End` |
+| Clipboard | `Command+C/X/V` | `Ctrl+C/X/V`; Zed-compatible `Ctrl+Insert`, `Shift+Delete`, `Shift+Insert` |
+
+Applications embedding `CditorV2View` directly must install the keymap once during GPUI startup before opening the window:
+
+```rust
+cditor_app::gui::input::bind_cditor_keys(cx);
+```
 
 ### 2. Local PostgreSQL Deployment
 Start the development database container:
@@ -194,6 +243,7 @@ Remote PostgreSQL tooling documentation: [scripts/README.md](scripts/README.md) 
 | `CDITOR_TRACE_INPUT` | `false` | Print verbose logs for platform input and IME events |
 | `CDITOR_TRACE_TABLE` | `false` | Print table interaction debug traces |
 | `CDITOR_TRACE_MARKDOWN` | `false` | Print Markdown parsing and clipboard operation traces |
+| `CDITOR_TRACE_BLOCK_COLOR` | `false` | Print block color target, persistence, and resolved paint traces |
 
 Boolean variables accept case-insensitive values: `1/true/yes/on` and `0/false/no/off`.
 
@@ -247,6 +297,30 @@ Launch editor with GPUI runtime shader feature enabled:
 cargo run -p cditor-app --features runtime-shaders
 ```
 
+### GitHub Desktop Artifacts
+
+The `Desktop builds` GitHub Actions workflow produces three downloadable artifacts:
+
+| Artifact | Output | Target |
+| --- | --- | --- |
+| `Cditor-Windows-x64` | `Cditor.exe` and SHA-256 checksum | 64-bit Windows |
+| `Cditor-macOS-Apple-Silicon` | `Cditor-macOS-arm64.dmg` and SHA-256 checksum | Apple Silicon Macs |
+| `Cditor-macOS-Intel` | `Cditor-macOS-x64.dmg` and SHA-256 checksum | Intel Macs |
+
+The workflow runs for pushes to `main`, pull requests targeting `main`, version tags, and manual dispatches. Branch and pull-request builds remain available from the workflow run's **Artifacts** section. A `v*` tag additionally creates a GitHub Release and attaches all three installers plus their SHA-256 checksum files.
+
+Desktop installers belong in GitHub Releases rather than GitHub Packages, which is a package registry for formats such as containers and language packages. Download published EXE and DMG files from the repository's **Releases** page.
+
+Release artifacts use the workspace's performance-first Cargo profile: optimization
+level 3, fat whole-program LTO, one codegen unit, abort-on-panic, disabled
+incremental compilation, and stripped symbols. Windows additionally links the
+static C runtime. The workflow deliberately avoids `target-cpu=native`, so a
+binary built on a GitHub runner does not accidentally require that runner's CPU
+instruction set. Run `./scripts/dev/check_release_profile.sh` to verify these
+release invariants locally.
+
+The macOS application bundles are ad-hoc signed so the DMG layout and bundle integrity can be verified in CI. They are not Apple-notarized because the public repository does not contain Apple Developer signing credentials. macOS may therefore require using **Open** from Finder's context menu the first time the application is launched.
+
 ## Testing & Quality Gates
 Run all default unit tests:
 ```bash
@@ -286,7 +360,6 @@ export CDITOR_TEST_DATABASE_URL='postgres://cditor:cditor@localhost:5433/cditor_
 PostgreSQL integration tests are marked `ignored` by default to avoid external service dependencies during standard unit test runs. Execute them per crate explicitly:
 ```bash
 cargo test -p cditor-storage-postgres -- --ignored
-cargo test -p cditor-runtime -- --ignored
 cargo test -p cditor-app --lib -- --ignored
 ```
 
@@ -302,7 +375,7 @@ Many ignored integration tests generate or load 100,000-Block datasets, resultin
 - The workspace maintains exactly one root `Cargo.lock` file.
 - Secrets, database credentials, and absolute local file paths must never be committed to version control.
 
-`./scripts/dev/check_structure.sh` enforces the 700-line limit, validates deprecated `crates/engine` paths, and scans for unwanted system metadata files.
+`./scripts/dev/check_structure.sh` enforces the 700-line limit, validates deprecated paths, scans for unwanted system metadata, and prevents `cditor-runtime` from acquiring PostgreSQL, SQLx, or GPUI dependencies.
 
 ### Feature Placement Guidelines
 | Feature Domain | Primary Code Location |
@@ -359,14 +432,11 @@ The current project layout is logically organized:
 - The `runtime` source directory aligns with its matching `cditor-runtime` crate.
 - All GPUI UI code is isolated within the `app` crate; core data models have no reverse UI dependencies.
 - PostgreSQL persistence logic is decoupled from generic storage abstractions.
+- PostgreSQL cold start and window loading are assembled by `cditor-app`; `cditor-runtime` receives storage-neutral records.
 - Documentation, utility scripts, and test suites are grouped by functional purpose.
 - A strict 700-line source file limit enforces modular code organization for all non-whiteboard modules.
 
-Two ongoing architectural boundary points require long-term attention:
-1. `cditor-editor` implements pure UI-agnostic viewport algorithms, but its naming may confuse new contributors who mistake it for the GUI layer. This document and the project architecture docs clarify its role; no breaking crate rename is planned for now.
-2. `cditor-runtime` carries a direct dependency on `cditor-storage-postgres` to support cold startup workflows. Future additional storage backends should abstract this logic into the application assembly layer or generic storage interfaces to avoid scattering concrete database code throughout the runtime crate.
-
-Beyond these two minor boundary concerns, the existing structure supports iterative feature development and does not require large-scale directory refactoring.
+`cditor-editor` implements pure UI-agnostic viewport algorithms despite its name; all visual editing and platform input remain in `cditor-app`. The structure check protects the more important dependency boundaries automatically.
 
 ## License
 Project licensing terms and third-party dependency notices:

@@ -1,5 +1,4 @@
 use cditor_core::ids::BlockId;
-use gpui::KeyDownEvent;
 use std::ops::Range;
 
 pub const CODE_LANGUAGE_MAX_SUGGESTIONS: usize = 64;
@@ -69,6 +68,26 @@ impl CodeLanguageEditState {
             caret_offset: original.len(),
             marked_range: None,
         }
+    }
+
+    pub fn new_dropdown_with_placement(
+        block_id: BlockId,
+        language: Option<&str>,
+        placement: CodeLanguagePopupPlacement,
+    ) -> Self {
+        let mut state = Self::new_with_placement(block_id, language, placement);
+        state.draft.clear();
+        state.caret_offset = 0;
+        state.selected_index = code_language_items()
+            .iter()
+            .position(|item| {
+                language
+                    .map(|language| item.value.eq_ignore_ascii_case(language))
+                    .unwrap_or_else(|| item.value == "plain text")
+            })
+            .unwrap_or(0);
+        state.keep_selected_item_visible(code_language_items().len());
+        state
     }
 
     pub fn normalized_draft(&self) -> Option<String> {
@@ -197,50 +216,57 @@ pub enum CodeLanguageEditKeyResult {
     Ignored,
 }
 
-pub fn apply_code_language_key(
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CodeLanguageEditAction {
+    Commit,
+    Cancel,
+    SelectPrevious,
+    SelectNext,
+    MoveLeft,
+    MoveRight,
+    MoveToStart,
+    MoveToEnd,
+    DeleteBackward,
+    DeleteForward,
+}
+
+pub fn apply_code_language_action(
     state: &mut CodeLanguageEditState,
-    event: &KeyDownEvent,
+    action: CodeLanguageEditAction,
 ) -> CodeLanguageEditKeyResult {
-    if event.keystroke.is_ime_in_progress() {
-        return CodeLanguageEditKeyResult::Ignored;
-    }
-    let modifiers = event.keystroke.modifiers;
-    if modifiers.platform || modifiers.control || modifiers.alt {
-        return CodeLanguageEditKeyResult::Ignored;
-    }
-    match event.keystroke.key.as_str() {
-        "enter" | "tab" => {
+    match action {
+        CodeLanguageEditAction::Commit => {
             if let Some(item) = state.selected_item() {
                 state.draft = item.value;
             }
             CodeLanguageEditKeyResult::Commit
         }
-        "escape" => CodeLanguageEditKeyResult::Cancel,
-        "up" => {
+        CodeLanguageEditAction::Cancel => CodeLanguageEditKeyResult::Cancel,
+        CodeLanguageEditAction::SelectPrevious => {
             state.move_selection(-1);
             CodeLanguageEditKeyResult::Changed
         }
-        "down" => {
+        CodeLanguageEditAction::SelectNext => {
             state.move_selection(1);
             CodeLanguageEditKeyResult::Changed
         }
-        "left" => {
+        CodeLanguageEditAction::MoveLeft => {
             state.move_caret_left();
             CodeLanguageEditKeyResult::Changed
         }
-        "right" => {
+        CodeLanguageEditAction::MoveRight => {
             state.move_caret_right();
             CodeLanguageEditKeyResult::Changed
         }
-        "home" => {
+        CodeLanguageEditAction::MoveToStart => {
             state.move_caret_to(0);
             CodeLanguageEditKeyResult::Changed
         }
-        "end" => {
+        CodeLanguageEditAction::MoveToEnd => {
             state.move_caret_to(state.draft.len());
             CodeLanguageEditKeyResult::Changed
         }
-        "backspace" => {
+        CodeLanguageEditAction::DeleteBackward => {
             if let Some(previous) = previous_char_boundary(&state.draft, state.caret_offset) {
                 state.draft.replace_range(previous..state.caret_offset, "");
                 state.caret_offset = previous;
@@ -249,7 +275,7 @@ pub fn apply_code_language_key(
             }
             CodeLanguageEditKeyResult::Changed
         }
-        "delete" => {
+        CodeLanguageEditAction::DeleteForward => {
             let next = next_char_boundary(&state.draft, state.caret_offset);
             if next > state.caret_offset {
                 state.draft.replace_range(state.caret_offset..next, "");
@@ -258,7 +284,6 @@ pub fn apply_code_language_key(
             }
             CodeLanguageEditKeyResult::Changed
         }
-        _ => CodeLanguageEditKeyResult::Ignored,
     }
 }
 
@@ -357,18 +382,6 @@ fn is_code_language_char(ch: char) -> bool {
 mod tests {
     use super::*;
 
-    fn event_for_key(key: &str) -> KeyDownEvent {
-        KeyDownEvent {
-            keystroke: gpui::Keystroke {
-                modifiers: gpui::Modifiers::default(),
-                key: key.into(),
-                key_char: Some(key.to_owned()),
-            },
-            is_held: false,
-            prefer_character_input: false,
-        }
-    }
-
     #[test]
     fn code_language_edit_replaces_range_with_language_name_text() {
         let mut state = CodeLanguageEditState::new(1, Some("rs"));
@@ -377,6 +390,20 @@ mod tests {
         state.replace_range(state.input_replacement_range(), "x");
         assert_eq!(state.draft, "rs-x");
         assert_eq!(state.normalized_draft().as_deref(), Some("rs-x"));
+    }
+
+    #[test]
+    fn language_dropdown_opens_unfiltered_with_current_language_selected() {
+        let state = CodeLanguageEditState::new_dropdown_with_placement(
+            1,
+            Some("typescript"),
+            CodeLanguagePopupPlacement::Below,
+        );
+
+        assert!(state.draft.is_empty());
+        assert_eq!(state.caret_offset, 0);
+        assert_eq!(state.selected_item().unwrap().value, "typescript");
+        assert_eq!(state.matching_items().len(), code_language_items().len());
     }
 
     #[test]
@@ -389,7 +416,7 @@ mod tests {
 
         state.draft.clear();
         assert_eq!(
-            apply_code_language_key(&mut state, &event_for_key("down")),
+            apply_code_language_action(&mut state, CodeLanguageEditAction::SelectNext),
             CodeLanguageEditKeyResult::Changed
         );
         assert_eq!(state.selected_index, 1);
@@ -401,7 +428,7 @@ mod tests {
 
         for _ in 0..CODE_LANGUAGE_VISIBLE_SUGGESTIONS {
             assert_eq!(
-                apply_code_language_key(&mut state, &event_for_key("down")),
+                apply_code_language_action(&mut state, CodeLanguageEditAction::SelectNext),
                 CodeLanguageEditKeyResult::Changed
             );
         }
@@ -410,7 +437,7 @@ mod tests {
         assert_eq!(state.scroll_start, 1);
 
         assert_eq!(
-            apply_code_language_key(&mut state, &event_for_key("up")),
+            apply_code_language_action(&mut state, CodeLanguageEditAction::SelectPrevious),
             CodeLanguageEditKeyResult::Changed
         );
         assert_eq!(state.selected_index, CODE_LANGUAGE_VISIBLE_SUGGESTIONS - 1);
@@ -435,11 +462,11 @@ mod tests {
         let mut state = CodeLanguageEditState::new(1, None);
 
         assert_eq!(
-            apply_code_language_key(&mut state, &event_for_key("enter")),
+            apply_code_language_action(&mut state, CodeLanguageEditAction::Commit),
             CodeLanguageEditKeyResult::Commit
         );
         assert_eq!(
-            apply_code_language_key(&mut state, &event_for_key("escape")),
+            apply_code_language_action(&mut state, CodeLanguageEditAction::Cancel),
             CodeLanguageEditKeyResult::Cancel
         );
     }
@@ -457,13 +484,13 @@ mod tests {
         assert_eq!(state.marked_range, None);
 
         assert_eq!(
-            apply_code_language_key(&mut state, &event_for_key("left")),
+            apply_code_language_action(&mut state, CodeLanguageEditAction::MoveLeft),
             CodeLanguageEditKeyResult::Changed
         );
         assert_eq!(state.caret_offset, 2);
 
         assert_eq!(
-            apply_code_language_key(&mut state, &event_for_key("delete")),
+            apply_code_language_action(&mut state, CodeLanguageEditAction::DeleteForward),
             CodeLanguageEditKeyResult::Changed
         );
         assert_eq!(state.draft, "ru");

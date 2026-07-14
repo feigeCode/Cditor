@@ -18,7 +18,7 @@ use crate::gui::app::interaction::table_mode::GuiTableInteractionMode;
 use crate::gui::app::interaction::table_reorder::GuiTableReorderDrag;
 use crate::gui::app::interaction::table_resize::GuiTableResizeDrag;
 use crate::gui::app::interaction::table_scroll::{GuiTableHScrollDrag, GuiTableScrollState};
-use crate::gui::block::{MermaidRenderCache, WhiteboardThumbnailCache};
+use crate::gui::block::{CodeHighlightCache, MermaidRenderCache, WhiteboardThumbnailCache};
 use cditor_editor::scroll::ScrollAccumulator;
 
 use crate::gui::input::{AiPromptState, BlockDragSelectionController, CodeLanguageEditState};
@@ -27,14 +27,18 @@ use crate::gui::overlay::SlashMenuState;
 use crate::gui::overlay::WhiteboardEditorSession;
 
 use crate::gui::app::integration_bridge::EditorIntegrationController;
-use crate::gui::persistence::{EditorSaveStatus, PostgresPersistenceState};
+use crate::gui::persistence::{
+    EditorSaveStatus, PayloadWindowLoadScheduler, PostgresPersistenceState,
+};
 use crate::gui::text::RichTextPlatformLayout;
 use cditor_runtime::DocumentRuntime;
 
 pub(in crate::gui::app) mod ai;
 mod block_actions;
 mod code_language;
-mod formatting_toolbar;
+mod code_theme;
+mod folding;
+mod formatting;
 mod platform_input;
 mod slash_menu;
 mod table_actions;
@@ -47,7 +51,7 @@ pub(in crate::gui::app) use super::persistence_bridge_stub::save_status_for_mode
 pub use super::state::CditorViewState;
 pub(crate) use crate::gui::app::interaction::table_scroll::TableScrollSnapshot;
 pub(in crate::gui::app) use block_actions::block_focus_offset_after_missed_hit_test;
-pub(in crate::gui::app) use formatting_toolbar::formatting_toolbar_state;
+pub(in crate::gui::app) use formatting::formatting_toolbar_state;
 pub(crate) use platform_input::GuiPlatformInputTarget;
 #[cfg(test)]
 pub(crate) use platform_input::platform_input_registration_allows;
@@ -68,6 +72,7 @@ pub struct CditorV2View {
     pub(in crate::gui::app) text_layouts: HashMap<BlockId, RichTextPlatformLayout>,
     pub(in crate::gui::app) table_cell_layouts: HashMap<TableCellLayoutKey, RichTextPlatformLayout>,
     pub(in crate::gui::app) table_scroll_state: GuiTableScrollState,
+    pub(in crate::gui::app) code_highlights: CodeHighlightCache,
     pub(in crate::gui::app) mermaid_renders: MermaidRenderCache,
     pub(in crate::gui::app) mermaid_source_blocks: std::collections::HashSet<BlockId>,
     pub(in crate::gui::app) whiteboard_thumbnails: WhiteboardThumbnailCache,
@@ -76,12 +81,20 @@ pub struct CditorV2View {
     pub(in crate::gui::app) text_drag_selection: Option<GuiTextDragSelection>,
     pub(in crate::gui::app) block_drag_selection: BlockDragSelectionController,
     pub(in crate::gui::app) code_language_edit: Option<CodeLanguageEditState>,
+    pub(in crate::gui::app) code_theme_menu_block_id: Option<BlockId>,
+    pub(in crate::gui::app) code_highlight_theme: &'static str,
     pub(in crate::gui::app) slash_menu: Option<SlashMenuState>,
     pub(in crate::gui::app) toast: Option<GuiToast>,
     pub(in crate::gui::app) table_interaction_mode: GuiTableInteractionMode,
+    pub(in crate::gui::app) table_menu_ui: crate::gui::block::table::menu::TableMenuUiState,
     pub(in crate::gui::app) hovered_block_id: Option<BlockId>,
     pub(in crate::gui::app) action_block_id: Option<BlockId>,
     pub(in crate::gui::app) gutter_toolbar_block_id: Option<BlockId>,
+    pub(in crate::gui::app) block_transform_menu_open: bool,
+    pub(in crate::gui::app) color_menu_open: bool,
+    pub(in crate::gui::app) color_menu_hover_generation: u64,
+    pub(in crate::gui::app) color_menu_scroll_handle: gpui::ScrollHandle,
+    pub(in crate::gui::app) last_color_action: Option<crate::gui::overlay::ColorMenuAction>,
     pub(in crate::gui::app) gutter_block_drag: Option<GutterBlockDragState>,
     pub(in crate::gui::app) gutter_drag_auto_scroll_scheduled: bool,
     pub(in crate::gui::app) image_resize_drag: Option<GuiImageResizeDrag>,
@@ -90,6 +103,7 @@ pub struct CditorV2View {
     pub(in crate::gui::app) table_hscroll_drag: Option<GuiTableHScrollDrag>,
     pub(in crate::gui::app) projected_block_rects: Vec<ProjectedBlockRect>,
     pub(in crate::gui::app) postgres_persistence: PostgresPersistenceState,
+    pub(in crate::gui::app) payload_window_load_scheduler: PayloadWindowLoadScheduler,
     pub(in crate::gui::app) autosave_interval: Duration,
     pub(in crate::gui::app) platform_input_target: Option<GuiPlatformInputTarget>,
     pub(in crate::gui::app) integration: Option<EditorIntegrationController>,
@@ -124,6 +138,7 @@ impl CditorV2View {
         block_id: BlockId,
         cx: &mut Context<Self>,
     ) {
+        crate::gui::block::media::invalidate_rendered_media_height_report(block_id);
         if !self.mermaid_source_blocks.remove(&block_id) {
             self.mermaid_source_blocks.insert(block_id);
         }
@@ -217,6 +232,16 @@ impl CditorV2View {
         let content_version = cache.content_version;
         let measured_height = cache.measured_height;
         self.text_layouts.insert(block_id, cache);
+        if self.ready_runtime_ref().is_some_and(|runtime| {
+            matches!(
+                runtime.block_kind(block_id),
+                Some(cditor_core::rich_text::RichBlockKind::Mermaid)
+            )
+        }) {
+            // Mermaid owns a stable preview/source box and reports its rendered
+            // media height separately. Source text shaping must not overwrite it.
+            return false;
+        }
         self.ready_runtime()
             .and_then(|runtime| {
                 runtime
@@ -250,6 +275,7 @@ impl CditorV2View {
         window.focus(&self.focus, cx);
         if self.table_interaction_mode.block_id().is_some() {
             self.table_interaction_mode = GuiTableInteractionMode::Idle;
+            self.table_menu_ui = Default::default();
         }
         self.clear_gutter_action();
         let position = position.into();
@@ -351,11 +377,27 @@ impl CditorV2View {
     pub(in crate::gui::app) fn clear_gutter_action(&mut self) {
         self.action_block_id = None;
         self.gutter_toolbar_block_id = None;
+        self.block_transform_menu_open = false;
+        self.color_menu_open = false;
+        self.color_menu_hover_generation = self.color_menu_hover_generation.wrapping_add(1);
         self.gutter_block_drag = None;
         self.gutter_drag_auto_scroll_scheduled = false;
+    }
+
+    pub(crate) fn dismiss_gutter_toolbar_from_gui(&mut self, cx: &mut Context<Self>) -> bool {
+        if self.gutter_toolbar_block_id.is_none() {
+            return false;
+        }
+        self.clear_gutter_action();
+        cx.notify();
+        true
     }
 }
 
 #[cfg(test)]
 #[path = "cditor_v2_view_tests.rs"]
 mod cditor_v2_view_tests;
+
+#[cfg(test)]
+#[path = "cditor_v2_view_interaction_tests.rs"]
+mod cditor_v2_view_interaction_tests;

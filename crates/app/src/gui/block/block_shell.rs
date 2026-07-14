@@ -8,10 +8,11 @@ use crate::gui::GuiTheme;
 use crate::gui::block::chrome::{
     BLOCK_ROW_GAP_PX, BLOCK_SHELL_OUTER_PADDING_X_PX, BlockChromeStyle,
 };
-use crate::gui::block::gutter::{
-    GutterAddHandler, GutterDeleteHandler, GutterMouseDownHandler, render_block_gutter,
+use crate::gui::block::gutter::{GutterAddHandler, GutterMouseDownHandler, render_block_gutter};
+use crate::gui::block::prefix::{
+    FoldToggleHandler, TodoToggleHandler, render_block_content_prefix, render_block_prefix,
 };
-use crate::gui::block::prefix::{TodoToggleHandler, render_block_prefix};
+use crate::gui::diagnostics::block_color::trace_render;
 use cditor_runtime::ViewBlockSnapshot;
 
 const NOTION_QUOTE_BAR_WIDTH_PX: f32 = 3.0;
@@ -54,16 +55,27 @@ pub fn block_shell(
     on_mouse_move: Option<BlockMouseMoveHandler>,
     on_gutter_add: Option<GutterAddHandler>,
     on_gutter_mouse_down: Option<GutterMouseDownHandler>,
-    on_gutter_delete: Option<GutterDeleteHandler>,
     on_todo_toggle: Option<TodoToggleHandler>,
+    on_fold_toggle: Option<FoldToggleHandler>,
 ) -> AnyElement {
     let chrome = BlockChromeStyle::from_snapshot(block, theme);
     let gutter_visible = should_show_gutter(hovered, action.action_root);
     let outer_background = outer_background_for_action(chrome.outer_background, theme, action);
-    let content_background =
-        content_background_for_action(chrome.content_background, theme, action);
+    let content_background = content_background_for_action(
+        chrome.content_background,
+        theme,
+        action,
+        block.attrs.background_color.is_some(),
+    );
     let shell_border = border_for_action(theme.surface, theme, action);
     let content_border = border_for_action(chrome.content_border, theme, action);
+    trace_render(
+        block.block_id,
+        &block.attrs,
+        chrome.text_color,
+        content_background,
+        action.action_active,
+    );
     div()
         .id(("v2-block", block.block_id))
         .w_full()
@@ -89,36 +101,58 @@ pub fn block_shell(
                         action.action_active,
                         on_gutter_add,
                         on_gutter_mouse_down,
-                        on_gutter_delete,
                     ))
                     .child(
                         div()
-                            .relative()
                             .min_w(px(0.0))
                             .w_full()
-                            .min_h(px(chrome.content_min_height_px))
-                            .rounded(px(chrome.content_radius_px))
-                            .bg(rgb(content_background))
-                            .when(chrome.quote_bar.is_none(), |this| this.border_1())
-                            .border_color(rgb(content_border))
-                            // Keep the historical 4px quote geometry slot so caret/hit-test
-                            // origins stay stable, while drawing the visible Notion bar at 3px.
-                            .border_l(px(if chrome.quote_bar.is_some() { 4.0 } else { 1.0 }))
-                            .pl(px(chrome.content_padding_left_px))
-                            .pr(px(chrome.content_padding_right_px))
-                            .py(px(chrome.content_padding_y_px))
                             .flex()
                             .items_start()
-                            .when_some(chrome.quote_bar, |this, color| {
-                                this.child(render_quote_bar(color))
-                            })
                             .child(render_block_prefix(
                                 &block.chrome.prefix,
+                                chrome.marker_lane_width_px,
                                 theme,
                                 true,
-                                on_todo_toggle,
+                                on_fold_toggle,
+                                block.focused,
+                                chrome.content_min_height_px,
                             ))
-                            .child(div().min_w(px(0.0)).w_full().child(content)),
+                            .child(
+                                div()
+                                    .relative()
+                                    .min_w(px(0.0))
+                                    .w_full()
+                                    .min_h(px(chrome.content_min_height_px))
+                                    .rounded(px(chrome.content_radius_px))
+                                    .bg(rgb(content_background))
+                                    .when(chrome.quote_bar.is_none(), |this| this.border_1())
+                                    .border_color(rgb(content_border))
+                                    // Keep the historical 4px quote geometry slot so caret/hit-test
+                                    // origins stay stable, while drawing the visible Notion bar at 3px.
+                                    .border_l(px(if chrome.quote_bar.is_some() {
+                                        4.0
+                                    } else {
+                                        1.0
+                                    }))
+                                    .pl(px(chrome.content_padding_left_px))
+                                    .pr(px(chrome.content_padding_right_px))
+                                    .py(px(chrome.content_padding_y_px))
+                                    .flex()
+                                    .items_start()
+                                    .when_some(chrome.quote_bar, |this, color| {
+                                        this.child(render_quote_bar(color))
+                                    })
+                                    .when_some(
+                                        render_block_content_prefix(
+                                            &block.chrome.prefix,
+                                            theme,
+                                            true,
+                                            on_todo_toggle,
+                                        ),
+                                        |this, prefix| this.child(prefix),
+                                    )
+                                    .child(div().min_w(px(0.0)).w_full().child(content)),
+                            ),
                     ),
             ),
         )
@@ -133,8 +167,9 @@ pub fn content_background_for_action(
     default_content_background: u32,
     theme: GuiTheme,
     action: BlockActionState,
+    has_custom_background: bool,
 ) -> u32 {
-    if action.action_active {
+    if action.action_active && !has_custom_background {
         theme.action_background
     } else {
         default_content_background
@@ -211,8 +246,15 @@ mod tests {
         };
         // Content background changes on action_active
         assert_eq!(
-            content_background_for_action(0x123456, theme, action),
+            content_background_for_action(0x123456, theme, action, false),
             theme.action_background
+        );
+        // Once a block has an explicit background, keep it visible while its
+        // gutter menu is active instead of immediately painting over it with
+        // the generic action tint.
+        assert_eq!(
+            content_background_for_action(0x123456, theme, action, true),
+            0x123456
         );
         // Outer background does NOT change on action_active (gutter stays uncolored)
         assert_eq!(
@@ -225,7 +267,7 @@ mod tests {
             theme.action_background
         );
         assert_eq!(
-            content_background_for_action(0x123456, theme, BlockActionState::default()),
+            content_background_for_action(0x123456, theme, BlockActionState::default(), false,),
             0x123456
         );
         assert_eq!(

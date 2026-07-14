@@ -12,8 +12,9 @@ use cditor_runtime::{TableCellPosition, TableViewState};
 use super::selection::{TableAxis, TableAxisSelection, TableCellRangeSelection};
 use super::style::{
     TABLE_AXIS_COLUMN_HANDLE_TOP_PX, TABLE_AXIS_HANDLE_SIZE_PX, TABLE_AXIS_OUTLINE_THICKNESS_PX,
-    TABLE_AXIS_ROW_HANDLE_LEFT_PX, TABLE_CELL_GUTTER_SIZE_PX, TABLE_CELL_GUTTER_THICKNESS_PX,
-    table_active_border_color, table_axis_handle_background, table_axis_handle_foreground,
+    TABLE_AXIS_ROW_HANDLE_LEFT_PX, TABLE_AXIS_SELECTED_HANDLE_LONG_EDGE_PX,
+    TABLE_CELL_GUTTER_SIZE_PX, TABLE_CELL_GUTTER_THICKNESS_PX, table_active_border_color,
+    table_axis_handle_background, table_axis_handle_foreground,
 };
 
 const TABLE_AXIS_HANDLE_DOT_ROWS: usize = 3;
@@ -54,26 +55,16 @@ pub(crate) fn render_table_axis_overlays(
         overlays.push(render_table_axis_outline(rect, origin, theme));
     }
     if let Some(focused_cell) = focused_cell
-        && let Some(rect) = table_cell_rect(table_view, focused_cell.row, focused_cell.col)
+        && let Some(cell_rect) = table_cell_rect(table_view, focused_cell.row, focused_cell.col)
     {
-        overlays.push(render_active_cell_gutter(
-            TableAxis::Column,
-            rect,
-            origin,
-            theme,
-            view.clone(),
-            block_id,
-            focused_cell.col,
-        ));
-        overlays.push(render_active_cell_gutter(
-            TableAxis::Row,
-            rect,
-            origin,
-            theme,
-            view,
-            block_id,
-            focused_cell.row,
-        ));
+        let gutters = active_cell_gutter_geometries(
+            focused_cell,
+            cell_rect,
+            table_view.horizontal_scroll_offset_px,
+        );
+        overlays.extend(gutters.into_iter().map(|gutter| {
+            render_active_cell_gutter(gutter, origin, theme, view.clone(), block_id)
+        }));
     }
     overlays
 }
@@ -130,6 +121,21 @@ struct TableOverlayRect {
     height: f32,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum TableCellGutterOrientation {
+    Horizontal,
+    Vertical,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct ActiveCellGutterGeometry {
+    axis: TableAxis,
+    index: usize,
+    orientation: TableCellGutterOrientation,
+    hitbox: TableOverlayRect,
+    indicator: TableOverlayRect,
+}
+
 fn table_cell_rect(
     table_view: &TableViewState,
     row: usize,
@@ -140,7 +146,7 @@ fn table_cell_rect(
         .iter()
         .find(|cell| cell.position.row == row && cell.position.col == col)
         .map(|cell| TableOverlayRect {
-            x: cell.x_px,
+            x: table_viewport_x(table_view, cell.x_px),
             y: cell.y_px,
             width: cell.width_px,
             height: cell.height_px,
@@ -158,7 +164,7 @@ fn table_axis_track_rect(
             .iter()
             .find(|cell| cell.position.row == index)
             .map(|cell| TableOverlayRect {
-                x: 0.0,
+                x: table_view.horizontal_scroll_offset_px,
                 y: cell.y_px,
                 width: table_view.width_px,
                 height: cell.height_px,
@@ -168,12 +174,69 @@ fn table_axis_track_rect(
             .iter()
             .find(|cell| cell.position.col == index)
             .map(|cell| TableOverlayRect {
-                x: cell.x_px,
+                x: table_viewport_x(table_view, cell.x_px),
                 y: 0.0,
                 width: cell.width_px,
                 height: table_view.height_px,
             }),
     }
+}
+
+fn table_viewport_x(table_view: &TableViewState, table_local_x: f32) -> f32 {
+    table_local_x + table_view.horizontal_scroll_offset_px
+}
+
+fn active_cell_gutter_geometries(
+    focused_cell: TableCellPosition,
+    cell_rect: TableOverlayRect,
+    table_left_px: f32,
+) -> Vec<ActiveCellGutterGeometry> {
+    const HITBOX_LONG_EDGE_PX: f32 = 24.0;
+    const INDICATOR_LONG_EDGE_PX: f32 = 14.0;
+
+    let mut gutters = Vec::with_capacity(if focused_cell.row == 0 { 2 } else { 1 });
+    if focused_cell.row == 0 {
+        let hitbox = TableOverlayRect {
+            x: cell_rect.x + cell_rect.width / 2.0 - HITBOX_LONG_EDGE_PX / 2.0,
+            y: cell_rect.y - TABLE_CELL_GUTTER_SIZE_PX / 2.0,
+            width: HITBOX_LONG_EDGE_PX,
+            height: TABLE_CELL_GUTTER_SIZE_PX,
+        };
+        gutters.push(ActiveCellGutterGeometry {
+            axis: TableAxis::Column,
+            index: focused_cell.col,
+            orientation: TableCellGutterOrientation::Horizontal,
+            hitbox,
+            indicator: TableOverlayRect {
+                x: (hitbox.width - INDICATOR_LONG_EDGE_PX) / 2.0,
+                y: (hitbox.height - TABLE_CELL_GUTTER_THICKNESS_PX) / 2.0,
+                width: INDICATOR_LONG_EDGE_PX,
+                height: TABLE_CELL_GUTTER_THICKNESS_PX,
+            },
+        });
+    }
+
+    let hitbox = TableOverlayRect {
+        // Every row, including the first one, keeps its row gutter on the
+        // table's outer left border rather than an internal column boundary.
+        x: table_left_px - TABLE_CELL_GUTTER_SIZE_PX / 2.0,
+        y: cell_rect.y + cell_rect.height / 2.0 - HITBOX_LONG_EDGE_PX / 2.0,
+        width: TABLE_CELL_GUTTER_SIZE_PX,
+        height: HITBOX_LONG_EDGE_PX,
+    };
+    gutters.push(ActiveCellGutterGeometry {
+        axis: TableAxis::Row,
+        index: focused_cell.row,
+        orientation: TableCellGutterOrientation::Vertical,
+        hitbox,
+        indicator: TableOverlayRect {
+            x: (hitbox.width - TABLE_CELL_GUTTER_THICKNESS_PX) / 2.0,
+            y: (hitbox.height - INDICATOR_LONG_EDGE_PX) / 2.0,
+            width: TABLE_CELL_GUTTER_THICKNESS_PX,
+            height: INDICATOR_LONG_EDGE_PX,
+        },
+    });
+    gutters
 }
 
 fn table_axis_selection_rect(
@@ -191,10 +254,12 @@ fn table_axis_selection_outline_rect(
     // Use inner stroke: the outline border is drawn inside the cell bounds.
     // This avoids the last-row clipping issue where expanding outward by `half`
     // gets clamped to table_view.height_px, making the bottom border invisible.
+    let left = rect.x.max(0.0);
+    let right = (rect.x + rect.width).min(table_view.width_px);
     Some(TableOverlayRect {
-        x: rect.x.max(0.0),
+        x: left,
         y: rect.y.max(0.0),
-        width: rect.width.min(table_view.width_px - rect.x.max(0.0)),
+        width: (right - left).max(0.0),
         height: rect.height.min(table_view.height_px - rect.y.max(0.0)),
     })
 }
@@ -203,20 +268,20 @@ fn table_range_selection_outline_rect(
     table_view: &TableViewState,
     selection: TableCellRangeSelection,
 ) -> Option<TableOverlayRect> {
-    let top_left = table_view.visible_cells.iter().find(|cell| {
-        cell.position.row == selection.range.start_row
-            && cell.position.col == selection.range.start_col
-    })?;
-    let bottom_right = table_view.visible_cells.iter().find(|cell| {
-        cell.position.row == selection.range.end_row && cell.position.col == selection.range.end_col
-    })?;
+    let top_left = table_cell_rect(
+        table_view,
+        selection.range.start_row,
+        selection.range.start_col,
+    )?;
+    let bottom_right =
+        table_cell_rect(table_view, selection.range.end_row, selection.range.end_col)?;
     // Use inner stroke: the outline border is drawn inside the selection bounds.
     // This avoids the last-row clipping issue where expanding outward would get
     // clamped to table_view.height_px, making the bottom border invisible.
-    let x = top_left.x_px.max(0.0);
-    let y = top_left.y_px.max(0.0);
-    let right = (bottom_right.x_px + bottom_right.width_px).min(table_view.width_px);
-    let bottom = (bottom_right.y_px + bottom_right.height_px).min(table_view.height_px);
+    let x = top_left.x.max(0.0);
+    let y = top_left.y.max(0.0);
+    let right = (bottom_right.x + bottom_right.width).min(table_view.width_px);
+    let bottom = (bottom_right.y + bottom_right.height).min(table_view.height_px);
     Some(TableOverlayRect {
         x,
         y,
@@ -241,10 +306,15 @@ fn render_table_axis_handle(
     theme: GuiTheme,
     view: Entity<CditorV2View>,
 ) -> AnyElement {
-    let selected_long_edge = 22.0;
     let (width, height) = match (axis, selected) {
-        (TableAxis::Row, true) => (TABLE_AXIS_HANDLE_SIZE_PX, selected_long_edge),
-        (TableAxis::Column, true) => (selected_long_edge, TABLE_AXIS_HANDLE_SIZE_PX),
+        (TableAxis::Row, true) => (
+            TABLE_AXIS_HANDLE_SIZE_PX,
+            TABLE_AXIS_SELECTED_HANDLE_LONG_EDGE_PX,
+        ),
+        (TableAxis::Column, true) => (
+            TABLE_AXIS_SELECTED_HANDLE_LONG_EDGE_PX,
+            TABLE_AXIS_HANDLE_SIZE_PX,
+        ),
         _ => (TABLE_AXIS_HANDLE_SIZE_PX, TABLE_AXIS_HANDLE_SIZE_PX),
     };
     let (left, top) = match axis {
@@ -328,58 +398,40 @@ fn render_table_axis_outline(
 }
 
 fn render_active_cell_gutter(
-    axis: TableAxis,
-    rect: TableOverlayRect,
+    geometry: ActiveCellGutterGeometry,
     origin: TableToolbarEditorOrigin,
     theme: GuiTheme,
     view: Entity<CditorV2View>,
     block_id: BlockId,
-    index: usize,
 ) -> AnyElement {
-    let (left, top, width, height) = match axis {
-        TableAxis::Column => (
-            rect.x + rect.width / 2.0 - 12.0,
-            rect.y - TABLE_CELL_GUTTER_SIZE_PX / 2.0,
-            24.0,
-            TABLE_CELL_GUTTER_SIZE_PX,
-        ),
-        TableAxis::Row => (
-            rect.x - TABLE_CELL_GUTTER_SIZE_PX / 2.0,
-            rect.y + rect.height / 2.0 - 12.0,
-            TABLE_CELL_GUTTER_SIZE_PX,
-            24.0,
-        ),
-    };
     div()
         .absolute()
-        .left(px(origin.x_px + left))
-        .top(px(origin.y_px + top))
-        .w(px(width))
-        .h(px(height))
+        .left(px(origin.x_px + geometry.hitbox.x))
+        .top(px(origin.y_px + geometry.hitbox.y))
+        .w(px(geometry.hitbox.width))
+        .h(px(geometry.hitbox.height))
         .cursor_pointer()
         .on_mouse_down(MouseButton::Left, move |_event, window, cx| {
             let _ = view.update(cx, |view, cx| {
-                view.select_table_axis_from_gui(block_id, axis, index, window, cx);
+                view.select_table_axis_from_gui(
+                    block_id,
+                    geometry.axis,
+                    geometry.index,
+                    window,
+                    cx,
+                );
             });
             cx.stop_propagation();
         })
         .child(
             div()
                 .absolute()
+                .left(px(geometry.indicator.x))
+                .top(px(geometry.indicator.y))
+                .w(px(geometry.indicator.width))
+                .h(px(geometry.indicator.height))
                 .bg(rgb(theme.muted))
-                .rounded(px(TABLE_CELL_GUTTER_THICKNESS_PX))
-                .when(axis == TableAxis::Column, |this| {
-                    this.left(px(5.0))
-                        .top(px(6.0))
-                        .w(px(14.0))
-                        .h(px(TABLE_CELL_GUTTER_THICKNESS_PX))
-                })
-                .when(axis == TableAxis::Row, |this| {
-                    this.left(px(6.0))
-                        .top(px(5.0))
-                        .w(px(TABLE_CELL_GUTTER_THICKNESS_PX))
-                        .h(px(14.0))
-                }),
+                .rounded(px(TABLE_CELL_GUTTER_THICKNESS_PX)),
         )
         .into_any_element()
 }
@@ -487,6 +539,43 @@ mod tests {
     }
 
     #[test]
+    fn table_axis_chrome_follows_horizontal_content_scroll() {
+        let mut table_view = table_view_with_two_by_two_cells();
+        table_view.horizontal_scroll_offset_px = -80.0;
+
+        assert_eq!(
+            table_cell_rect(&table_view, 0, 1),
+            Some(TableOverlayRect {
+                x: 40.0,
+                y: 0.0,
+                width: 120.0,
+                height: 36.0,
+            })
+        );
+        assert_eq!(
+            table_axis_track_rect(&table_view, TableAxis::Column, 1),
+            Some(TableOverlayRect {
+                x: 40.0,
+                y: 0.0,
+                width: 120.0,
+                height: 72.0,
+            })
+        );
+        assert_eq!(
+            table_axis_selection_outline_rect(
+                &table_view,
+                TableAxisSelection::new(7, TableAxis::Column, 0),
+            ),
+            Some(TableOverlayRect {
+                x: 0.0,
+                y: 0.0,
+                width: 40.0,
+                height: 72.0,
+            })
+        );
+    }
+
+    #[test]
     fn table_axis_overlay_editor_position_adds_content_origin_once() {
         let table_view = table_view_with_two_by_two_cells();
         let origin = TableToolbarEditorOrigin {
@@ -497,6 +586,71 @@ mod tests {
 
         assert_eq!(rect.x, 0.0);
         assert_eq!(table_overlay_left_in_editor(rect, origin), 89.0);
+    }
+
+    #[test]
+    fn first_row_cell_uses_both_top_column_and_left_row_gutters() {
+        let table_view = table_view_with_two_by_two_cells();
+        let cell = table_cell_rect(&table_view, 0, 1).unwrap();
+        let gutters = active_cell_gutter_geometries(
+            TableCellPosition { row: 0, col: 1 },
+            cell,
+            table_view.horizontal_scroll_offset_px,
+        );
+        assert_eq!(gutters.len(), 2);
+        let column_gutter = gutters[0];
+        let row_gutter = gutters[1];
+
+        assert_eq!(column_gutter.axis, TableAxis::Column);
+        assert_eq!(column_gutter.index, 1);
+        assert_eq!(
+            column_gutter.orientation,
+            TableCellGutterOrientation::Horizontal
+        );
+        assert_eq!(
+            column_gutter.hitbox.y + column_gutter.hitbox.height / 2.0,
+            cell.y
+        );
+        assert_eq!(
+            column_gutter.hitbox.y
+                + column_gutter.indicator.y
+                + column_gutter.indicator.height / 2.0,
+            cell.y
+        );
+        assert_eq!(row_gutter.axis, TableAxis::Row);
+        assert_eq!(row_gutter.index, 0);
+        assert_eq!(row_gutter.orientation, TableCellGutterOrientation::Vertical);
+        assert_eq!(
+            row_gutter.hitbox.x + row_gutter.hitbox.width / 2.0,
+            table_view.horizontal_scroll_offset_px
+        );
+    }
+
+    #[test]
+    fn later_rows_use_only_a_vertical_row_gutter_on_the_table_left_border() {
+        let mut table_view = table_view_with_two_by_two_cells();
+        table_view.horizontal_scroll_offset_px = -24.0;
+        let cell = table_cell_rect(&table_view, 1, 1).unwrap();
+        let gutters = active_cell_gutter_geometries(
+            TableCellPosition { row: 1, col: 1 },
+            cell,
+            table_view.horizontal_scroll_offset_px,
+        );
+        assert_eq!(gutters.len(), 1);
+        let gutter = gutters[0];
+
+        assert_eq!(gutter.axis, TableAxis::Row);
+        assert_eq!(gutter.index, 1);
+        assert_eq!(gutter.orientation, TableCellGutterOrientation::Vertical);
+        assert_ne!(cell.x, table_view.horizontal_scroll_offset_px);
+        assert_eq!(
+            gutter.hitbox.x + gutter.hitbox.width / 2.0,
+            table_view.horizontal_scroll_offset_px
+        );
+        assert_eq!(
+            gutter.hitbox.x + gutter.indicator.x + gutter.indicator.width / 2.0,
+            table_view.horizontal_scroll_offset_px
+        );
     }
 
     fn table_view_with_two_by_two_cells() -> TableViewState {
@@ -517,6 +671,7 @@ mod tests {
             ],
             focused_cell: None,
             focused_cell_offset: None,
+            focused_cell_selection_range: None,
         }
     }
 

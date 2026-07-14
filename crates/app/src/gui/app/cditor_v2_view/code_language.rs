@@ -1,13 +1,45 @@
 use cditor_core::ids::BlockId;
-use gpui::{Context, KeyDownEvent, Window};
+use gpui::{Context, Window};
 
 use crate::gui::app::cditor_v2_view::{CditorV2View, GuiPlatformInputTarget};
 use crate::gui::input::{
-    CodeLanguageEditKeyResult, CodeLanguageEditState, CodeLanguagePopupPlacement,
-    apply_code_language_key,
+    CodeLanguageEditAction, CodeLanguageEditKeyResult, CodeLanguageEditState,
+    CodeLanguagePopupPlacement, apply_code_language_action,
 };
 
 impl CditorV2View {
+    pub(crate) fn toggle_code_language_dropdown_from_gui(
+        &mut self,
+        block_id: BlockId,
+        language: Option<&str>,
+        pointer_y_px: f32,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if self
+            .code_language_edit
+            .as_ref()
+            .is_some_and(|edit| edit.block_id == block_id)
+        {
+            self.cancel_code_language_edit(cx);
+            window.focus(&self.focus, cx);
+        } else {
+            self.start_code_language_edit_from_gui(block_id, language, pointer_y_px, window, cx);
+        }
+    }
+
+    pub(crate) fn dismiss_code_language_dropdown_from_gui(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> bool {
+        let dismissed = self.cancel_code_language_edit(cx);
+        if dismissed {
+            window.focus(&self.focus, cx);
+        }
+        dismissed
+    }
+
     pub(crate) fn start_code_language_edit_from_gui(
         &mut self,
         block_id: BlockId,
@@ -16,10 +48,11 @@ impl CditorV2View {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        self.code_theme_menu_block_id = None;
         window.focus(&self.code_language_focus, cx);
         self.platform_input_target = Some(GuiPlatformInputTarget::code_language(block_id));
         let placement = code_language_popup_placement(pointer_y_px, window);
-        self.code_language_edit = Some(CodeLanguageEditState::new_with_placement(
+        self.code_language_edit = Some(CodeLanguageEditState::new_dropdown_with_placement(
             block_id, language, placement,
         ));
         cx.notify();
@@ -69,21 +102,24 @@ impl CditorV2View {
         cx.notify();
     }
 
-    pub(crate) fn apply_code_language_key_from_gui(
+    pub(crate) fn apply_code_language_action_from_gui(
         &mut self,
-        event: &KeyDownEvent,
+        action: CodeLanguageEditAction,
         cx: &mut Context<Self>,
     ) -> bool {
         let Some(edit) = self.code_language_edit.as_mut() else {
             return false;
         };
-        match apply_code_language_key(edit, event) {
+        match apply_code_language_action(edit, action) {
             CodeLanguageEditKeyResult::Commit => {
                 self.commit_code_language_edit(cx);
                 true
             }
             CodeLanguageEditKeyResult::Cancel => self.cancel_code_language_edit(cx),
-            CodeLanguageEditKeyResult::Changed => true,
+            CodeLanguageEditKeyResult::Changed => {
+                cx.notify();
+                true
+            }
             CodeLanguageEditKeyResult::Ignored => false,
         }
     }
@@ -120,7 +156,7 @@ impl CditorV2View {
 
 fn code_language_popup_placement(pointer_y_px: f32, window: &Window) -> CodeLanguagePopupPlacement {
     const POPUP_MARGIN_PX: f32 = 12.0;
-    const POPUP_ESTIMATED_HEIGHT_PX: f32 = 260.0;
+    const POPUP_ESTIMATED_HEIGHT_PX: f32 = 300.0;
 
     let viewport_height = f32::from(window.viewport_size().height);
     let below = viewport_height - pointer_y_px - POPUP_MARGIN_PX;
