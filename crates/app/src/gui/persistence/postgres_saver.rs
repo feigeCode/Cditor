@@ -7,15 +7,16 @@ use crate::gui::app::CditorV2View;
 use crate::gui::persistence::EditorSaveStatus;
 use cditor_core::document::BlockIndexRecord;
 use cditor_core::edit::EditTransaction;
-use cditor_core::rich_text::BlockPayloadRecord;
+use cditor_core::ids::BlockId;
+use cditor_core::rich_text::{BlockAttrs, BlockPayloadRecord};
 use cditor_runtime::DocumentRuntime;
+use cditor_storage::DOCUMENT_INDEX_VISIBLE_VERSION;
 use cditor_storage_postgres::{
     EditTransactionVersions, PgDocumentId, PostgresDocumentStore, PostgresPayloadStore,
     PostgresTransactionStore, pg_document_id_from_runtime,
 };
 
 pub const DEFAULT_POSTGRES_SAVE_DEBOUNCE: Duration = Duration::from_millis(250);
-const DOCUMENT_INDEX_VISIBLE_VERSION: i64 = 1;
 
 #[derive(Debug, Clone)]
 pub struct PostgresPersistenceTarget {
@@ -40,12 +41,26 @@ pub struct PostgresSaveBatch {
     index_records: Vec<BlockIndexRecord>,
     structure_version: u64,
     transactions: Vec<EditTransaction>,
+    block_attrs: Vec<(BlockId, BlockAttrs)>,
 }
 
 impl PostgresSaveBatch {
     fn saved_structure_version(&self) -> Option<u64> {
         (!self.index_records.is_empty()).then_some(self.structure_version)
     }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PostgresSaveOutcome {
+    pub saved_structure_version: Option<u64>,
+    pub saved_payload_versions: Vec<(BlockId, u64)>,
+}
+
+fn payload_versions(payloads: &[BlockPayloadRecord]) -> Vec<(BlockId, u64)> {
+    payloads
+        .iter()
+        .map(|payload| (payload.block_id, payload.content_version))
+        .collect()
 }
 
 #[derive(Debug, Default)]
@@ -77,6 +92,10 @@ impl PostgresPersistenceState {
 
     pub fn is_enabled(&self) -> bool {
         self.target.is_some()
+    }
+
+    pub fn target(&self) -> Option<&PostgresPersistenceTarget> {
+        self.target.as_ref()
     }
 
     pub fn set_target(
@@ -133,6 +152,7 @@ impl PostgresPersistenceState {
         self.debounce_scheduled = false;
         let transactions = runtime.drain_pending_structure_transactions();
         let payloads = runtime.loaded_payload_records_snapshot();
+        let block_attrs = runtime.block_attrs_snapshot();
         let structure_version = runtime.structure_version();
         let should_save_structure = self
             .last_saved_structure_version
@@ -159,6 +179,7 @@ impl PostgresPersistenceState {
             index_records,
             structure_version,
             transactions,
+            block_attrs,
         })
     }
 
@@ -179,8 +200,9 @@ impl PostgresPersistenceState {
     }
 }
 
-pub async fn save_postgres_batch(batch: PostgresSaveBatch) -> Result<Option<u64>, String> {
+pub async fn save_postgres_batch(batch: PostgresSaveBatch) -> Result<PostgresSaveOutcome, String> {
     let saved_structure_version = batch.saved_structure_version();
+    let saved_payload_versions = payload_versions(&batch.payloads);
     let document_store = PostgresDocumentStore::new(batch.pool.clone());
     let payload_store = PostgresPayloadStore::new(batch.pool.clone());
     let transaction_store = PostgresTransactionStore::new(batch.pool.clone());
@@ -206,6 +228,11 @@ pub async fn save_postgres_batch(batch: PostgresSaveBatch) -> Result<Option<u64>
             .await
             .map_err(|error| error.to_string())?;
     }
+
+    document_store
+        .save_block_attrs(batch.document_id, &batch.block_attrs)
+        .await
+        .map_err(|error| error.to_string())?;
 
     // Payload rows reference `blocks`; persist structural changes first so newly
     // inserted/split blocks exist before `save_block_payloads` updates them.
@@ -236,7 +263,10 @@ pub async fn save_postgres_batch(batch: PostgresSaveBatch) -> Result<Option<u64>
             .map_err(|error| error.to_string())?;
     }
 
-    Ok(saved_structure_version)
+    Ok(PostgresSaveOutcome {
+        saved_structure_version,
+        saved_payload_versions,
+    })
 }
 
 pub fn mark_dirty_and_schedule_postgres_save(
@@ -246,4 +276,20 @@ pub fn mark_dirty_and_schedule_postgres_save(
 ) {
     *save_status = EditorSaveStatus::Dirty;
     persistence.schedule(cx);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use cditor_core::rich_text::RichBlockKind;
+
+    #[test]
+    fn save_acknowledgement_captures_exact_snapshot_versions() {
+        let mut first = BlockPayloadRecord::rich_text(7, RichBlockKind::Paragraph, "first");
+        first.content_version = 12;
+        let mut second = BlockPayloadRecord::rich_text(9, RichBlockKind::Paragraph, "second");
+        second.content_version = 4;
+
+        assert_eq!(payload_versions(&[first, second]), vec![(7, 12), (9, 4)]);
+    }
 }

@@ -1,5 +1,6 @@
 use std::time::Duration;
 
+#[cfg(feature = "postgres")]
 use sqlx::PgPool;
 
 use cditor_core::ids::DocumentId;
@@ -25,9 +26,17 @@ pub enum CditorBackend {
     Demo,
     LargeDemo,
     Memory,
-    PostgresUrl { url: String },
-    PostgresPool { pool: PgPool },
-    Cloud { endpoint: String },
+    #[cfg(feature = "postgres")]
+    PostgresUrl {
+        url: String,
+    },
+    #[cfg(feature = "postgres")]
+    PostgresPool {
+        pool: PgPool,
+    },
+    Cloud {
+        endpoint: String,
+    },
 }
 
 impl PartialEq for CditorBackend {
@@ -36,7 +45,9 @@ impl PartialEq for CditorBackend {
             (Self::Demo, Self::Demo)
             | (Self::LargeDemo, Self::LargeDemo)
             | (Self::Memory, Self::Memory) => true,
+            #[cfg(feature = "postgres")]
             (Self::PostgresUrl { url: a }, Self::PostgresUrl { url: b }) => a == b,
+            #[cfg(feature = "postgres")]
             (Self::PostgresPool { .. }, Self::PostgresPool { .. }) => true,
             (Self::Cloud { endpoint: a }, Self::Cloud { endpoint: b }) => a == b,
             _ => false,

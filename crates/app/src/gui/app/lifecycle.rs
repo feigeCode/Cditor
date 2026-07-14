@@ -7,6 +7,7 @@ use cditor_core::ids::BlockId;
 use crate::gui::app::cditor_v2_view::ai::default_ai_provider;
 use crate::gui::app::cditor_v2_view::{CditorV2View, CditorViewState, save_status_for_mode};
 use crate::gui::app::interaction::table_mode::GuiTableInteractionMode;
+use crate::gui::block::code::highlight::DEFAULT_CODE_HIGHLIGHT_THEME;
 use crate::gui::input::BlockDragSelectionController;
 use crate::gui::overlay::table::TableViewportMeasurement;
 use crate::gui::persistence::{
@@ -79,6 +80,7 @@ impl CditorV2View {
             text_layouts: HashMap::new(),
             table_cell_layouts: HashMap::new(),
             table_scroll_state: Default::default(),
+            code_highlights: Default::default(),
             mermaid_renders: Default::default(),
             mermaid_source_blocks: Default::default(),
             whiteboard_thumbnails: Default::default(),
@@ -87,12 +89,20 @@ impl CditorV2View {
             text_drag_selection: None,
             block_drag_selection: BlockDragSelectionController::default(),
             code_language_edit: None,
+            code_theme_menu_block_id: None,
+            code_highlight_theme: DEFAULT_CODE_HIGHLIGHT_THEME,
             slash_menu: None,
             toast: None,
             table_interaction_mode: GuiTableInteractionMode::Idle,
+            table_menu_ui: Default::default(),
             hovered_block_id: None,
             action_block_id: None,
             gutter_toolbar_block_id: None,
+            block_transform_menu_open: false,
+            color_menu_open: false,
+            color_menu_hover_generation: 0,
+            color_menu_scroll_handle: Default::default(),
+            last_color_action: None,
             gutter_block_drag: None,
             gutter_drag_auto_scroll_scheduled: false,
             image_resize_drag: None,
@@ -103,6 +113,7 @@ impl CditorV2View {
             postgres_persistence: postgres_target
                 .map(|target| PostgresPersistenceState::for_target(target, autosave_interval))
                 .unwrap_or_else(PostgresPersistenceState::disabled),
+            payload_window_load_scheduler: Default::default(),
             autosave_interval,
             platform_input_target: None,
             integration: None,
@@ -140,6 +151,7 @@ impl CditorV2View {
             text_layouts: HashMap::new(),
             table_cell_layouts: HashMap::new(),
             table_scroll_state: Default::default(),
+            code_highlights: Default::default(),
             mermaid_renders: Default::default(),
             mermaid_source_blocks: Default::default(),
             whiteboard_thumbnails: Default::default(),
@@ -148,12 +160,20 @@ impl CditorV2View {
             text_drag_selection: None,
             block_drag_selection: BlockDragSelectionController::default(),
             code_language_edit: None,
+            code_theme_menu_block_id: None,
+            code_highlight_theme: DEFAULT_CODE_HIGHLIGHT_THEME,
             slash_menu: None,
             toast: None,
             table_interaction_mode: GuiTableInteractionMode::Idle,
+            table_menu_ui: Default::default(),
             hovered_block_id: None,
             action_block_id: None,
             gutter_toolbar_block_id: None,
+            block_transform_menu_open: false,
+            color_menu_open: false,
+            color_menu_hover_generation: 0,
+            color_menu_scroll_handle: Default::default(),
+            last_color_action: None,
             gutter_block_drag: None,
             gutter_drag_auto_scroll_scheduled: false,
             image_resize_drag: None,
@@ -162,6 +182,7 @@ impl CditorV2View {
             table_hscroll_drag: None,
             projected_block_rects: Vec::new(),
             postgres_persistence: PostgresPersistenceState::disabled(),
+            payload_window_load_scheduler: Default::default(),
             autosave_interval,
             platform_input_target: None,
             integration: None,
@@ -201,6 +222,7 @@ impl CditorV2View {
             text_layouts: HashMap::new(),
             table_cell_layouts: HashMap::new(),
             table_scroll_state: Default::default(),
+            code_highlights: Default::default(),
             mermaid_renders: Default::default(),
             mermaid_source_blocks: Default::default(),
             whiteboard_thumbnails: Default::default(),
@@ -209,12 +231,20 @@ impl CditorV2View {
             text_drag_selection: None,
             block_drag_selection: BlockDragSelectionController::default(),
             code_language_edit: None,
+            code_theme_menu_block_id: None,
+            code_highlight_theme: DEFAULT_CODE_HIGHLIGHT_THEME,
             slash_menu: None,
             toast: None,
             table_interaction_mode: GuiTableInteractionMode::Idle,
+            table_menu_ui: Default::default(),
             hovered_block_id: None,
             action_block_id: None,
             gutter_toolbar_block_id: None,
+            block_transform_menu_open: false,
+            color_menu_open: false,
+            color_menu_hover_generation: 0,
+            color_menu_scroll_handle: Default::default(),
+            last_color_action: None,
             gutter_block_drag: None,
             gutter_drag_auto_scroll_scheduled: false,
             image_resize_drag: None,
@@ -223,6 +253,7 @@ impl CditorV2View {
             table_hscroll_drag: None,
             projected_block_rects: Vec::new(),
             postgres_persistence: PostgresPersistenceState::disabled(),
+            payload_window_load_scheduler: Default::default(),
             autosave_interval: DEFAULT_POSTGRES_SAVE_DEBOUNCE,
             platform_input_target: None,
             integration: None,
@@ -243,19 +274,25 @@ impl CditorV2View {
         self.text_layouts.clear();
         self.table_cell_layouts.clear();
         self.table_scroll_state.clear();
+        self.code_highlights.clear();
         self.mermaid_renders.clear();
         self.mermaid_source_blocks.clear();
         self.whiteboard_thumbnails.clear();
         self.whiteboard_editor = None;
+        self.payload_window_load_scheduler.reset();
         self.text_drag_selection = None;
         self.block_drag_selection = BlockDragSelectionController::default();
         self.code_language_edit = None;
+        self.code_theme_menu_block_id = None;
         self.slash_menu = None;
         self.toast = None;
         self.table_interaction_mode = GuiTableInteractionMode::Idle;
+        self.table_menu_ui = Default::default();
         self.hovered_block_id = None;
         self.action_block_id = None;
         self.gutter_toolbar_block_id = None;
+        self.block_transform_menu_open = false;
+        self.color_menu_open = false;
         self.gutter_block_drag = None;
         self.gutter_drag_auto_scroll_scheduled = false;
         self.image_resize_drag = None;
@@ -278,17 +315,22 @@ impl CditorV2View {
         self.text_layouts.clear();
         self.table_cell_layouts.clear();
         self.table_scroll_state.clear();
+        self.code_highlights.clear();
         self.mermaid_renders.clear();
         self.mermaid_source_blocks.clear();
         self.text_drag_selection = None;
         self.block_drag_selection = BlockDragSelectionController::default();
         self.code_language_edit = None;
+        self.code_theme_menu_block_id = None;
         self.slash_menu = None;
         self.toast = None;
         self.table_interaction_mode = GuiTableInteractionMode::Idle;
+        self.table_menu_ui = Default::default();
         self.hovered_block_id = None;
         self.action_block_id = None;
         self.gutter_toolbar_block_id = None;
+        self.block_transform_menu_open = false;
+        self.color_menu_open = false;
         self.gutter_block_drag = None;
         self.gutter_drag_auto_scroll_scheduled = false;
         self.image_resize_drag = None;

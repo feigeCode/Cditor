@@ -7,10 +7,14 @@ use cditor_core::rich_text::RichBlockKind;
 use cditor_runtime::ViewBlockSnapshot;
 
 pub const BLOCK_INDENT_STEP_PX: f32 = 24.0;
-pub const BLOCK_GUTTER_WIDTH_PX: f32 = 24.0;
+pub const BLOCK_GUTTER_WIDTH_PX: f32 = 48.0;
 pub const BLOCK_GUTTER_HEIGHT_PX: f32 = 24.0;
 pub const BLOCK_SHELL_OUTER_PADDING_X_PX: f32 = 8.0;
 pub const BLOCK_ROW_GAP_PX: f32 = 8.0;
+
+pub const fn block_content_left_px(indent_px: f32) -> f32 {
+    BLOCK_SHELL_OUTER_PADDING_X_PX + indent_px + BLOCK_GUTTER_WIDTH_PX + BLOCK_ROW_GAP_PX
+}
 pub const BLOCK_PREFIX_WIDTH_PX: f32 = 24.0;
 pub const CALLOUT_PREFIX_WIDTH_PX: f32 = 32.0;
 pub const NOTION_QUOTE_CONTENT_GAP_PX: f32 = 14.0;
@@ -20,7 +24,8 @@ pub struct BlockChromeStyle {
     pub indent_px: f32,
     pub gutter_width_px: f32,
     pub gutter_height_px: f32,
-    pub prefix_width_px: f32,
+    pub marker_lane_width_px: f32,
+    pub content_prefix_width_px: f32,
     pub content_min_height_px: f32,
     pub content_padding_y_px: f32,
     pub content_padding_left_px: f32,
@@ -37,26 +42,55 @@ impl BlockChromeStyle {
     pub fn from_snapshot(block: &ViewBlockSnapshot, theme: GuiTheme) -> Self {
         let kind_style = KindChromeStyle::from_kind(&block.kind, theme);
         let outer_background = theme.surface;
+        let block_background = block
+            .attrs
+            .background_color
+            .as_deref()
+            .and_then(parse_hex_color)
+            .unwrap_or(kind_style.background);
+        let block_text = block
+            .attrs
+            .color
+            .as_deref()
+            .and_then(parse_hex_color)
+            .unwrap_or(kind_style.text);
         Self {
             indent_px: block.chrome.list_info.depth as f32 * BLOCK_INDENT_STEP_PX,
             gutter_width_px: BLOCK_GUTTER_WIDTH_PX,
             gutter_height_px: BLOCK_GUTTER_HEIGHT_PX,
-            prefix_width_px: match block.chrome.prefix {
-                cditor_core::block::BlockPrefixSnapshot::Callout { .. } => CALLOUT_PREFIX_WIDTH_PX,
-                cditor_core::block::BlockPrefixSnapshot::None => 0.0,
-                _ => BLOCK_PREFIX_WIDTH_PX,
-            },
+            marker_lane_width_px: BLOCK_PREFIX_WIDTH_PX,
+            content_prefix_width_px: block_content_prefix_width_px(block),
             content_min_height_px: kind_style.min_height_px,
             content_padding_y_px: kind_style.padding_y_px,
             content_padding_left_px: kind_style.padding_left_px,
             content_padding_right_px: kind_style.padding_right_px,
             content_radius_px: kind_style.radius_px,
             outer_background,
-            content_background: kind_style.background,
+            content_background: block_background,
             content_border: kind_style.border,
-            text_color: kind_style.text,
+            text_color: block_text,
             quote_bar: kind_style.quote_bar,
         }
+    }
+}
+
+fn parse_hex_color(value: &str) -> Option<u32> {
+    let hex = value.strip_prefix('#').unwrap_or(value);
+    (hex.len() == 6)
+        .then(|| u32::from_str_radix(hex, 16).ok())
+        .flatten()
+}
+
+/// Prefixes rendered inside the block surface rather than in the marker lane.
+/// Callout icons belong to the callout card. A todo checkbox starts exactly at
+/// the shared block surface origin and reserves one marker-width before text.
+pub fn block_content_prefix_width_px(block: &ViewBlockSnapshot) -> f32 {
+    use cditor_core::block::BlockPrefixSnapshot;
+
+    match block.chrome.prefix {
+        BlockPrefixSnapshot::Callout { .. } => CALLOUT_PREFIX_WIDTH_PX,
+        BlockPrefixSnapshot::Todo { .. } => BLOCK_PREFIX_WIDTH_PX,
+        _ => 0.0,
     }
 }
 
@@ -220,8 +254,92 @@ mod tests {
         let style = BlockChromeStyle::from_snapshot(&snapshot, GuiTheme::light());
 
         assert_eq!(style.indent_px, 48.0);
-        assert_eq!(style.gutter_width_px, 24.0);
-        assert_eq!(style.prefix_width_px, 24.0);
+        assert_eq!(style.gutter_width_px, 48.0);
+        assert_eq!(style.marker_lane_width_px, 24.0);
+        assert_eq!(style.content_prefix_width_px, 0.0);
+    }
+
+    #[test]
+    fn block_attrs_override_surface_and_base_text_colors() {
+        let mut snapshot = block(RichBlockKind::Paragraph, BlockChromeSnapshot::plain());
+        snapshot.attrs.color = Some("#d44c47".to_owned());
+        snapshot.attrs.background_color = Some("#fdebec".to_owned());
+
+        let style = BlockChromeStyle::from_snapshot(&snapshot, GuiTheme::light());
+
+        assert_eq!(style.text_color, 0xd44c47);
+        assert_eq!(style.content_background, 0xfdebec);
+        assert_eq!(style.outer_background, GuiTheme::light().surface);
+    }
+
+    #[test]
+    fn heading_and_root_paragraph_share_a_marker_lane_without_gutter_overlap() {
+        let heading = block(
+            RichBlockKind::Heading { level: 1 },
+            BlockChromeSnapshot::from_kind(
+                &RichBlockKind::Heading { level: 1 },
+                BlockListInfo::root(),
+                true,
+                false,
+            ),
+        );
+        let paragraph = block(RichBlockKind::Paragraph, BlockChromeSnapshot::plain());
+
+        let heading_style = BlockChromeStyle::from_snapshot(&heading, GuiTheme::light());
+        let paragraph_style = BlockChromeStyle::from_snapshot(&paragraph, GuiTheme::light());
+
+        assert_eq!(heading_style.marker_lane_width_px, BLOCK_PREFIX_WIDTH_PX);
+        assert_eq!(heading_style.indent_px, paragraph_style.indent_px);
+        assert_eq!(paragraph_style.marker_lane_width_px, BLOCK_PREFIX_WIDTH_PX);
+    }
+
+    #[test]
+    fn every_block_surface_starts_after_the_same_marker_lane() {
+        for kind in [
+            RichBlockKind::Code { language: None },
+            RichBlockKind::Table,
+            RichBlockKind::Image,
+            RichBlockKind::Quote,
+        ] {
+            let style = BlockChromeStyle::from_snapshot(
+                &block(kind, BlockChromeSnapshot::plain()),
+                GuiTheme::light(),
+            );
+            assert_eq!(style.marker_lane_width_px, BLOCK_PREFIX_WIDTH_PX);
+            assert_eq!(style.content_prefix_width_px, 0.0);
+        }
+    }
+
+    #[test]
+    fn callout_icon_is_an_internal_surface_prefix() {
+        let kind = RichBlockKind::Callout {
+            variant: cditor_core::rich_text::CalloutVariant::Note,
+        };
+        let style = BlockChromeStyle::from_snapshot(
+            &block(
+                kind.clone(),
+                BlockChromeSnapshot::from_kind(&kind, BlockListInfo::root(), false, false),
+            ),
+            GuiTheme::light(),
+        );
+
+        assert_eq!(style.marker_lane_width_px, BLOCK_PREFIX_WIDTH_PX);
+        assert_eq!(style.content_prefix_width_px, CALLOUT_PREFIX_WIDTH_PX);
+    }
+
+    #[test]
+    fn todo_checkbox_is_an_internal_surface_prefix() {
+        let kind = RichBlockKind::Todo { checked: false };
+        let style = BlockChromeStyle::from_snapshot(
+            &block(
+                kind.clone(),
+                BlockChromeSnapshot::from_kind(&kind, BlockListInfo::root(), false, false),
+            ),
+            GuiTheme::light(),
+        );
+
+        assert_eq!(style.marker_lane_width_px, BLOCK_PREFIX_WIDTH_PX);
+        assert_eq!(style.content_prefix_width_px, BLOCK_PREFIX_WIDTH_PX);
     }
 
     #[test]

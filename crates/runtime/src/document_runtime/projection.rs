@@ -25,6 +25,17 @@ impl DocumentRuntime {
             .map(|payload| payload.content_version)
     }
 
+    pub fn block_kind(&self, block_id: BlockId) -> Option<RichBlockKind> {
+        self.payload_window
+            .get(block_id)
+            .map(|payload| payload.kind.clone())
+            .or_else(|| {
+                self.index
+                    .index_of(block_id)
+                    .map(|index| rich_block_kind_from_tag(self.index.kind_tags[index]))
+            })
+    }
+
     pub fn block_payload_record(&self, block_id: BlockId) -> Option<BlockPayloadRecord> {
         self.payload_window
             .get(block_id)
@@ -42,26 +53,14 @@ impl DocumentRuntime {
     pub fn projection_for_window_planned(&mut self) -> EditorViewProjection {
         let total_start = Instant::now();
         self.refresh_ai_session_validity();
-        let (page_range, block_range) = if self.demo_payload_count.is_some() {
-            self.demo_viewport_window_ranges()
-        } else {
-            let page_range = self.current_page_window_planned();
-            let block_range = self.block_range_for_page_window(&page_range);
-            (page_range, block_range)
-        };
+        // The GUI always projects a viewport-sized block window. Page windows are
+        // still maintained for layout and scroll geometry, but must not decide how
+        // many block entities are created in a frame. This is the same bounded
+        // path used by the synthetic 100k fixture and by resident/PG documents.
+        let (page_range, block_range) = self.viewport_window_ranges();
         self.ensure_demo_payload_window(&block_range);
+        self.hydrate_payload_runtime_state_for_range(block_range.clone());
         let projection = self.projection_for_ranges(page_range, block_range);
-        let projection =
-            if self.scrollbar_drag.is_some() && projection.render_window.is_placeholder() {
-                self.last_successful_projection
-                    .clone()
-                    .unwrap_or(projection)
-            } else {
-                if !projection.render_window.is_placeholder() {
-                    self.last_successful_projection = Some(projection.clone());
-                }
-                projection
-            };
         log_runtime_timing(
             "runtime.projection_for_window_planned",
             total_start,
@@ -77,7 +76,7 @@ impl DocumentRuntime {
         )
     }
 
-    fn demo_viewport_window_ranges(&self) -> (Range<usize>, Range<usize>) {
+    fn viewport_window_ranges(&self) -> (Range<usize>, Range<usize>) {
         let total_visible = self.visible_index.total_visible_count();
         if total_visible == 0 {
             return (0..0, 0..0);
@@ -100,13 +99,19 @@ impl DocumentRuntime {
         let end = natural_end
             .min(start.saturating_add(max_blocks))
             .max(start + 1);
-        let page = self
+        let start_page = self
             .page_layout
-            .page_for_block_index(current)
+            .page_for_block_index(start)
             .unwrap_or(0)
             .min(self.page_layout.page_count().saturating_sub(1));
+        let end_page = self
+            .page_layout
+            .page_for_block_index(end.saturating_sub(1))
+            .unwrap_or(start_page)
+            .saturating_add(1)
+            .min(self.page_layout.page_count());
         (
-            page..page.saturating_add(1).min(self.page_layout.page_count()),
+            start_page..end_page.max(start_page.saturating_add(1)),
             start..end,
         )
     }
@@ -137,7 +142,7 @@ impl DocumentRuntime {
         for payload in payloads {
             let mut payload = normalize_payload_record_for_kind(payload);
             self.sync_table_runtime_from_loaded_record(&mut payload);
-            self.payload_window.insert(payload);
+            self.payload_window.insert_loaded(payload);
         }
         eprintln!(
             "[cditor][timing] demo_payload_window range={:?} payloads={} elapsed_ms={:.2}",
@@ -178,7 +183,12 @@ impl DocumentRuntime {
         let block_start = block_range.start.min(total_visible_blocks);
         let block_end = block_range.end.min(total_visible_blocks).max(block_start);
         let block_range = block_start..block_end;
-        if !self.payload_window_covers(&block_range) {
+        // Keep resident blocks on screen while PostgreSQL fills the newly
+        // exposed edge of a scrolling window. Replacing the whole projection
+        // because one overscan block is missing makes every wheel tick flash a
+        // full-page skeleton. A full window placeholder is reserved for cold
+        // jumps where none of the target blocks are resident yet.
+        if !self.payload_window_covers(&block_range) && !self.payload_window_has_any(&block_range) {
             return self.placeholder_projection_for_ranges(page_range, block_range);
         }
         let block_ids = self.visible_index.visible_block_ids[block_range.clone()].to_vec();
@@ -248,6 +258,7 @@ impl DocumentRuntime {
                     .unwrap_or(BlockPayloadView::Placeholder {
                         estimated_height: 32.0,
                     });
+                let placeholder = matches!(payload, BlockPayloadView::Placeholder { .. });
                 let kind = match &payload {
                     BlockPayloadView::Loaded(payload) => payload.kind.clone(),
                     _ => rich_block_kind_from_tag(self.index.kind_tags[source_index]),
@@ -265,11 +276,14 @@ impl DocumentRuntime {
                     .list_projection_cache
                     .entry(source_index)
                     .map(|entry| {
+                        let has_foldable_content = self
+                            .visible_index
+                            .has_foldable_content(&self.index, *block_id);
                         cditor_core::block::BlockChromeSnapshot::from_kind(
                             &kind,
                             entry.list_info,
-                            entry.chrome.has_children,
-                            entry.chrome.collapsed,
+                            has_foldable_content,
+                            self.visible_index.is_folded(*block_id),
                         )
                     })
                     .unwrap_or_else(cditor_core::block::BlockChromeSnapshot::plain);
@@ -278,11 +292,16 @@ impl DocumentRuntime {
                     .focused_table_cell_offset()
                     .filter(|(focused_block_id, _, _, _)| focused_block_id == block_id)
                     .map(|(_, _, _, offset)| offset);
+                let focused_table_cell_selection_range = self
+                    .focused_table_cell_selection_state()
+                    .filter(|(focused_block_id, _, _, _, _, _)| focused_block_id == block_id)
+                    .map(|(_, _, _, range, _, _)| range);
                 let table_view = self.table_runtime(*block_id).map(|runtime| {
                     table::table_view_state_from_payload(
                         runtime.table(),
                         focused_table_cell,
                         focused_table_cell_offset,
+                        focused_table_cell_selection_range,
                         self.table_horizontal_scroll_offset_px(*block_id),
                     )
                 });
@@ -313,13 +332,15 @@ impl DocumentRuntime {
                         ),
                     );
                 }
+                let mut attrs = self.block_attrs.get(block_id).cloned().unwrap_or_default();
+                attrs.folded = self.visible_index.is_folded(*block_id);
                 ViewBlockSnapshot {
                     block_id: *block_id,
                     visible_index,
                     depth: self.index.depths[source_index],
                     chrome,
                     kind,
-                    attrs: BlockAttrs::default(),
+                    attrs,
                     payload,
                     layout,
                     selected: self.selected_block_ids.contains(block_id),
@@ -339,7 +360,7 @@ impl DocumentRuntime {
                         .editing
                         .as_ref()
                         .is_some_and(|editing| editing.is_pinned(*block_id)),
-                    placeholder: false,
+                    placeholder,
                 }
             })
             .collect::<Vec<_>>();
@@ -370,6 +391,7 @@ impl DocumentRuntime {
             ai_preview: self.ai_preview_for_block_range(&block_range),
             before_window_height,
             placeholder_window_height: None,
+            placeholder_window_error: None,
             after_window_height,
             down_placer_height,
             total_visible_blocks,
@@ -393,6 +415,14 @@ impl DocumentRuntime {
         })
     }
 
+    fn payload_window_has_any(&self, block_range: &Range<usize>) -> bool {
+        block_range.clone().any(|visible_index| {
+            self.visible_index
+                .id_at_visible_index(visible_index)
+                .is_some_and(|block_id| self.payload_window.payloads.contains_key(&block_id))
+        })
+    }
+
     fn placeholder_projection_for_ranges(
         &self,
         page_range: Range<usize>,
@@ -403,7 +433,11 @@ impl DocumentRuntime {
             .height_index
             .offset_of_block(block_range.start)
             .unwrap_or(0.0);
-        let placeholder_height = self.height_for_page_range(&page_range);
+        let placeholder_height = self.height_for_block_range(&block_range);
+        let placeholder_window_error = block_range.clone().find_map(|visible_index| {
+            let block_id = self.visible_index.id_at_visible_index(visible_index)?;
+            self.payload_window.failed.get(&block_id).cloned()
+        });
         let render_window = RenderWindow::placeholder(PlaceholderWindow {
             page_range: page_range.clone(),
             block_range,
@@ -435,6 +469,7 @@ impl DocumentRuntime {
             ai_preview: None,
             before_window_height,
             placeholder_window_height: Some(placeholder_height),
+            placeholder_window_error,
             after_window_height,
             down_placer_height,
             total_visible_blocks,
@@ -442,17 +477,15 @@ impl DocumentRuntime {
         }
     }
 
-    fn height_for_page_range(&self, page_range: &Range<usize>) -> f64 {
-        let page_count = self.page_layout.page_count();
-        if page_range.is_empty() || page_count == 0 {
-            return 0.0;
-        }
-        let start = page_range.start.min(page_count);
-        let end = page_range.end.min(page_count).max(start);
-        self.page_layout.pages[start..end]
-            .iter()
-            .map(|page| page.height)
-            .sum()
+    fn height_for_block_range(&self, block_range: &Range<usize>) -> f64 {
+        let start = block_range.start.min(self.height_index.len());
+        let end = block_range.end.min(self.height_index.len()).max(start);
+        let start_offset = self.height_index.offset_of_block(start).unwrap_or(0.0);
+        let end_offset = self
+            .height_index
+            .offset_of_block(end)
+            .unwrap_or(start_offset);
+        (end_offset - start_offset).max(0.0)
     }
 }
 

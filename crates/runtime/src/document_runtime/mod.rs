@@ -1,17 +1,24 @@
 mod ai;
+mod block_attrs;
+mod capabilities;
 mod clipboard;
+mod cold_start;
 mod composition;
 mod constructors;
 mod focus;
+mod folding;
+mod inline_color;
+mod inline_format;
 mod layout_heights;
 mod markdown_paste;
 mod media;
+mod payload_cache;
+mod payload_hydration;
 mod payload_window;
 mod projection;
 mod scroll;
 mod selection;
 mod state;
-mod store_loading;
 mod structure_delete;
 mod structure_edit;
 mod structure_index;
@@ -30,9 +37,10 @@ pub use ai::{
     AiApplyMode, AiRequestDispatch, AiRequestPresentation, AiSessionSnapshot, AiSessionStatus,
     AiStreamApplyResult, RuntimeAiTarget,
 };
-pub use store_loading::{
-    DocumentRuntimeColdStartReport, DocumentRuntimeFromStoreOptions, DocumentRuntimeIndexSource,
+pub use cold_start::{
+    DocumentRuntimeColdStartData, DocumentRuntimeColdStartReport, DocumentRuntimeIndexSource,
 };
+pub use selection::DocumentTextSelectionFragment;
 
 use self::{selection::FocusedTextSelection, table::TableRuntime};
 
@@ -43,6 +51,10 @@ use std::{
     time::Instant,
 };
 
+use super::{
+    AiPreviewKind, AiPreviewSnapshot, AiPreviewStatus, EditorViewProjection, TableCellPosition,
+    TableViewState, TableVisibleCell, ViewBlockSnapshot,
+};
 use crate::content::payload_window::{
     PayloadWindowApplyDecision, PayloadWindowLoadRequest, PayloadWindowLoadResult,
 };
@@ -64,11 +76,12 @@ use cditor_core::layout::{
 use cditor_core::rich_text::{
     BlockAttrs, BlockPayload, BlockPayloadRecord, BlockPayloadView, ClipboardBlock,
     ClipboardBlockFragment, ClipboardFragmentBoundary, ClipboardSelection, ImagePayload,
-    InlineMark, InlineSpan, MarkdownImportOptions, ParsedMarkdownDocument, RichBlockKind,
-    RichBlockRecord, RichTextDocument, TableCellAlign, TableCellMerge, TableRange, TableTrackSize,
-    block_kind_shortcut_with_marker_len, code_fence_shortcut, import_markdown_block_incremental,
-    kind_tag_for_rich_block_kind, looks_like_markdown_paste, markdown_inline_shortcut_spans,
-    parse_callout_marker, parse_markdown_document, plain_text_from_spans, rich_block_kind_from_tag,
+    InlineColorTarget, InlineMark, InlineSpan, MarkdownImportOptions, ParsedMarkdownDocument,
+    RichBlockKind, RichBlockRecord, RichTextDocument, TableCellAlign, TableCellMerge, TableRange,
+    TableTrackSize, block_kind_shortcut_with_marker_len, code_fence_shortcut,
+    import_markdown_block_incremental, kind_tag_for_rich_block_kind, looks_like_markdown_paste,
+    markdown_inline_shortcut_spans, parse_callout_marker, parse_markdown_document,
+    plain_text_from_spans, rich_block_kind_from_tag,
 };
 use cditor_editor::debug_overlay::DebugOverlaySnapshot;
 use cditor_editor::scroll::{
@@ -80,18 +93,6 @@ use cditor_editor::window::{
     PlaceholderWindow, RenderWindow, ScrollDirection, WindowPlanDecision, WindowPlanRequest,
     WindowPlanner, WindowPlannerPolicy,
 };
-use cditor_storage::layout_cache::{CacheSource, LayoutCacheKey};
-use cditor_storage_postgres::types::runtime_document_id_from_pg;
-use cditor_storage_postgres::{
-    PgDocumentId, PostgresDocumentStore, PostgresLayoutCacheStore, PostgresPayloadStore,
-    PostgresStorageError, PostgresStorageResult,
-};
-
-use super::{
-    AiPreviewKind, AiPreviewSnapshot, AiPreviewStatus, EditorViewProjection, TableCellPosition,
-    TableViewState, TableVisibleCell, ViewBlockSnapshot,
-};
-
 fn input_trace_enabled() -> bool {
     static ENABLED: OnceLock<bool> = OnceLock::new();
     *ENABLED.get_or_init(|| {
@@ -122,6 +123,21 @@ fn trace_table(event: &str, details: impl std::fmt::Display) {
     }
 }
 
+fn block_color_trace_enabled() -> bool {
+    static ENABLED: OnceLock<bool> = OnceLock::new();
+    *ENABLED.get_or_init(|| {
+        std::env::var("CDITOR_TRACE_BLOCK_COLOR")
+            .map(|value| matches!(value.as_str(), "1" | "true" | "TRUE" | "yes" | "YES"))
+            .unwrap_or(false)
+    })
+}
+
+fn trace_block_color(event: &str, details: impl std::fmt::Display) {
+    if block_color_trace_enabled() {
+        eprintln!("[cditor][block-color][runtime][{event}] {details}");
+    }
+}
+
 pub use selection::RichTextSelectionSnapshot;
 pub use state::{DocumentRuntime, GlobalScrollTarget};
 use state::{
@@ -130,6 +146,7 @@ use state::{
 };
 pub use table::TableClipboardSnapshot;
 
+use inline_color::set_color_mark_for_range;
 use table::{default_table_payload, ensure_table_payload_for_kind};
 use text_payload::{
     append_plain_text_to_payload, backspace_at_start_resets_kind_to_paragraph,

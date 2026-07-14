@@ -4,18 +4,7 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 
-[features]
-default = ["postgres"]
-postgres = ["dep:cditor-storage-postgres"]
-
 [dependencies]
-cditor-ai = { path = "../ai" }
+cditor-ai = { path = "../ai", default-features = false }
 cditor-core = { path = "../core" }
 cditor-editor = { path = "../editor" }
-cditor-storage = { path = "../store" }
-cditor-storage-postgres = { path = "../store-postgres", optional = true }
-reqwest = { version = "0.12", default-features = false, features = ["blocking", "rustls-tls"] }
-
-[dev-dependencies]
-sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "postgres", "uuid"] }
-tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time"] }

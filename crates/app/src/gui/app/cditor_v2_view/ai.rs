@@ -1,20 +1,29 @@
 use std::sync::Arc;
 
-use cditor_ai::{
-    AiProvider, AiProviderError, AiStreamEvent, MockAiProvider, OpenAiCompatibleProvider,
-    bounded_ai_stream,
-};
+#[cfg(feature = "ai-openai")]
+use cditor_ai::OpenAiCompatibleProvider;
+use cditor_ai::{AiProvider, AiProviderError, AiStreamEvent, MockAiProvider, bounded_ai_stream};
 use cditor_runtime::{AiApplyMode, AiRequestPresentation, AiStreamApplyResult, RuntimeAiTarget};
-use gpui::{AppContext, Context, KeyDownEvent, px};
+use gpui::{AppContext, Context, px};
 
 use crate::gui::app::cditor_v2_view::{CditorV2View, GuiPlatformInputTarget};
-use crate::gui::input::{AiPromptKeyResult, AiPromptState, apply_ai_prompt_key};
+use crate::gui::input::{
+    AiPromptEditAction, AiPromptKeyResult, AiPromptState, apply_ai_prompt_action,
+};
 use crate::gui::persistence::EditorSaveStatus;
 
 pub(in crate::gui::app) fn default_ai_provider() -> Arc<dyn AiProvider> {
-    OpenAiCompatibleProvider::from_env()
-        .map(|provider| Arc::new(provider) as Arc<dyn AiProvider>)
-        .unwrap_or_else(|_| Arc::new(MockAiProvider::default()))
+    #[cfg(feature = "ai-openai")]
+    {
+        return OpenAiCompatibleProvider::from_env()
+            .map(|provider| Arc::new(provider) as Arc<dyn AiProvider>)
+            .unwrap_or_else(|_| Arc::new(MockAiProvider::default()));
+    }
+
+    #[cfg(not(feature = "ai-openai"))]
+    {
+        Arc::new(MockAiProvider::default())
+    }
 }
 
 impl CditorV2View {
@@ -35,7 +44,7 @@ impl CditorV2View {
         else {
             return false;
         };
-        let (x, y) = self.slash_menu_anchor(block_id, caret);
+        let (x, y) = self.ai_prompt_line_anchor(block_id, caret);
         self.open_ai_prompt_from_gui_with_presentation(
             x,
             y,
@@ -58,7 +67,7 @@ impl CditorV2View {
         self.open_ai_prompt_from_gui_with_presentation(x, y, presentation, cx)
     }
 
-    fn open_ai_prompt_from_gui_with_presentation(
+    pub(in crate::gui::app) fn open_ai_prompt_from_gui_with_presentation(
         &mut self,
         x: f32,
         y: f32,
@@ -183,15 +192,15 @@ impl CditorV2View {
         self.submit_ai_prompt_instruction_from_gui(instruction, cx)
     }
 
-    pub(crate) fn apply_ai_prompt_key_from_gui(
+    pub(crate) fn apply_ai_prompt_action_from_gui(
         &mut self,
-        event: &KeyDownEvent,
+        action: AiPromptEditAction,
         cx: &mut Context<Self>,
     ) -> bool {
         let Some(prompt) = self.ai_prompt.as_mut() else {
             return false;
         };
-        match apply_ai_prompt_key(prompt, event) {
+        match apply_ai_prompt_action(prompt, action) {
             AiPromptKeyResult::Submit => self.submit_ai_prompt_from_gui(cx),
             AiPromptKeyResult::Cancel => self.cancel_ai_prompt(cx),
             AiPromptKeyResult::Changed => {
