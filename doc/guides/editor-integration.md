@@ -2,7 +2,7 @@
 
 本文说明第三方 Rust/GPUI 应用如何通过 Git 仓库接入 Cditor 编辑器，加载和导出文档，监听变化，并把内容保存到文件、SQLite、HTTP API 或任意自定义存储。
 
-第三方推荐只使用 `cditor_app` 根模块公开的 `Editor`、`EditorHandle`、`EditorDocument` 和 `EditorPersistence`，不直接依赖 `CditorV2View` 或 `DocumentRuntime` 内部实现。
+第三方推荐依赖轻量组件 `cditor-gpui`，只使用其根模块公开的 `Editor`、`EditorHandle`、`EditorDocument` 和 `EditorPersistence`，不直接依赖 `CditorV2View` 或 `DocumentRuntime` 内部实现。该组件默认不会引入 Cditor 的 PostgreSQL、`sqlx` 或数据库运行时依赖。
 
 ## 1. Git 依赖
 
@@ -10,10 +10,10 @@
 
 ```toml
 [dependencies]
-cditor-app = {
+cditor-gpui = {
     git = "https://github.com/feigeCode/Cditor.git",
-    package = "cditor-app",
-    rev = "60acfd4"
+    package = "cditor-gpui",
+    rev = "3cb953c"
 }
 ```
 
@@ -23,9 +23,9 @@ cditor-app = {
 
 ```toml
 [dependencies]
-cditor-app = {
+cditor-gpui = {
     git = "https://github.com/feigeCode/Cditor.git",
-    package = "cditor-app",
+    package = "cditor-gpui",
     branch = "main"
 }
 ```
@@ -37,7 +37,7 @@ cditor-app = {
 ## 2. 最小接入
 
 ```rust
-use cditor_app::Editor;
+use cditor_gpui::Editor;
 
 let editor = Editor::builder()
     .document_id("document-1")
@@ -57,7 +57,7 @@ div()
 推荐由宿主长期保存 `EditorHandle`：
 
 ```rust
-use cditor_app::EditorHandle;
+use cditor_gpui::EditorHandle;
 
 struct AppView {
     editor: EditorHandle,
@@ -111,7 +111,7 @@ let json = document.to_json()?;
 从 JSON 恢复：
 
 ```rust
-use cditor_app::EditorDocument;
+use cditor_gpui::EditorDocument;
 
 let document = EditorDocument::from_json(&json)?;
 editor.set_document(document, cx)?;
@@ -259,7 +259,7 @@ Trait 方法是同步接口，但 Cditor 会在 GPUI 后台任务中调用它们
 ```rust
 use std::path::PathBuf;
 
-use cditor_app::{
+use cditor_gpui::{
     EditorDocument,
     EditorPersistence,
     EditorPersistenceError,
@@ -419,7 +419,7 @@ pub enum EditorEvent {
 ```rust
 use std::time::Duration;
 
-use cditor_app::{Editor, EditorHandle};
+use cditor_gpui::{Editor, EditorHandle};
 use gpui::*;
 
 struct AppView {
@@ -495,10 +495,10 @@ match editor.save(cx) {
 依赖：
 
 ```toml
-cditor-app = {
+cditor-gpui = {
     git = "https://github.com/feigeCode/Cditor.git",
-    package = "cditor-app",
-    rev = "60acfd4"
+    package = "cditor-gpui",
+    rev = "3cb953c"
 }
 ```
 
