@@ -7,7 +7,14 @@ license.workspace = true
 [lib]
 name = "cditor_app"
 
+[[bin]]
+name = "cditor-app"
+path = "src/main.rs"
+required-features = ["postgres"]
+
 [features]
+default = ["postgres"]
+postgres = ["dep:cditor-storage-postgres", "dep:sqlx", "cditor-runtime/postgres"]
 runtime-shaders = ["gpui_platform/runtime_shaders"]
 
 [dependencies]
@@ -15,20 +22,20 @@ cditor-ai = { path = "../ai" }
 cditor-core = { path = "../core" }
 ding-board = { path = "../ding-board" }
 cditor-editor = { path = "../editor" }
-cditor-runtime = { path = "../runtime" }
+cditor-runtime = { path = "../runtime", default-features = false }
 cditor-storage = { path = "../store" }
-cditor-storage-postgres = { path = "../store-postgres" }
-gpui = { git = "https://github.com/zed-industries/zed", rev = "1d217ee39d381ac101b7cf49d3d22451ac1093fe", default-features = false, features = ["font-kit"] }
-gpui_platform = { git = "https://github.com/zed-industries/zed", rev = "1d217ee39d381ac101b7cf49d3d22451ac1093fe", default-features = false, features = ["font-kit"] }
-mermaid_render = { git = "https://github.com/zed-industries/zed", rev = "1d217ee39d381ac101b7cf49d3d22451ac1093fe" }
+cditor-storage-postgres = { path = "../store-postgres", optional = true }
+gpui = { git = "https://github.com/zed-industries/zed", rev = "76c93968da5b8b8809bdd72e4ad9e7d0e946bad0", default-features = false, features = ["font-kit"] }
+gpui_platform = { git = "https://github.com/zed-industries/zed", rev = "76c93968da5b8b8809bdd72e4ad9e7d0e946bad0", default-features = false, features = ["font-kit"] }
+mermaid_render = { git = "https://github.com/zed-industries/zed", rev = "76c93968da5b8b8809bdd72e4ad9e7d0e946bad0" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "postgres", "uuid"] }
+sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "postgres", "uuid"], optional = true }
 unicode-segmentation = "1.12"
 image = "0.25.10"
 reqwest = { version = "0.12", default-features = false, features = ["blocking", "rustls-tls"] }
 
 [dev-dependencies]
-gpui = { git = "https://github.com/zed-industries/zed", rev = "1d217ee39d381ac101b7cf49d3d22451ac1093fe", default-features = false, features = ["font-kit", "test-support"] }
-gpui_platform = { git = "https://github.com/zed-industries/zed", rev = "1d217ee39d381ac101b7cf49d3d22451ac1093fe", default-features = false, features = ["runtime_shaders"] }
+gpui = { git = "https://github.com/zed-industries/zed", rev = "76c93968da5b8b8809bdd72e4ad9e7d0e946bad0", default-features = false, features = ["font-kit", "test-support"] }
+gpui_platform = { git = "https://github.com/zed-industries/zed", rev = "76c93968da5b8b8809bdd72e4ad9e7d0e946bad0", default-features = false, features = ["runtime_shaders"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time"] }
