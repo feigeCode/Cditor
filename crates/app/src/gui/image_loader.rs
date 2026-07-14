@@ -76,12 +76,22 @@ pub fn load_render_image(src: &str, cx: &mut App) -> Option<Arc<RenderImage>> {
 
 fn fetch_image_bytes(src: &str) -> Option<Vec<u8>> {
     if src.starts_with("http://") || src.starts_with("https://") {
-        let response = reqwest::blocking::get(src).ok()?;
-        let bytes = response.bytes().ok()?;
-        Some(bytes.to_vec())
+        fetch_remote_image_bytes(src)
     } else {
         std::fs::read(parse_local_path(src)).ok()
     }
+}
+
+#[cfg(feature = "remote-media")]
+fn fetch_remote_image_bytes(src: &str) -> Option<Vec<u8>> {
+    let response = reqwest::blocking::get(src).ok()?;
+    let bytes = response.bytes().ok()?;
+    Some(bytes.to_vec())
+}
+
+#[cfg(not(feature = "remote-media"))]
+fn fetch_remote_image_bytes(_src: &str) -> Option<Vec<u8>> {
+    None
 }
 
 fn parse_local_path(src: &str) -> PathBuf {

@@ -5,6 +5,10 @@ edition.workspace = true
 license.workspace = true
 description = "Embeddable GPUI rich-text editor component for Cditor"
 
+[features]
+default = []
+ai-openai = ["cditor-app/ai-openai"]
+remote-media = ["cditor-app/remote-media"]
+
 [dependencies]
 cditor-app = { path = "../app", default-features = false }
-

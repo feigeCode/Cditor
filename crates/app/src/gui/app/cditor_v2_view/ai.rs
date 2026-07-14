@@ -1,9 +1,8 @@
 use std::sync::Arc;
 
-use cditor_ai::{
-    AiProvider, AiProviderError, AiStreamEvent, MockAiProvider, OpenAiCompatibleProvider,
-    bounded_ai_stream,
-};
+#[cfg(feature = "ai-openai")]
+use cditor_ai::OpenAiCompatibleProvider;
+use cditor_ai::{AiProvider, AiProviderError, AiStreamEvent, MockAiProvider, bounded_ai_stream};
 use cditor_runtime::{AiApplyMode, AiRequestPresentation, AiStreamApplyResult, RuntimeAiTarget};
 use gpui::{AppContext, Context, KeyDownEvent, px};
 
@@ -12,9 +11,17 @@ use crate::gui::input::{AiPromptKeyResult, AiPromptState, apply_ai_prompt_key};
 use crate::gui::persistence::EditorSaveStatus;
 
 pub(in crate::gui::app) fn default_ai_provider() -> Arc<dyn AiProvider> {
-    OpenAiCompatibleProvider::from_env()
-        .map(|provider| Arc::new(provider) as Arc<dyn AiProvider>)
-        .unwrap_or_else(|_| Arc::new(MockAiProvider::default()))
+    #[cfg(feature = "ai-openai")]
+    {
+        return OpenAiCompatibleProvider::from_env()
+            .map(|provider| Arc::new(provider) as Arc<dyn AiProvider>)
+            .unwrap_or_else(|_| Arc::new(MockAiProvider::default()));
+    }
+
+    #[cfg(not(feature = "ai-openai"))]
+    {
+        Arc::new(MockAiProvider::default())
+    }
 }
 
 impl CditorV2View {
