@@ -99,7 +99,7 @@ cditor-storage-postgres ───> cditor-runtime   # Optional `postgres` featur
 
 Arrows point from dependent crates to the crates they consume. For example:
 `cditor-runtime` relies on `cditor-core`, `cditor-editor`, `cditor-storage`, `cditor-storage-postgres`, and `cditor-ai`.
-`cditor-gpui` is the recommended third-party embedding dependency and disables the PostgreSQL feature. `cditor-app` remains the final official application assembly layer, composing all above crates alongside `ding-board`.
+`cditor-gpui` is the recommended third-party embedding dependency and disables PostgreSQL, OpenAI networking, remote-media networking, and the application launcher by default. `cditor-app` remains the final official application assembly layer, composing all above crates alongside `ding-board`.
 
 Naming note for `cditor-editor`: This crate is frequently misinterpreted. It contains only viewport calculation logic with no UI framework coupling. All GPUI rendering and user interaction entrypoints live in `cditor-app`.
 

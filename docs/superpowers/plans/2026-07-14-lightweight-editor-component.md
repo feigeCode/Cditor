@@ -2,7 +2,7 @@
 
 ## Goal
 
-Provide a dedicated `cditor-gpui` dependency for third-party GPUI applications. Its default dependency graph must not contain PostgreSQL, `sqlx`, or the Tokio database runtime, while the existing `cditor-app` default build keeps its current PostgreSQL-enabled behavior.
+Provide a dedicated `cditor-gpui` dependency for third-party GPUI applications. Its default dependency graph must not contain PostgreSQL, `sqlx`, `reqwest`, Tokio, or the official application launcher, while the existing `cditor-app` default build keeps its current PostgreSQL, OpenAI-compatible provider, and remote-media behavior.
 
 ## Architecture
 
@@ -31,6 +31,8 @@ cditor-app (default features)
 - `cditor-gpui` uses no default features that activate a database backend.
 - Backend-neutral `EditorPersistence` remains the recommended persistence contract.
 - PostgreSQL-specific APIs are available only with the `postgres` feature.
+- OpenAI-compatible networking is available only with the `ai-openai` feature.
+- HTTP image loading is available only with the `remote-media` feature; local image loading remains available in minimal builds.
 - The minimal dependency gate is verified with `cargo tree`, not only source inspection.
 - All repository shell commands are prefixed with `rtk`.
 
@@ -64,15 +66,25 @@ cditor-app (default features)
 - Verify `sqlx` and `cditor-storage-postgres` are absent from its dependency graph.
 - Verify the default `cditor-app` build and tests remain valid.
 
+### 5. Isolate optional network capabilities
+
+- Keep AI provider protocols and the mock provider available without networking.
+- Move the OpenAI-compatible provider and its environment/configuration dependencies behind `cditor-ai/openai`.
+- Forward OpenAI support through `cditor-app/ai-openai` and `cditor-gpui/ai-openai`.
+- Move HTTP image fetching behind `cditor-app/remote-media` and `cditor-gpui/remote-media`.
+- Preserve local file image decoding when `remote-media` is disabled.
+
 ## Completion Gates
 
 ```bash
 rtk cargo check -p cditor-gpui
 rtk cargo tree -p cditor-gpui -i sqlx
 rtk cargo tree -p cditor-gpui -i cditor-storage-postgres
+rtk cargo tree -p cditor-gpui -i reqwest
+rtk cargo tree -p cditor-gpui -i tokio
 rtk cargo check -p cditor-app
 rtk cargo test -p cditor-app --lib
 rtk git diff --check
 ```
 
-The two reverse dependency checks must report that the package is not present in the `cditor-gpui` graph.
+The reverse dependency checks must report that the package is not present in the default `cditor-gpui` graph.

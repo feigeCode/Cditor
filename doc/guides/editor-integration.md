@@ -2,7 +2,7 @@
 
 本文说明第三方 Rust/GPUI 应用如何通过 Git 仓库接入 Cditor 编辑器，加载和导出文档，监听变化，并把内容保存到文件、SQLite、HTTP API 或任意自定义存储。
 
-第三方推荐依赖轻量组件 `cditor-gpui`，只使用其根模块公开的 `Editor`、`EditorHandle`、`EditorDocument` 和 `EditorPersistence`，不直接依赖 `CditorV2View` 或 `DocumentRuntime` 内部实现。该组件默认不会引入 Cditor 的 PostgreSQL、`sqlx` 或数据库运行时依赖。
+第三方推荐依赖轻量组件 `cditor-gpui`，只使用其根模块公开的 `Editor`、`EditorHandle`、`EditorDocument` 和 `EditorPersistence`，不直接依赖 `CditorV2View` 或 `DocumentRuntime` 内部实现。该组件默认不会引入 Cditor 的 PostgreSQL、`sqlx`、`reqwest`、Tokio 或官方应用启动器依赖。
 
 ## 1. Git 依赖
 
@@ -13,7 +13,7 @@
 cditor-gpui = {
     git = "https://github.com/feigeCode/Cditor.git",
     package = "cditor-gpui",
-    rev = "3cb953c"
+    rev = "cc20fa6"
 }
 ```
 
@@ -33,6 +33,24 @@ cditor-gpui = {
 跟随 `main` 适合开发阶段。发布前建议把 `branch` 替换为实际测试过的 `rev`。
 
 应用项目应提交 `Cargo.lock`，以锁定 Git commit 和传递依赖版本。
+
+### 1.3 可选网络能力
+
+默认构建支持本地图片和 Mock AI provider，但不会发起网络请求。如果宿主明确需要 OpenAI-compatible provider 或 HTTP/HTTPS 图片加载，可以启用对应 feature：
+
+```toml
+[dependencies]
+cditor-gpui = {
+    git = "https://github.com/feigeCode/Cditor.git",
+    package = "cditor-gpui",
+    rev = "cc20fa6",
+    features = ["ai-openai", "remote-media"]
+}
+```
+
+- `ai-openai`：启用 OpenAI-compatible provider、环境变量和 TOML 配置加载；
+- `remote-media`：启用 HTTP/HTTPS 图片下载；
+- 不启用 `remote-media` 时，本地路径和 `file://` 图片仍可加载，网络图片显示稳定占位。
 
 ## 2. 最小接入
 
@@ -498,7 +516,7 @@ match editor.save(cx) {
 cditor-gpui = {
     git = "https://github.com/feigeCode/Cditor.git",
     package = "cditor-gpui",
-    rev = "3cb953c"
+    rev = "cc20fa6"
 }
 ```
 
