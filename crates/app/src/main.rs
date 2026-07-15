@@ -8,7 +8,7 @@ use gpui::*;
 fn main() {
     let app = gpui_platform::application();
     app.run(|cx: &mut App| {
-        cditor_app::gui::input::bind_cditor_keys(cx);
+        cditor_app::init(cx);
         cx.activate(true);
         cx.open_window(
             WindowOptions {
