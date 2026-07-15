@@ -75,6 +75,21 @@ impl<'a> BlockExporter<'a> {
     }
 
     fn export(&mut self) -> String {
+        if self.document.metadata != Default::default() {
+            self.unsupported = true;
+            self.diagnostics.push(MarkdownDiagnostic {
+                severity: if self.mode == MarkdownExportMode::Strict {
+                    MarkdownDiagnosticSeverity::Error
+                } else {
+                    MarkdownDiagnosticSeverity::Warning
+                },
+                code: "markdown.document.metadata_unsupported",
+                message: "Document title, tags, cover, icon, and timestamps require frontmatter or a rich-text document"
+                    .to_owned(),
+                source_range: None,
+                block_id: None,
+            });
+        }
         let mut roots = Vec::new();
         let mut seen = HashSet::new();
         for block_id in &self.document.root_blocks {
