@@ -1,10 +1,11 @@
 use std::{collections::HashMap, ops::Range};
 
-use gpui::{Bounds, Pixels, Size, point, px};
+use gpui::{Bounds, Pixels, point, px};
 
 use crate::gui::app::interaction::geometry::ProjectedBlockRect;
 use crate::gui::block::chrome::block_content_left_px;
 use crate::gui::document::{DEFAULT_DOCUMENT_PAGE_WIDTH_PX, DEFAULT_DOCUMENT_TOP_INSET_PX};
+use crate::gui::menu_metrics::EditorViewport;
 use crate::gui::overlay::{
     ActiveColor, BlockTransformAction, BlockTransformAvailability, ColorMenuAction,
     FloatingToolbarState, InlineFormatAction, PaletteColor, block_transform_menu_opens_left,
@@ -25,7 +26,7 @@ pub(in crate::gui::app) fn formatting_toolbar_state(
     text_layouts: &HashMap<cditor_core::ids::BlockId, RichTextPlatformLayout>,
     readonly: bool,
     conflicting_overlay_open: bool,
-    viewport: Size<Pixels>,
+    viewport: EditorViewport,
     gutter_toolbar_block_id: Option<BlockId>,
     block_transform_menu_open: bool,
     color_menu_open: bool,
@@ -40,12 +41,14 @@ pub(in crate::gui::app) fn formatting_toolbar_state(
     if runtime.ai_session_snapshot().is_some() {
         return None;
     }
+    if runtime.has_entire_document_text_selection() {
+        return None;
+    }
     if let Some(block_id) = gutter_toolbar_block_id {
         let rect = projected_block_rects
             .iter()
             .find(|rect| rect.block_id == block_id)?;
-        let page_left =
-            ((f32::from(viewport.width) - DEFAULT_DOCUMENT_PAGE_WIDTH_PX) / 2.0).max(0.0);
+        let page_left = ((viewport.width - DEFAULT_DOCUMENT_PAGE_WIDTH_PX) / 2.0).max(0.0);
         let top = (rect.document_top - scroll_top) as f32 + DEFAULT_DOCUMENT_TOP_INSET_PX;
         let bottom = (rect.document_bottom - scroll_top) as f32 + DEFAULT_DOCUMENT_TOP_INSET_PX;
         let block_left = page_left + block_content_left_px(rect.indent_px);
@@ -53,11 +56,10 @@ pub(in crate::gui::app) fn formatting_toolbar_state(
             block_left,
             top,
             bottom,
-            f32::from(viewport.width),
-            f32::from(viewport.height),
+            viewport.width,
+            viewport.height,
         );
-        let color_geometry =
-            color_menu_geometry(x, y, f32::from(viewport.width), f32::from(viewport.height));
+        let color_geometry = color_menu_geometry(x, y, viewport.width, viewport.height);
         let (bold, italic, underline, strike, code, text_color, background_color, block_transform) =
             runtime
                 .block_payload_record(block_id)
@@ -160,14 +162,8 @@ pub(in crate::gui::app) fn formatting_toolbar_state(
             code,
             block_transform,
             block_transform_availability,
-            transform_menu_opens_left: block_transform_menu_opens_left(
-                x,
-                f32::from(viewport.width),
-            ),
-            transform_menu_top_offset: block_transform_menu_top_offset(
-                y,
-                f32::from(viewport.height),
-            ),
+            transform_menu_opens_left: block_transform_menu_opens_left(x, viewport.width),
+            transform_menu_top_offset: block_transform_menu_top_offset(y, viewport.height),
             block_transform_menu_open,
             text_color,
             background_color,
@@ -183,14 +179,18 @@ pub(in crate::gui::app) fn formatting_toolbar_state(
     }
     if runtime.has_cross_block_text_selection() {
         let fragments = runtime.document_text_selection_fragments()?;
-        let bounds = cross_block_selection_bounds(runtime, text_layouts, &fragments)?;
+        let bounds = viewport.window_bounds_to_local(cross_block_selection_bounds(
+            runtime,
+            text_layouts,
+            &fragments,
+        )?);
         let (x, y) = floating_toolbar_position(
             f32::from(bounds.left()),
             f32::from(bounds.top()),
             f32::from(bounds.right()),
             f32::from(bounds.bottom()),
-            f32::from(viewport.width),
-            f32::from(viewport.height),
+            viewport.width,
+            viewport.height,
         );
         return Some(FloatingToolbarState {
             x,
@@ -234,17 +234,16 @@ pub(in crate::gui::app) fn formatting_toolbar_state(
     if runtime.block_content_version(block_id)? != layout.content_version {
         return None;
     }
-    let bounds = platform_range_bounds(layout, range.clone())?;
+    let bounds = viewport.window_bounds_to_local(platform_range_bounds(layout, range.clone())?);
     let (x, y) = floating_toolbar_position(
         f32::from(bounds.left()),
         f32::from(bounds.top()),
         f32::from(bounds.right()),
         f32::from(bounds.bottom()),
-        f32::from(viewport.width),
-        f32::from(viewport.height),
+        viewport.width,
+        viewport.height,
     );
-    let color_geometry =
-        color_menu_geometry(x, y, f32::from(viewport.width), f32::from(viewport.height));
+    let color_geometry = color_menu_geometry(x, y, viewport.width, viewport.height);
     Some(FloatingToolbarState {
         x,
         y,
@@ -393,6 +392,12 @@ mod tests {
         );
         runtime.set_document_text_selection(1, 1, 2, 2).unwrap();
         let mut layouts = HashMap::new();
+        let viewport = EditorViewport {
+            window_left: 240.0,
+            window_top: 80.0,
+            width: 900.0,
+            height: 700.0,
+        };
         for (block_id, top) in [(1, 100.0), (2, 124.0)] {
             layouts.insert(
                 block_id,
@@ -401,7 +406,13 @@ mod tests {
                     content_version: runtime.block_content_version(block_id).unwrap(),
                     text: String::new(),
                     lines: Vec::new(),
-                    bounds: Bounds::new(point(px(120.0), px(top)), size(px(500.0), px(24.0))),
+                    bounds: Bounds::new(
+                        point(
+                            px(viewport.window_left + 120.0),
+                            px(viewport.window_top + top),
+                        ),
+                        size(px(500.0), px(24.0)),
+                    ),
                     line_height: px(24.0),
                     text_align: gpui::TextAlign::Left,
                     measured_height: 24.0,
@@ -415,7 +426,7 @@ mod tests {
             &layouts,
             false,
             false,
-            size(px(900.0), px(700.0)),
+            viewport,
             None,
             false,
             false,
@@ -433,6 +444,47 @@ mod tests {
         assert!(state.ai_enabled);
         assert!(!state.show_delete);
         assert_eq!(state.block_id, Some(2));
+        assert_eq!((state.x, state.y), (23.5, 156.0));
+    }
+
+    #[test]
+    fn entire_document_selection_suppresses_every_floating_toolbar_source() {
+        let mut runtime = DocumentRuntime::from_payloads(
+            1,
+            vec![
+                cditor_core::rich_text::BlockPayloadRecord::rich_text(
+                    1,
+                    RichBlockKind::Paragraph,
+                    "first",
+                ),
+                cditor_core::rich_text::BlockPayloadRecord::rich_text(
+                    2,
+                    RichBlockKind::Paragraph,
+                    "last",
+                ),
+            ],
+            720.0,
+        );
+        runtime.focus_block_at_offset(2, 2).unwrap();
+        assert!(runtime.select_all_command());
+        assert!(runtime.select_all_command());
+
+        assert!(
+            formatting_toolbar_state(
+                Some(&runtime),
+                &HashMap::new(),
+                false,
+                false,
+                EditorViewport::from_size(size(px(900.0), px(700.0))),
+                Some(2),
+                true,
+                true,
+                None,
+                &[],
+                0.0,
+            )
+            .is_none()
+        );
     }
 
     #[test]
@@ -456,7 +508,7 @@ mod tests {
             &HashMap::new(),
             false,
             false,
-            size(px(900.0), px(700.0)),
+            EditorViewport::from_size(size(px(900.0), px(700.0))),
             Some(1),
             true,
             false,

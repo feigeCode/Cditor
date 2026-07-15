@@ -4,6 +4,11 @@
 /minimal-editor-assets/
 /.worktrees/
 
+# Local SQLite editor database and WAL sidecars
+/workspace.cditor.db
+/workspace.cditor.db-shm
+/workspace.cditor.db-wal
+
 # macOS metadata
 .DS_Store
 

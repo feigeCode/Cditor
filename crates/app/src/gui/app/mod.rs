@@ -6,11 +6,9 @@ mod integration_bridge;
 mod interaction;
 mod lifecycle;
 mod payload_cache;
-#[cfg(feature = "postgres")]
 mod persistence_bridge;
-#[cfg(not(feature = "postgres"))]
-mod persistence_bridge_stub;
 mod render;
+mod sdk;
 mod state;
 mod text_hit;
 

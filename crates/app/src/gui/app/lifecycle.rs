@@ -11,10 +11,10 @@ use crate::gui::block::code::highlight::DEFAULT_CODE_HIGHLIGHT_THEME;
 use crate::gui::input::BlockDragSelectionController;
 use crate::gui::overlay::table::TableViewportMeasurement;
 use crate::gui::persistence::{
-    DEFAULT_POSTGRES_SAVE_DEBOUNCE, EditorSaveStatus, PostgresPersistenceState,
-    PostgresPersistenceTarget,
+    DEFAULT_STORAGE_SAVE_DEBOUNCE, EditorSaveStatus, StoragePersistenceState,
 };
 use cditor_runtime::DocumentRuntime;
+use cditor_storage::StorageSession;
 
 impl CditorV2View {
     pub fn new(cx: &mut Context<Self>) -> Self {
@@ -35,48 +35,52 @@ impl CditorV2View {
         readonly: bool,
         cx: &mut Context<Self>,
     ) -> Self {
-        Self::from_runtime_with_postgres_options(runtime, show_debug, readonly, None, cx)
+        Self::from_runtime_with_storage_options(runtime, show_debug, readonly, None, cx)
     }
 
-    pub fn from_runtime_with_postgres_options(
+    pub fn from_runtime_with_storage_options(
         runtime: DocumentRuntime,
         show_debug: bool,
         readonly: bool,
-        postgres_target: Option<PostgresPersistenceTarget>,
+        storage_session: Option<StorageSession>,
         cx: &mut Context<Self>,
     ) -> Self {
-        Self::from_runtime_with_postgres_options_and_autosave(
+        Self::from_runtime_with_storage_options_and_autosave(
             runtime,
             show_debug,
             readonly,
-            postgres_target,
-            None,
+            storage_session,
+            Some(DEFAULT_STORAGE_SAVE_DEBOUNCE),
             cx,
         )
     }
 
-    pub fn from_runtime_with_postgres_options_and_autosave(
+    pub fn from_runtime_with_storage_options_and_autosave(
         runtime: DocumentRuntime,
         show_debug: bool,
         readonly: bool,
-        postgres_target: Option<PostgresPersistenceTarget>,
+        storage_session: Option<StorageSession>,
         autosave_interval: Option<Duration>,
         cx: &mut Context<Self>,
     ) -> Self {
-        let autosave_interval = autosave_interval.unwrap_or(DEFAULT_POSTGRES_SAVE_DEBOUNCE);
         Self {
             state: CditorViewState::Ready(runtime),
             focus: cx.focus_handle(),
             code_language_focus: cx.focus_handle(),
             ai_prompt_focus: cx.focus_handle(),
             ai_provider: default_ai_provider(),
+            ai_enabled: true,
             ai_prompt: None,
             ai_preview_scroll_handle: Default::default(),
             show_debug,
             readonly,
+            dirty: false,
+            sdk_focus_observers_registered: false,
+            last_emitted_selection: None,
             save_status: save_status_for_mode(readonly),
             last_wheel_delta_y: 0.0,
             scroll_accumulator: Default::default(),
+            editor_viewport_handle: Default::default(),
             text_layouts: HashMap::new(),
             table_cell_layouts: HashMap::new(),
             table_scroll_state: Default::default(),
@@ -110,9 +114,9 @@ impl CditorV2View {
             table_reorder_drag: None,
             table_hscroll_drag: None,
             projected_block_rects: Vec::new(),
-            postgres_persistence: postgres_target
-                .map(|target| PostgresPersistenceState::for_target(target, autosave_interval))
-                .unwrap_or_else(PostgresPersistenceState::disabled),
+            storage_persistence: storage_session
+                .map(|session| StoragePersistenceState::for_session(session, autosave_interval))
+                .unwrap_or_else(StoragePersistenceState::disabled),
             payload_window_load_scheduler: Default::default(),
             autosave_interval,
             platform_input_target: None,
@@ -132,7 +136,6 @@ impl CditorV2View {
         autosave_interval: Option<Duration>,
         cx: &mut Context<Self>,
     ) -> Self {
-        let autosave_interval = autosave_interval.unwrap_or(DEFAULT_POSTGRES_SAVE_DEBOUNCE);
         Self {
             state: CditorViewState::Loading {
                 message: message.into(),
@@ -141,13 +144,18 @@ impl CditorV2View {
             code_language_focus: cx.focus_handle(),
             ai_prompt_focus: cx.focus_handle(),
             ai_provider: default_ai_provider(),
+            ai_enabled: true,
             ai_prompt: None,
             ai_preview_scroll_handle: Default::default(),
             show_debug,
             readonly,
+            dirty: false,
+            sdk_focus_observers_registered: false,
+            last_emitted_selection: None,
             save_status: save_status_for_mode(readonly),
             last_wheel_delta_y: 0.0,
             scroll_accumulator: Default::default(),
+            editor_viewport_handle: Default::default(),
             text_layouts: HashMap::new(),
             table_cell_layouts: HashMap::new(),
             table_scroll_state: Default::default(),
@@ -181,7 +189,7 @@ impl CditorV2View {
             table_reorder_drag: None,
             table_hscroll_drag: None,
             projected_block_rects: Vec::new(),
-            postgres_persistence: PostgresPersistenceState::disabled(),
+            storage_persistence: StoragePersistenceState::disabled(),
             payload_window_load_scheduler: Default::default(),
             autosave_interval,
             platform_input_target: None,
@@ -212,13 +220,18 @@ impl CditorV2View {
             code_language_focus: cx.focus_handle(),
             ai_prompt_focus: cx.focus_handle(),
             ai_provider: default_ai_provider(),
+            ai_enabled: true,
             ai_prompt: None,
             ai_preview_scroll_handle: Default::default(),
             show_debug,
             readonly,
+            dirty: false,
+            sdk_focus_observers_registered: false,
+            last_emitted_selection: None,
             save_status: save_status_for_mode(readonly),
             last_wheel_delta_y: 0.0,
             scroll_accumulator: Default::default(),
+            editor_viewport_handle: Default::default(),
             text_layouts: HashMap::new(),
             table_cell_layouts: HashMap::new(),
             table_scroll_state: Default::default(),
@@ -252,9 +265,9 @@ impl CditorV2View {
             table_reorder_drag: None,
             table_hscroll_drag: None,
             projected_block_rects: Vec::new(),
-            postgres_persistence: PostgresPersistenceState::disabled(),
+            storage_persistence: StoragePersistenceState::disabled(),
             payload_window_load_scheduler: Default::default(),
-            autosave_interval: DEFAULT_POSTGRES_SAVE_DEBOUNCE,
+            autosave_interval: None,
             platform_input_target: None,
             integration: None,
             integration_focus_requested: false,
@@ -262,15 +275,17 @@ impl CditorV2View {
     }
 
     pub fn apply_loaded_runtime(&mut self, runtime: DocumentRuntime) {
-        self.apply_loaded_runtime_with_postgres_target(runtime, None);
+        self.apply_loaded_runtime_with_storage(runtime, None);
     }
 
-    pub fn apply_loaded_runtime_with_postgres_target(
+    pub fn apply_loaded_runtime_with_storage(
         &mut self,
         runtime: DocumentRuntime,
-        postgres_target: Option<PostgresPersistenceTarget>,
+        storage_session: Option<StorageSession>,
     ) {
         self.state.apply_loaded_runtime(runtime);
+        self.dirty = false;
+        self.last_emitted_selection = None;
         self.text_layouts.clear();
         self.table_cell_layouts.clear();
         self.table_scroll_state.clear();
@@ -300,10 +315,10 @@ impl CditorV2View {
         self.table_reorder_drag = None;
         self.table_hscroll_drag = None;
         self.projected_block_rects.clear();
-        self.postgres_persistence
-            .set_target(postgres_target, self.autosave_interval);
+        self.storage_persistence
+            .set_session(storage_session, self.autosave_interval);
         if let CditorViewState::Ready(runtime) = &self.state {
-            self.postgres_persistence
+            self.storage_persistence
                 .mark_loaded_structure_version(runtime.structure_version());
         }
         self.save_status = save_status_for_mode(self.readonly);
@@ -312,6 +327,8 @@ impl CditorV2View {
 
     pub fn apply_load_failed(&mut self, message: impl Into<String>) {
         self.state.apply_load_failed(message);
+        self.dirty = false;
+        self.last_emitted_selection = None;
         self.text_layouts.clear();
         self.table_cell_layouts.clear();
         self.table_scroll_state.clear();

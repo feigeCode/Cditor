@@ -2,8 +2,28 @@
 
 use std::env;
 
-use cditor_app::Cditor;
-use gpui::*;
+use cditor_app::{CditorBuilder, CditorComponent};
+use gpui::{
+    App, AppContext, Bounds, Context, IntoElement, ParentElement, Render, Styled, TitlebarOptions,
+    Window, WindowBounds, WindowOptions, div, px, size,
+};
+
+struct CditorHostView {
+    editor: CditorComponent,
+}
+
+impl CditorHostView {
+    fn new(builder: CditorBuilder, cx: &mut Context<Self>) -> Self {
+        let editor = builder.build(cx).expect("build Cditor component");
+        Self { editor }
+    }
+}
+
+impl Render for CditorHostView {
+    fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
+        div().size_full().child(self.editor.view.clone())
+    }
+}
 
 fn main() {
     let app = gpui_platform::application();
@@ -23,19 +43,19 @@ fn main() {
                 }),
                 ..Default::default()
             },
-            |_window, cx| cx.new(|cx| cditor_from_env().build_view(cx)),
+            |_window, cx| cx.new(|cx| CditorHostView::new(cditor_from_env(), cx)),
         )
         .expect("open Cditor window");
     });
 }
 
-fn cditor_from_env() -> Cditor {
+fn cditor_from_env() -> CditorBuilder {
     let mut cditor = if env_flag("CDITOR_LARGE_DEMO", false) {
-        Cditor::new().large_demo()
+        CditorBuilder::new().large_demo()
     } else if env_flag("CDITOR_SMALL_DEMO", false) {
-        Cditor::new().demo()
+        CditorBuilder::new().demo()
     } else {
-        Cditor::new().memory()
+        CditorBuilder::new().memory()
     }
     .with_debug_overlay(env_flag("CDITOR_DEBUG_OVERLAY", false))
     .with_readonly(env_flag("CDITOR_READONLY", false));
@@ -48,35 +68,47 @@ fn cditor_from_env() -> Cditor {
         cditor = cditor.with_workspace_id(workspace_id);
     }
 
-    let seed_large_demo = env_flag("CDITOR_SEED_LARGE_DEMO", false);
-    let force_reseed = env_flag("CDITOR_FORCE_RESEED_LARGE_DEMO", false);
-    let seed_block_count = env_usize("CDITOR_SEED_LARGE_DEMO_BLOCKS")
-        .unwrap_or(cditor_app::runtime::LARGE_MIXED_DEMO_BLOCKS);
-
-    match (
-        env::var("CDITOR_DATABASE_URL").ok(),
-        env_u64("CDITOR_DOCUMENT_ID"),
-    ) {
-        (Some(database_url), Some(document_id)) => {
-            let cditor = cditor
-                .with_document_id(document_id)
-                .with_postgres_url(database_url);
-            if seed_large_demo {
-                cditor.with_postgres_large_demo_seed(seed_block_count, force_reseed)
-            } else {
-                cditor
-            }
-        }
-        (Some(database_url), None) => {
-            let cditor = cditor.with_document_id(1).with_postgres_url(database_url);
-            if seed_large_demo {
-                cditor.with_postgres_large_demo_seed(seed_block_count, force_reseed)
-            } else {
-                cditor
-            }
-        }
-        _ => cditor,
+    if let Some(sqlite_path) = env::var_os("CDITOR_SQLITE_PATH") {
+        return cditor
+            .with_document_id(env_u64("CDITOR_DOCUMENT_ID").unwrap_or(1))
+            .with_sqlite_path(sqlite_path);
     }
+
+    #[cfg(feature = "postgres")]
+    {
+        let seed_large_demo = env_flag("CDITOR_SEED_LARGE_DEMO", false);
+        let force_reseed = env_flag("CDITOR_FORCE_RESEED_LARGE_DEMO", false);
+        let seed_block_count = env_usize("CDITOR_SEED_LARGE_DEMO_BLOCKS")
+            .unwrap_or(cditor_app::runtime::LARGE_MIXED_DEMO_BLOCKS);
+
+        match (
+            env::var("CDITOR_DATABASE_URL").ok(),
+            env_u64("CDITOR_DOCUMENT_ID"),
+        ) {
+            (Some(database_url), Some(document_id)) => {
+                let cditor = cditor
+                    .with_document_id(document_id)
+                    .with_postgres_url(database_url);
+                if seed_large_demo {
+                    cditor.with_postgres_large_demo_seed(seed_block_count, force_reseed)
+                } else {
+                    cditor
+                }
+            }
+            (Some(database_url), None) => {
+                let cditor = cditor.with_document_id(1).with_postgres_url(database_url);
+                if seed_large_demo {
+                    cditor.with_postgres_large_demo_seed(seed_block_count, force_reseed)
+                } else {
+                    cditor
+                }
+            }
+            _ => cditor,
+        }
+    }
+
+    #[cfg(not(feature = "postgres"))]
+    cditor
 }
 
 fn env_flag(name: &str, default: bool) -> bool {
@@ -96,4 +128,25 @@ fn env_u64(name: &str) -> Option<u64> {
 
 fn env_usize(name: &str) -> Option<usize> {
     env::var(name).ok()?.parse().ok()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use gpui::TestAppContext;
+
+    #[gpui::test]
+    fn desktop_host_owns_sdk_component_and_handle(cx: &mut TestAppContext) {
+        let (_host, handle) = cx.update(|cx| {
+            let host = cx.new(|cx| CditorHostView::new(CditorBuilder::new().memory(), cx));
+            let handle = host.read(cx).editor.handle.clone();
+            (host, handle)
+        });
+
+        assert!(cx.read(|cx| handle.is_ready(cx)));
+        assert_eq!(
+            cx.read(|cx| handle.document_info(cx).unwrap().block_count),
+            1
+        );
+    }
 }

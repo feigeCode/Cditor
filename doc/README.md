@@ -14,6 +14,12 @@
 - [远程 PostgreSQL](architecture/remote-postgres.md)
 - [白板集成架构](whiteboard-integration-architecture.md)
 
+## 开发与集成指南
+
+- [Cditor 组件接口与集成指南](guides/cditor-component-integration.md)
+- [Cditor 组件 SDK 接口设计](architecture/cditor-component-sdk-api-design.md)
+- [富文本编辑器常用操作清单](guides/富文本编辑器常用操作清单.md)
+
 ## 功能计划与验收
 
 - [第三方编辑器接入指南](guides/editor-integration.md)

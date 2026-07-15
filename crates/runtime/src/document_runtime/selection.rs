@@ -166,6 +166,20 @@ impl DocumentRuntime {
         Ok(true)
     }
 
+    pub fn set_document_selection(&mut self, selection: DocumentSelection) -> Result<bool, String> {
+        let changed = self.set_document_text_selection(
+            selection.anchor.block_id,
+            selection.anchor.offset,
+            selection.focus.block_id,
+            selection.focus.offset,
+        )?;
+        if let Some(current) = self.document_selection.as_mut() {
+            current.anchor.affinity = selection.anchor.affinity;
+            current.focus.affinity = selection.focus.affinity;
+        }
+        Ok(changed)
+    }
+
     fn clamp_text_offset(&self, block_id: BlockId, offset: usize) -> Result<usize, String> {
         let model = self
             .text_models
@@ -397,6 +411,37 @@ impl DocumentRuntime {
     pub fn has_document_text_selection(&self) -> bool {
         self.document_selection
             .is_some_and(|selection| !selection.is_caret())
+    }
+
+    pub fn has_entire_document_text_selection(&self) -> bool {
+        let Some(selection) = self
+            .document_selection
+            .and_then(|selection| selection.normalize(&self.index).ok())
+        else {
+            return false;
+        };
+        let Some(first_block_id) = self.index.block_ids.first().copied() else {
+            return false;
+        };
+        let Some(last_block_id) = self.index.block_ids.last().copied() else {
+            return false;
+        };
+        let Some(last_offset) = self
+            .text_models
+            .get(&last_block_id)
+            .map(PieceTableTextModel::len)
+            .or_else(|| {
+                self.payload_window
+                    .get(last_block_id)
+                    .map(|payload| payload.plain_text().len())
+            })
+        else {
+            return false;
+        };
+        selection.start.block_id == first_block_id
+            && selection.start.offset == 0
+            && selection.end.block_id == last_block_id
+            && selection.end.offset == last_offset
     }
 
     pub fn document_text_selection_fragments(&self) -> Option<Vec<DocumentTextSelectionFragment>> {
