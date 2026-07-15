@@ -11,7 +11,7 @@ use crate::gui::app::interaction::geometry::{
 };
 use crate::gui::app::interaction::scrollbar::{render_scrollbar, scrollbar_policy};
 use crate::gui::app::interaction::table_scroll::TableScrollSnapshot;
-use crate::gui::document::DEFAULT_DOCUMENT_PAGE_WIDTH_PX;
+use crate::gui::document::DEFAULT_DOCUMENT_LEFT_INSET_PX;
 use crate::gui::document::DEFAULT_DOCUMENT_TOP_INSET_PX;
 use crate::gui::document::{DocumentBlockActionProjection, DocumentEditorView};
 use crate::gui::image_preview::render_image_preview_overlay;
@@ -567,10 +567,10 @@ fn ai_preview_block_anchor(
     block_height: f64,
     text_origin_x: f64,
     text_width: f64,
-    viewport_width: f32,
+    _viewport_width: f32,
     scroll_top: f64,
 ) -> Bounds<gpui::Pixels> {
-    let page_left = ((viewport_width - DEFAULT_DOCUMENT_PAGE_WIDTH_PX) / 2.0).max(0.0);
+    let page_left = DEFAULT_DOCUMENT_LEFT_INSET_PX;
     let top = (document_top - scroll_top) as f32 + DEFAULT_DOCUMENT_TOP_INSET_PX;
     let height = block_height.max(24.0) as f32;
     Bounds::new(
@@ -586,7 +586,7 @@ mod ai_preview_position_tests {
     #[test]
     fn ai_panel_anchor_tracks_projected_block_after_scroll() {
         let anchor = ai_preview_block_anchor(920.0, 48.0, 42.0, 760.0, 1200.0, 600.0);
-        assert_eq!(f32::from(anchor.left()), 212.0);
+        assert_eq!(f32::from(anchor.left()), 90.0);
         assert_eq!(f32::from(anchor.top()), 352.0);
         assert_eq!(f32::from(anchor.bottom()), 400.0);
     }

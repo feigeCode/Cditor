@@ -4,7 +4,7 @@ use gpui::{Bounds, Pixels, point, px};
 
 use crate::gui::app::interaction::geometry::ProjectedBlockRect;
 use crate::gui::block::chrome::block_content_left_px;
-use crate::gui::document::{DEFAULT_DOCUMENT_PAGE_WIDTH_PX, DEFAULT_DOCUMENT_TOP_INSET_PX};
+use crate::gui::document::{DEFAULT_DOCUMENT_LEFT_INSET_PX, DEFAULT_DOCUMENT_TOP_INSET_PX};
 use crate::gui::menu_metrics::EditorViewport;
 use crate::gui::overlay::{
     ActiveColor, BlockTransformAction, BlockTransformAvailability, ColorMenuAction,
@@ -48,7 +48,7 @@ pub(in crate::gui::app) fn formatting_toolbar_state(
         let rect = projected_block_rects
             .iter()
             .find(|rect| rect.block_id == block_id)?;
-        let page_left = ((viewport.width - DEFAULT_DOCUMENT_PAGE_WIDTH_PX) / 2.0).max(0.0);
+        let page_left = DEFAULT_DOCUMENT_LEFT_INSET_PX;
         let top = (rect.document_top - scroll_top) as f32 + DEFAULT_DOCUMENT_TOP_INSET_PX;
         let bottom = (rect.document_bottom - scroll_top) as f32 + DEFAULT_DOCUMENT_TOP_INSET_PX;
         let block_left = page_left + block_content_left_px(rect.indent_px);
