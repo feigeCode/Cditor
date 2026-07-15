@@ -13,7 +13,7 @@ path = "src/main.rs"
 required-features = ["application"]
 
 [features]
-default = ["ai-openai", "application", "postgres", "remote-media"]
+default = ["ai-openai", "application", "postgres", "remote-media", "sqlite"]
 ai-openai = ["cditor-ai/openai"]
 application = ["dep:gpui_platform"]
 postgres = [
@@ -21,6 +21,7 @@ postgres = [
     "dep:sqlx",
 ]
 remote-media = ["dep:reqwest"]
+sqlite = ["dep:cditor-storage-sqlite"]
 runtime-shaders = ["application", "gpui_platform/runtime_shaders"]
 
 [dependencies]
@@ -32,7 +33,7 @@ cditor-editor = { path = "../editor" }
 cditor-runtime = { path = "../runtime", default-features = false }
 cditor-storage = { path = "../store" }
 cditor-storage-postgres = { path = "../store-postgres", optional = true }
-cditor-storage-sqlite = { path = "../store-sqlite" }
+cditor-storage-sqlite = { path = "../store-sqlite", optional = true }
 gpui = { git = "https://github.com/zed-industries/zed", rev = "76c93968da5b8b8809bdd72e4ad9e7d0e946bad0", default-features = false, features = ["font-kit"] }
 gpui_platform = { git = "https://github.com/zed-industries/zed", rev = "76c93968da5b8b8809bdd72e4ad9e7d0e946bad0", optional = true, default-features = false, features = ["font-kit"] }
 mermaid_render = { git = "https://github.com/zed-industries/zed", rev = "76c93968da5b8b8809bdd72e4ad9e7d0e946bad0" }

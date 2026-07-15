@@ -39,9 +39,9 @@ pub use import_export::{
     AttachmentExportMode, ExportFormat, ExportReport, ExportWarning, ImportReport, ImportWarning,
     MarkdownExportOptions, MarkdownImportOptions,
 };
-pub use options::{
-    CditorBackend, CditorOptions, SqliteDurability, SqliteStorageOptions, WorkspaceId,
-};
+pub use options::{CditorBackend, CditorOptions, WorkspaceId};
+#[cfg(feature = "sqlite")]
+pub use options::{SqliteDurability, SqliteStorageOptions};
 pub use providers::{
     AiProvider, AiProviderError, AiRequest, AiRequestId, AiTaskKind, AssetDescriptor, AssetError,
     AssetInput, AssetProvider, AssetRef, CditorExtension, CditorHostDelegate, FilePickerRequest,
