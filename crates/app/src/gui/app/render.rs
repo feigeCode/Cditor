@@ -46,10 +46,12 @@ impl Render for CditorV2View {
             if !self.ai_prompt_focus.is_focused(window) {
                 window.focus(&self.ai_prompt_focus, cx);
             }
-        } else if self.whiteboard_editor.is_none()
-            && !focus.is_focused(window)
-            && !self.code_language_focus.is_focused(window)
-        {
+        } else if restore_editor_focus_allowed(
+            self.integration.is_some(),
+            self.whiteboard_editor.is_some(),
+            focus.is_focused(window),
+            self.code_language_focus.is_focused(window),
+        ) {
             window.focus(&focus, cx);
         }
         self.sdk_register_focus_observers(window, cx);
@@ -559,6 +561,32 @@ impl Render for CditorV2View {
         }
 
         root
+    }
+}
+
+fn restore_editor_focus_allowed(
+    integration_active: bool,
+    whiteboard_active: bool,
+    editor_focused: bool,
+    code_language_focused: bool,
+) -> bool {
+    !integration_active && !whiteboard_active && !editor_focused && !code_language_focused
+}
+
+#[cfg(test)]
+mod focus_tests {
+    use super::restore_editor_focus_allowed;
+
+    #[test]
+    fn embedded_editor_does_not_reclaim_external_focus() {
+        assert!(!restore_editor_focus_allowed(true, false, false, false));
+    }
+
+    #[test]
+    fn standalone_editor_keeps_legacy_auto_focus() {
+        assert!(restore_editor_focus_allowed(false, false, false, false));
+        assert!(!restore_editor_focus_allowed(false, true, false, false));
+        assert!(!restore_editor_focus_allowed(false, false, true, false));
     }
 }
 
