@@ -22,6 +22,14 @@ pub use integration::{
     MarkdownFidelity, MarkdownImportResult,
 };
 
+/// Installs Cditor's application-level key bindings for embedded editors.
+///
+/// Hosts must call this once during GPUI application initialization before
+/// creating an [`Editor`].
+pub fn init(cx: &mut gpui::App) {
+    gui::input::bind_cditor_keys(cx);
+}
+
 pub mod storage {
     pub use cditor_storage::*;
     #[cfg(feature = "postgres")]
