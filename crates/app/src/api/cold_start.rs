@@ -1,3 +1,4 @@
+#[cfg(feature = "sqlite")]
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -22,6 +23,7 @@ use cditor_storage_postgres::{
     PostgresLayoutCacheStore, PostgresPayloadStore, PostgresPoolConfig, PostgresStorageResult,
     create_pg_pool, ensure_large_mixed_demo_seeded, pg_document_id_from_runtime, run_migrations,
 };
+#[cfg(feature = "sqlite")]
 use cditor_storage_sqlite::SqliteDocumentStorage;
 
 use super::options::{CditorBackend, CditorOptions};
@@ -31,6 +33,7 @@ pub enum CditorColdStartPlan {
     Demo,
     LargeDemo,
     Memory,
+    #[cfg(feature = "sqlite")]
     Sqlite {
         document_id: cditor_core::ids::DocumentId,
         path: PathBuf,
@@ -58,6 +61,7 @@ impl CditorColdStartPlan {
             CditorBackend::Demo => Self::Demo,
             CditorBackend::LargeDemo => Self::LargeDemo,
             CditorBackend::Memory => Self::Memory,
+            #[cfg(feature = "sqlite")]
             CditorBackend::Sqlite { options: sqlite } => match options.document_id {
                 Some(document_id) => Self::Sqlite {
                     document_id,
@@ -94,6 +98,7 @@ impl CditorColdStartPlan {
 
     pub fn persistent_label(&self) -> Option<String> {
         match self {
+            #[cfg(feature = "sqlite")]
             Self::Sqlite { document_id, .. } => Some(format!("SQLite document {document_id}")),
             #[cfg(feature = "postgres")]
             Self::PostgresUrl { document_id, .. } | Self::PostgresPool { document_id } => {
@@ -186,6 +191,7 @@ impl Default for StorageRuntimeLoadOptions {
     }
 }
 
+#[cfg(any(feature = "sqlite", feature = "postgres"))]
 pub async fn load_runtime_from_options(
     options: &CditorOptions,
 ) -> StorageResult<Option<CditorRuntimeLoadResult>> {
@@ -198,6 +204,7 @@ pub async fn load_runtime_from_options(
         | CditorBackend::LargeDemo
         | CditorBackend::Memory
         | CditorBackend::Cloud { .. } => return Ok(None),
+        #[cfg(feature = "sqlite")]
         CditorBackend::Sqlite { options } => {
             Arc::new(SqliteDocumentStorage::open(options.clone()).await?)
         }
@@ -229,6 +236,13 @@ pub async fn load_runtime_from_options(
     )
     .await
     .map(Some)
+}
+
+#[cfg(not(any(feature = "sqlite", feature = "postgres")))]
+pub async fn load_runtime_from_options(
+    _options: &CditorOptions,
+) -> StorageResult<Option<CditorRuntimeLoadResult>> {
+    Ok(None)
 }
 
 async fn load_runtime_from_storage(

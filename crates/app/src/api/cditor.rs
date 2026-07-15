@@ -11,7 +11,9 @@ use super::cold_start::{CditorColdStartPlan, load_runtime_from_options};
 use super::component::CditorComponent;
 use super::error::CditorError;
 use super::event::CditorEvent;
-use super::options::{CditorBackend, CditorOptions, SqliteStorageOptions, WorkspaceId};
+#[cfg(feature = "sqlite")]
+use super::options::SqliteStorageOptions;
+use super::options::{CditorBackend, CditorOptions, WorkspaceId};
 
 #[derive(Clone)]
 pub struct Cditor {
@@ -97,6 +99,7 @@ impl Cditor {
         self
     }
 
+    #[cfg(feature = "sqlite")]
     pub fn with_sqlite_path(mut self, path: impl Into<std::path::PathBuf>) -> Self {
         self.options.backend = CditorBackend::Sqlite {
             options: SqliteStorageOptions::file(path),
@@ -104,6 +107,7 @@ impl Cditor {
         self
     }
 
+    #[cfg(feature = "sqlite")]
     pub fn with_sqlite_options(mut self, options: SqliteStorageOptions) -> Self {
         self.options.backend = CditorBackend::Sqlite { options };
         self
@@ -196,6 +200,7 @@ impl Cditor {
                 self.options.readonly,
                 cx,
             ),
+            #[cfg(feature = "sqlite")]
             plan @ CditorColdStartPlan::Sqlite { .. } => {
                 let label = plan
                     .persistent_label()
@@ -369,6 +374,7 @@ mod tests {
         assert!(cditor.options().force_reseed_large_demo);
     }
 
+    #[cfg(feature = "sqlite")]
     #[test]
     fn cditor_builder_sets_sqlite_backend_options() {
         let cditor = Cditor::new()
