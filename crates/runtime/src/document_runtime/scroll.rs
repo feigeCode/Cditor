@@ -24,7 +24,7 @@ impl DocumentRuntime {
         self.scroll
             .set_viewport_height(viewport_height)
             .map_err(|error| error.to_string())?;
-        let total_height = self.scroll_extent_height(self.height_index.total_height());
+        let total_height = self.scroll_extent_height(self.page_layout.total_height());
         self.scroll
             .set_model_total_height(total_height)
             .map_err(|error| error.to_string())?;
@@ -73,6 +73,47 @@ impl DocumentRuntime {
             block_top - top_margin
         } else {
             return Ok(false);
+        };
+        let before = self.scroll.global_scroll_top;
+        self.scroll
+            .scroll_to_global_offset(next_scroll_top, ScrollOrigin::ProgrammaticVirtualScroll)
+            .map_err(|error| error.to_string())?;
+        Ok((self.scroll.global_scroll_top - before).abs() > 0.5)
+    }
+
+    /// Scrolls through the virtual height model; `alignment` is 0.0 for start,
+    /// 0.5 for center, 1.0 for end, and `None` for nearest.
+    pub fn scroll_to_block_with_alignment(
+        &mut self,
+        block_id: BlockId,
+        alignment: Option<f64>,
+    ) -> Result<bool, String> {
+        let target = self
+            .visible_index
+            .resolve_scroll_target(&self.index, block_id)
+            .ok_or_else(|| format!("block {block_id} is missing from the document"))?;
+        let block_top = self
+            .height_index
+            .offset_of_block(target.visible_index)
+            .ok_or_else(|| format!("block {block_id} has no layout offset"))?;
+        let block_height = self
+            .height_index
+            .heights
+            .get(target.visible_index)
+            .copied()
+            .unwrap_or_default();
+        let viewport_top = self.scroll.global_scroll_top;
+        let viewport_height = self.scroll.viewport_height.max(1.0);
+        let viewport_bottom = viewport_top + viewport_height;
+        let next_scroll_top = match alignment {
+            Some(alignment) => {
+                block_top - (viewport_height - block_height) * alignment.clamp(0.0, 1.0)
+            }
+            None if block_top < viewport_top => block_top,
+            None if block_top + block_height > viewport_bottom => {
+                block_top + block_height - viewport_height
+            }
+            None => return Ok(false),
         };
         let before = self.scroll.global_scroll_top;
         self.scroll

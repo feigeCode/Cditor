@@ -1,4 +1,5 @@
 use super::*;
+use crate::rich_text::TableCellAlign;
 
 pub(super) fn is_table_candidate_line(line: &str) -> bool {
     line.trim_start().starts_with('|')
@@ -21,18 +22,22 @@ pub(super) fn parse_table_region(lines: &[&str]) -> Option<TablePayload> {
     if header.is_empty() || alignment.len() != header.len() {
         return None;
     }
-    if !alignment.iter().all(is_alignment_cell) {
+    let alignments = alignment
+        .iter()
+        .map(|cell| parse_alignment_cell(cell))
+        .collect::<Option<Vec<_>>>()?;
+    if alignments.len() != header.len() {
         return None;
     }
 
     let mut rows = Vec::with_capacity(lines.len() - 1);
-    rows.push(table_row_from_cells(header));
+    rows.push(table_row_from_cells(header, &alignments));
     for line in &lines[2..] {
         let cells = split_table_cells(line)?;
         if cells.len() != rows[0].cells.len() {
             return None;
         }
-        rows.push(table_row_from_cells(cells));
+        rows.push(table_row_from_cells(cells, &alignments));
     }
     Some(TablePayload {
         rows,
@@ -65,18 +70,27 @@ fn split_table_cells(line: &str) -> Option<Vec<String>> {
     (!cells.is_empty()).then_some(cells)
 }
 
-fn is_alignment_cell(cell: &String) -> bool {
+fn parse_alignment_cell(cell: &str) -> Option<TableCellAlign> {
     let trimmed = cell.trim();
     let inner = trimmed.trim_matches(':');
-    !inner.is_empty() && inner.chars().all(|ch| ch == '-')
+    if inner.is_empty() || !inner.chars().all(|ch| ch == '-') {
+        return None;
+    }
+    Some(match (trimmed.starts_with(':'), trimmed.ends_with(':')) {
+        (true, true) => TableCellAlign::Center,
+        (false, true) => TableCellAlign::Right,
+        _ => TableCellAlign::Left,
+    })
 }
 
-fn table_row_from_cells(cells: Vec<String>) -> TableRowPayload {
+fn table_row_from_cells(cells: Vec<String>, alignments: &[TableCellAlign]) -> TableRowPayload {
     TableRowPayload {
         cells: cells
             .into_iter()
-            .map(|cell| TableCellPayload {
+            .enumerate()
+            .map(|(index, cell)| TableCellPayload {
                 spans: parse_inline_markdown(&cell),
+                align: alignments.get(index).copied().unwrap_or_default(),
                 ..Default::default()
             })
             .collect(),

@@ -1,17 +1,28 @@
 use std::fmt::{Display, Formatter};
 
-use super::EditorPersistenceError;
+use super::{EditorPersistenceError, MarkdownDiagnostic};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum EditorError {
     NotReady,
     PersistenceNotConfigured,
     InvalidMarkdown(String),
+    MarkdownUnsupported {
+        diagnostics: Vec<MarkdownDiagnostic>,
+    },
+    MarkdownSourceOnly {
+        diagnostics: Vec<MarkdownDiagnostic>,
+    },
     InvalidDocument(String),
     InvalidJson(String),
-    UnsupportedSchemaVersion { version: u32 },
+    UnsupportedSchemaVersion {
+        version: u32,
+    },
     IncompleteDocument,
-    DocumentIdMismatch { expected: String, actual: String },
+    DocumentIdMismatch {
+        expected: String,
+        actual: String,
+    },
     EntityUpdate(String),
     Persistence(EditorPersistenceError),
 }
@@ -24,6 +35,16 @@ impl Display for EditorError {
                 formatter.write_str("editor persistence is not configured")
             }
             Self::InvalidMarkdown(message) => write!(formatter, "invalid Markdown: {message}"),
+            Self::MarkdownUnsupported { diagnostics } => write!(
+                formatter,
+                "Markdown export would lose unsupported rich-text content ({} diagnostics)",
+                diagnostics.len()
+            ),
+            Self::MarkdownSourceOnly { diagnostics } => write!(
+                formatter,
+                "Markdown source is only safe in source or read-only preview mode ({} diagnostics)",
+                diagnostics.len()
+            ),
             Self::InvalidDocument(message) => write!(formatter, "invalid document: {message}"),
             Self::InvalidJson(message) => write!(formatter, "invalid document JSON: {message}"),
             Self::UnsupportedSchemaVersion { version } => {

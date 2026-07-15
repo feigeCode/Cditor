@@ -19,12 +19,12 @@ application = ["dep:gpui_platform"]
 postgres = [
     "dep:cditor-storage-postgres",
     "dep:sqlx",
-    "dep:tokio",
 ]
 remote-media = ["dep:reqwest"]
 runtime-shaders = ["application", "gpui_platform/runtime_shaders"]
 
 [dependencies]
+async-trait = "0.1"
 cditor-ai = { path = "../ai", default-features = false }
 cditor-core = { path = "../core" }
 ding-board = { path = "../ding-board" }
@@ -32,13 +32,14 @@ cditor-editor = { path = "../editor" }
 cditor-runtime = { path = "../runtime", default-features = false }
 cditor-storage = { path = "../store" }
 cditor-storage-postgres = { path = "../store-postgres", optional = true }
+cditor-storage-sqlite = { path = "../store-sqlite" }
 gpui = { git = "https://github.com/zed-industries/zed", rev = "76c93968da5b8b8809bdd72e4ad9e7d0e946bad0", default-features = false, features = ["font-kit"] }
 gpui_platform = { git = "https://github.com/zed-industries/zed", rev = "76c93968da5b8b8809bdd72e4ad9e7d0e946bad0", optional = true, default-features = false, features = ["font-kit"] }
 mermaid_render = { git = "https://github.com/zed-industries/zed", rev = "76c93968da5b8b8809bdd72e4ad9e7d0e946bad0" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 sqlx = { version = "0.8", optional = true, default-features = false, features = ["runtime-tokio", "postgres", "uuid"] }
-tokio = { version = "1", optional = true, features = ["time"] }
+tokio = { version = "1", features = ["sync", "time"] }
 unicode-segmentation = "1.12"
 image = "0.25.10"
 reqwest = { version = "0.12", optional = true, default-features = false, features = ["blocking", "rustls-tls"] }
@@ -72,4 +73,5 @@ lumis = { version = "0.12.0", default-features = false, features = [
 [dev-dependencies]
 gpui = { git = "https://github.com/zed-industries/zed", rev = "76c93968da5b8b8809bdd72e4ad9e7d0e946bad0", default-features = false, features = ["font-kit", "test-support"] }
 gpui_platform = { git = "https://github.com/zed-industries/zed", rev = "76c93968da5b8b8809bdd72e4ad9e7d0e946bad0", default-features = false, features = ["runtime_shaders"] }
+tempfile = "3"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time"] }

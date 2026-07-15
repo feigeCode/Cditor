@@ -24,11 +24,13 @@ pub use document::{
 };
 pub use inline::{InlineColorTarget, InlineMark, InlineSpan, plain_text_from_spans};
 pub use markdown::{
-    MarkdownImportOptions, ParsedMarkdownDocument, block_kind_shortcut,
-    block_kind_shortcut_with_marker_len, code_fence_shortcut, export_plain_markdown,
-    import_markdown_block_incremental, import_markdown_inline_incremental,
-    looks_like_markdown_paste, markdown_inline_shortcut_spans, parse_callout_marker,
-    parse_markdown_document,
+    InlineMarkdownExport, MarkdownCompatibility, MarkdownDiagnostic, MarkdownDiagnosticSeverity,
+    MarkdownExportMode, MarkdownExportResult, MarkdownFidelity, MarkdownImportOptions,
+    MarkdownParseResult, ParsedMarkdownDocument, block_kind_shortcut,
+    block_kind_shortcut_with_marker_len, code_fence_shortcut, export_document_blocks,
+    export_inline_spans, export_plain_markdown, import_markdown_block_incremental,
+    import_markdown_inline_incremental, looks_like_markdown_paste, markdown_inline_shortcut_spans,
+    parse_callout_marker, parse_markdown_document, parse_markdown_document_with_report,
 };
 pub use markdown_stats::{MARKDOWN_PARSE_STATS, MarkdownParseStats, MarkdownParseStatsSnapshot};
 pub use payload::{

@@ -4,6 +4,7 @@ use std::time::Duration;
 use sqlx::PgPool;
 
 use cditor_core::ids::DocumentId;
+pub use cditor_storage_sqlite::{SqliteDurability, SqliteStorageOptions};
 
 pub type WorkspaceId = u64;
 
@@ -26,6 +27,9 @@ pub enum CditorBackend {
     Demo,
     LargeDemo,
     Memory,
+    Sqlite {
+        options: SqliteStorageOptions,
+    },
     #[cfg(feature = "postgres")]
     PostgresUrl {
         url: String,
@@ -45,6 +49,7 @@ impl PartialEq for CditorBackend {
             (Self::Demo, Self::Demo)
             | (Self::LargeDemo, Self::LargeDemo)
             | (Self::Memory, Self::Memory) => true,
+            (Self::Sqlite { options: a }, Self::Sqlite { options: b }) => a == b,
             #[cfg(feature = "postgres")]
             (Self::PostgresUrl { url: a }, Self::PostgresUrl { url: b }) => a == b,
             #[cfg(feature = "postgres")]
@@ -66,7 +71,7 @@ impl Default for CditorOptions {
             readonly: false,
             debug_overlay: false,
             payload_window_size: 128,
-            autosave_interval: None,
+            autosave_interval: Some(Duration::from_millis(250)),
             seed_large_demo_to_postgres: false,
             seed_large_demo_block_count: cditor_core::demo_fixtures::LARGE_MIXED_DEMO_BLOCKS,
             force_reseed_large_demo: false,

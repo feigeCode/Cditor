@@ -1,6 +1,7 @@
+use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct BlockAttrs {
     pub color: Option<String>,
     pub background_color: Option<String>,
@@ -25,7 +26,7 @@ impl Default for BlockAttrs {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum TextAlign {
     Start,
     Center,

@@ -11,13 +11,17 @@ use crate::gui::app::cditor_v2_view::TableScrollSnapshot;
 use crate::gui::block::table::menu::TableMenuUiState;
 use crate::gui::block::{
     BlockActionState, BlockDragOverlaySnapshot, BlockView, CodeHighlightCache, MermaidRenderCache,
-    TableAxis, TableAxisSelection, TableCellRangeSelection, TableReorderPreview,
-    TableResizePreview, WhiteboardThumbnailCache, render_block_drag_overlay,
-    render_table_axis_overlays, render_table_axis_toolbar, render_table_resize_overlays,
-    table_axis_track_sizes, table_content_editor_origin, table_toolbar_editor_origin,
+    TableAxis, TableAxisSelection, TableCellRangeSelection, TableCellSelection,
+    TableChromeOverlays, TableReorderPreview, TableResizePreview, WhiteboardThumbnailCache,
+    render_block_drag_overlay, render_table_axis_overlays, render_table_axis_toolbar,
+    render_table_cell_menu, render_table_chrome_viewport, render_table_resize_overlays,
+    table_axis_track_sizes, table_chrome_viewport_origins, table_content_editor_origin,
+    table_toolbar_editor_origin,
 };
 use crate::gui::document::DocumentSurface;
+use crate::gui::document::{DEFAULT_DOCUMENT_CONTENT_WIDTH_PX, DEFAULT_DOCUMENT_TOP_INSET_PX};
 use crate::gui::input::CodeLanguageEditState;
+use crate::gui::menu_metrics::MenuViewportBounds;
 use crate::gui::overlay::render_editor_overlays;
 use crate::gui::overlay::table::{
     render_table_horizontal_scrollbar, render_table_reorder_preview_overlay,
@@ -101,7 +105,11 @@ impl DocumentEditorView {
         drag_overlay: Option<BlockDragOverlaySnapshot>,
         action: DocumentBlockActionProjection,
         table_axis_selection: Option<TableAxisSelection>,
+        table_axis_menu_selection: Option<TableAxisSelection>,
+        table_cell_selection: Option<TableCellSelection>,
         table_menu_ui: &TableMenuUiState,
+        editor_viewport_width_px: f32,
+        editor_viewport_height_px: f32,
         readonly: bool,
         image_resize_preview: Option<(BlockId, f32)>,
         table_resize_preview: Option<TableResizePreview>,
@@ -119,6 +127,11 @@ impl DocumentEditorView {
         cx: &mut App,
     ) -> AnyElement {
         let block_view = BlockView::new(self.theme);
+        let menu_viewport = document_overlay_menu_viewport(
+            editor_viewport_width_px,
+            editor_viewport_height_px,
+            projection.scroll.global_scroll_top,
+        );
         let mut block_y = 0.0;
         let mut table_overlay_elements = Vec::new();
         let mut block_elements = projection
@@ -136,8 +149,12 @@ impl DocumentEditorView {
                         table_toolbar_editor_origin(block, document_top as f32, self.theme);
                     let row_track_sizes = table_axis_track_sizes(table_view, TableAxis::Row);
                     let column_track_sizes = table_axis_track_sizes(table_view, TableAxis::Column);
-                    // Scrollbar first so that axis overlays (gutters) render on top.
-                    if let Some(scroll_snapshot) = table_scroll_snapshots.get(&block.block_id)
+                    let scroll_snapshot = table_scroll_snapshots.get(&block.block_id);
+                    let viewport_width_px = scroll_snapshot
+                        .and_then(|snapshot| snapshot.viewport_measurement)
+                        .map(|measurement| measurement.viewport_width_px)
+                        .unwrap_or(table_view.width_px);
+                    if let Some(scroll_snapshot) = scroll_snapshot
                         && let Some(measurement) = scroll_snapshot.viewport_measurement
                         && let Some(scrollbar) = render_table_horizontal_scrollbar(
                             block.block_id,
@@ -152,26 +169,41 @@ impl DocumentEditorView {
                     {
                         table_overlay_elements.push(scrollbar);
                     }
-                    table_overlay_elements.extend(render_table_axis_overlays(
+                    let chrome_origins = table_chrome_viewport_origins();
+                    let mut table_chrome = TableChromeOverlays {
+                        viewport: render_table_resize_overlays(
+                            block.block_id,
+                            table_view,
+                            chrome_origins.viewport,
+                            self.theme,
+                            view.clone(),
+                        ),
+                        ..Default::default()
+                    };
+                    let axis_chrome = render_table_axis_overlays(
                         block.block_id,
                         table_view,
                         table_axis_selection,
                         table_range_selection,
                         table_view.focused_cell,
+                        table_cell_selection,
                         &row_track_sizes,
                         &column_track_sizes,
-                        content_origin,
+                        chrome_origins,
                         self.theme,
                         view.clone(),
-                    ));
-                    table_overlay_elements.extend(render_table_resize_overlays(
-                        block.block_id,
-                        table_view,
+                    );
+                    table_chrome.viewport.extend(axis_chrome.viewport);
+                    table_chrome.top_edge.extend(axis_chrome.top_edge);
+                    table_chrome.left_edge.extend(axis_chrome.left_edge);
+                    table_chrome.right_edge.extend(axis_chrome.right_edge);
+                    table_overlay_elements.push(render_table_chrome_viewport(
                         content_origin,
-                        self.theme,
-                        view.clone(),
+                        viewport_width_px,
+                        table_view.height_px,
+                        table_chrome,
                     ));
-                    if let Some(selection) = table_axis_selection
+                    if let Some(selection) = table_axis_menu_selection
                         .filter(|selection| selection.block_id == block.block_id)
                     {
                         table_overlay_elements.push(render_table_axis_toolbar(
@@ -183,7 +215,23 @@ impl DocumentEditorView {
                             self.theme,
                             view.clone(),
                             focus.clone(),
+                            menu_viewport,
                         ));
+                    }
+                    if let Some(selection) = table_cell_selection
+                        .filter(|selection| selection.block_id == block.block_id)
+                        && let Some(menu) = render_table_cell_menu(
+                            selection,
+                            table_view,
+                            content_origin,
+                            menu_viewport,
+                            table_menu_ui,
+                            readonly,
+                            self.theme,
+                            view.clone(),
+                        )
+                    {
+                        table_overlay_elements.push(menu);
                     }
                     if let Some(reorder_preview) = render_table_reorder_preview_overlay(
                         block.block_id,
@@ -280,6 +328,22 @@ impl DocumentEditorView {
     }
 }
 
+fn document_overlay_menu_viewport(
+    editor_width_px: f32,
+    editor_height_px: f32,
+    scroll_top: f64,
+) -> MenuViewportBounds {
+    let content_left = ((editor_width_px - DEFAULT_DOCUMENT_CONTENT_WIDTH_PX) / 2.0).max(0.0);
+    let left = -content_left;
+    let top = scroll_top as f32 - DEFAULT_DOCUMENT_TOP_INSET_PX;
+    MenuViewportBounds {
+        left,
+        top,
+        right: left + editor_width_px,
+        bottom: top + editor_height_px,
+    }
+}
+
 fn render_down_placer(
     top: f64,
     height: f64,
@@ -357,5 +421,25 @@ mod tests {
     #[test]
     fn overlay_block_top_includes_virtual_window_prefix_height() {
         assert_eq!(document_block_top(8_000.0, 128.0), 8_128.0);
+    }
+
+    #[test]
+    fn menu_viewport_is_expressed_in_centered_document_overlay_coordinates() {
+        let viewport = document_overlay_menu_viewport(1_200.0, 800.0, 0.0);
+
+        assert_eq!(viewport.left, -170.0);
+        assert_eq!(viewport.right, 1_030.0);
+        assert_eq!(viewport.top, -32.0);
+        assert_eq!(viewport.bottom, 768.0);
+    }
+
+    #[test]
+    fn menu_viewport_tracks_document_scroll_and_narrow_hosts() {
+        let viewport = document_overlay_menu_viewport(700.0, 500.0, 240.0);
+
+        assert_eq!(viewport.left, 0.0);
+        assert_eq!(viewport.right, 700.0);
+        assert_eq!(viewport.top, 208.0);
+        assert_eq!(viewport.bottom, 708.0);
     }
 }

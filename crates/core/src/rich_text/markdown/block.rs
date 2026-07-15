@@ -70,7 +70,12 @@ pub(super) fn parse_numbered_item(line: &str) -> Option<&str> {
 
 pub(super) fn parse_fence_start(line: &str) -> Option<(Option<String>, &str)> {
     let trimmed = line.trim_start();
-    let rest = trimmed.strip_prefix("```")?;
+    let fence_len = trimmed.bytes().take_while(|byte| *byte == b'`').count();
+    if fence_len < 3 {
+        return None;
+    }
+    let fence = &trimmed[..fence_len];
+    let rest = &trimmed[fence_len..];
     let language = rest.trim();
-    Some(((!language.is_empty()).then(|| language.to_string()), ""))
+    Some(((!language.is_empty()).then(|| language.to_string()), fence))
 }

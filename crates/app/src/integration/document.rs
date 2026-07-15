@@ -1,14 +1,14 @@
 use cditor_core::document::BlockIndexRecord;
-use cditor_core::layout::BlockLayoutMeta;
 use cditor_core::rich_text::document::CURRENT_RICH_TEXT_FORMAT_VERSION;
 use cditor_core::rich_text::{
-    BlockPayloadRecord, DocumentMetadata, MarkdownImportOptions, RichBlockRecord, RichTextDocument,
-    export_plain_markdown, parse_markdown_document,
+    BlockAttrs, BlockPayloadRecord, DocumentMetadata, MarkdownExportMode, MarkdownExportResult,
+    MarkdownImportOptions, RichBlockRecord, RichTextDocument, export_document_blocks,
+    parse_markdown_document_with_report,
 };
 use cditor_runtime::DocumentRuntime;
 use serde::{Deserialize, Serialize};
 
-use super::EditorError;
+use super::{EditorError, MarkdownImportResult};
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct EditorBlock {
@@ -19,10 +19,20 @@ pub struct EditorBlock {
     pub flags: u32,
     pub estimated_height: f64,
     pub payload: BlockPayloadRecord,
+    #[serde(default)]
+    pub attrs: BlockAttrs,
+    #[serde(default)]
+    pub raw_fallback: Option<String>,
 }
 
 impl EditorBlock {
-    fn from_records(index: BlockIndexRecord, payload: BlockPayloadRecord) -> Self {
+    fn from_records(
+        index: BlockIndexRecord,
+        payload: BlockPayloadRecord,
+        attrs: BlockAttrs,
+    ) -> Self {
+        let raw_fallback = (payload.kind == cditor_core::rich_text::RichBlockKind::RawMarkdown)
+            .then(|| payload.plain_text());
         Self {
             id: index.id,
             parent_id: index.parent_id,
@@ -31,18 +41,9 @@ impl EditorBlock {
             flags: index.flags,
             estimated_height: index.layout_meta.estimated_height,
             payload,
+            attrs,
+            raw_fallback,
         }
-    }
-
-    fn index_record(&self) -> BlockIndexRecord {
-        BlockIndexRecord::new(
-            self.id,
-            self.parent_id,
-            self.depth,
-            self.kind_tag,
-            self.flags,
-        )
-        .with_layout_meta(BlockLayoutMeta::new(self.id, self.estimated_height))
     }
 
     fn rich_block_record(&self, document_id: u64, structure_version: u64) -> RichBlockRecord {
@@ -57,6 +58,11 @@ impl EditorBlock {
         block.content_version = self.payload.content_version;
         block.structure_version = structure_version;
         block.estimated_height = self.estimated_height;
+        block.attrs = self.attrs.clone();
+        block.raw_fallback = self.raw_fallback.clone().or_else(|| {
+            (block.kind == cditor_core::rich_text::RichBlockKind::RawMarkdown)
+                .then(|| block.payload.plain_text())
+        });
         block
     }
 }
@@ -76,22 +82,33 @@ impl EditorDocument {
         document_id: impl Into<String>,
         markdown: &str,
     ) -> Result<Self, EditorError> {
+        Ok(Self::from_markdown_with_report(document_id, markdown)?.document)
+    }
+
+    pub fn from_markdown_with_report(
+        document_id: impl Into<String>,
+        markdown: &str,
+    ) -> Result<MarkdownImportResult, EditorError> {
         let document_id = document_id.into();
         let runtime_document_id = runtime_document_id(&document_id);
-        let parsed = parse_markdown_document(
+        let parsed = parse_markdown_document_with_report(
             markdown,
             MarkdownImportOptions {
                 document_id: runtime_document_id,
                 first_block_id: 1,
             },
         );
-        let mut document = RichTextDocument::empty(runtime_document_id);
-        document.root_blocks = parsed.root_blocks;
-        document.blocks = parsed.blocks;
-        if document.blocks.is_empty() {
-            document.push_root_block(RichBlockRecord::paragraph(1, ""));
+        let mut rich_document = RichTextDocument::empty(runtime_document_id);
+        rich_document.root_blocks = parsed.document.root_blocks;
+        rich_document.blocks = parsed.document.blocks;
+        if rich_document.blocks.is_empty() {
+            rich_document.push_root_block(RichBlockRecord::paragraph(1, ""));
         }
-        Self::from_rich_text_document(document_id, document)
+        Ok(MarkdownImportResult {
+            document: Self::from_rich_text_document(document_id, rich_document)?,
+            compatibility: parsed.compatibility,
+            diagnostics: parsed.diagnostics,
+        })
     }
 
     pub fn from_json(json: &str) -> Result<Self, EditorError> {
@@ -106,9 +123,31 @@ impl EditorDocument {
         serde_json::to_string(self).map_err(|error| EditorError::InvalidJson(error.to_string()))
     }
 
+    /// Compatibility export for previews and legacy callers.
+    ///
+    /// This maps to [`MarkdownExportMode::BestEffort`] and may normalize or
+    /// degrade unsupported rich-text content. Persistent `.md` sources must
+    /// use [`Self::export_markdown`] with [`MarkdownExportMode::Strict`].
     pub fn to_markdown(&self) -> Result<String, EditorError> {
+        Ok(self
+            .export_markdown(MarkdownExportMode::BestEffort)?
+            .markdown)
+    }
+
+    pub fn export_markdown(
+        &self,
+        mode: MarkdownExportMode,
+    ) -> Result<MarkdownExportResult, EditorError> {
         self.validate()?;
-        Ok(export_plain_markdown(&self.rich_text_document()))
+        let result = export_document_blocks(&self.rich_text_document(), mode);
+        if mode == MarkdownExportMode::Strict
+            && result.fidelity == cditor_core::rich_text::MarkdownFidelity::Unsupported
+        {
+            return Err(EditorError::MarkdownUnsupported {
+                diagnostics: result.diagnostics,
+            });
+        }
+        Ok(result)
     }
 
     pub fn from_runtime(
@@ -125,7 +164,10 @@ impl EditorDocument {
         let blocks = indexes
             .into_iter()
             .zip(payloads)
-            .map(|(index, payload)| EditorBlock::from_records(index, payload))
+            .map(|(index, payload)| {
+                let attrs = runtime.block_attrs(index.id);
+                EditorBlock::from_records(index, payload, attrs)
+            })
             .collect();
         Ok(Self {
             schema_version: Self::CURRENT_SCHEMA_VERSION,
@@ -137,21 +179,12 @@ impl EditorDocument {
 
     pub fn into_runtime(self, viewport_height: f64) -> Result<DocumentRuntime, EditorError> {
         self.validate()?;
-        let runtime_id = runtime_document_id(&self.document_id);
-        let records = self.blocks.iter().map(EditorBlock::index_record).collect();
-        let payloads = self
-            .blocks
-            .iter()
-            .map(|block| block.payload.clone())
-            .collect();
-        DocumentRuntime::from_index_payload_snapshot(
-            runtime_id,
-            records,
-            payloads,
-            self.structure_version,
+        let mut document = self.rich_text_document();
+        document.structure_version = self.structure_version;
+        Ok(DocumentRuntime::from_rich_text_document(
+            document,
             viewport_height,
-        )
-        .map_err(EditorError::InvalidDocument)
+        ))
     }
 
     fn from_rich_text_document(

@@ -28,7 +28,7 @@ use crate::gui::overlay::WhiteboardEditorSession;
 
 use crate::gui::app::integration_bridge::EditorIntegrationController;
 use crate::gui::persistence::{
-    EditorSaveStatus, PayloadWindowLoadScheduler, PostgresPersistenceState,
+    EditorSaveStatus, PayloadWindowLoadScheduler, StoragePersistenceState,
 };
 use crate::gui::text::RichTextPlatformLayout;
 use cditor_runtime::DocumentRuntime;
@@ -44,10 +44,7 @@ mod slash_menu;
 mod table_actions;
 mod whiteboard;
 
-#[cfg(feature = "postgres")]
 pub(in crate::gui::app) use super::persistence_bridge::save_status_for_mode;
-#[cfg(not(feature = "postgres"))]
-pub(in crate::gui::app) use super::persistence_bridge_stub::save_status_for_mode;
 pub use super::state::CditorViewState;
 pub(crate) use crate::gui::app::interaction::table_scroll::TableScrollSnapshot;
 pub(in crate::gui::app) use block_actions::block_focus_offset_after_missed_hit_test;
@@ -62,13 +59,18 @@ pub struct CditorV2View {
     pub(in crate::gui::app) code_language_focus: FocusHandle,
     pub(in crate::gui::app) ai_prompt_focus: FocusHandle,
     pub(in crate::gui::app) ai_provider: Arc<dyn cditor_ai::AiProvider>,
+    pub(in crate::gui::app) ai_enabled: bool,
     pub(in crate::gui::app) ai_prompt: Option<AiPromptState>,
     pub(in crate::gui::app) ai_preview_scroll_handle: gpui::ScrollHandle,
     pub(in crate::gui::app) show_debug: bool,
     pub(in crate::gui::app) readonly: bool,
+    pub(in crate::gui::app) dirty: bool,
+    pub(in crate::gui::app) sdk_focus_observers_registered: bool,
+    pub(in crate::gui::app) last_emitted_selection: Option<crate::api::DocumentSelection>,
     pub(in crate::gui::app) save_status: EditorSaveStatus,
     pub(in crate::gui::app) last_wheel_delta_y: f64,
     pub(in crate::gui::app) scroll_accumulator: ScrollAccumulator,
+    pub(in crate::gui::app) editor_viewport_handle: gpui::ScrollHandle,
     pub(in crate::gui::app) text_layouts: HashMap<BlockId, RichTextPlatformLayout>,
     pub(in crate::gui::app) table_cell_layouts: HashMap<TableCellLayoutKey, RichTextPlatformLayout>,
     pub(in crate::gui::app) table_scroll_state: GuiTableScrollState,
@@ -102,9 +104,9 @@ pub struct CditorV2View {
     pub(in crate::gui::app) table_reorder_drag: Option<GuiTableReorderDrag>,
     pub(in crate::gui::app) table_hscroll_drag: Option<GuiTableHScrollDrag>,
     pub(in crate::gui::app) projected_block_rects: Vec<ProjectedBlockRect>,
-    pub(in crate::gui::app) postgres_persistence: PostgresPersistenceState,
+    pub(in crate::gui::app) storage_persistence: StoragePersistenceState,
     pub(in crate::gui::app) payload_window_load_scheduler: PayloadWindowLoadScheduler,
-    pub(in crate::gui::app) autosave_interval: Duration,
+    pub(in crate::gui::app) autosave_interval: Option<Duration>,
     pub(in crate::gui::app) platform_input_target: Option<GuiPlatformInputTarget>,
     pub(in crate::gui::app) integration: Option<EditorIntegrationController>,
     pub(in crate::gui::app) integration_focus_requested: bool,

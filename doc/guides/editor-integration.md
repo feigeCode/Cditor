@@ -99,6 +99,20 @@ let editor = Editor::builder()
 let markdown = editor.get_markdown(cx)?;
 ```
 
+`get_markdown` 和 `EditorDocument::to_markdown` 是兼容旧调用方的
+`BestEffort` API，可能规范化语法或降级富文本专属内容。以 `.md` 为唯一真源时必须使用
+Strict export：
+
+```rust
+use cditor_gpui::MarkdownExportMode;
+
+let result = editor.export_markdown(MarkdownExportMode::Strict, cx)?;
+atomic_write_markdown(&result.markdown)?;
+```
+
+Strict 模式遇到颜色、下划线、白板、附件、合并表格等无法安全表达的内容时返回
+`EditorError::MarkdownUnsupported`，不会返回可被误写回文件的有损结果。
+
 替换当前 Markdown：
 
 ```rust
@@ -110,7 +124,31 @@ editor.set_markdown(
 
 `set_markdown` 会把新内容作为干净基线，不会立即标记为 Dirty。之后的用户编辑才会增加文档版本并进入 Dirty 状态。
 
-Markdown 是交换格式，不是完整的无损持久化格式。复杂表格样式、媒体属性、白板和部分 Block 信息应使用 `EditorDocument` JSON 保存。
+需要在 Source/WYSIWYG 双模式之间切换时，先读取 compatibility report：
+
+```rust
+use cditor_gpui::{MarkdownApplyMode, MarkdownCompatibility};
+
+let result = editor.apply_markdown(
+    source,
+    MarkdownApplyMode::Editable,
+    cx,
+)?;
+
+match result.compatibility {
+    MarkdownCompatibility::Editable => {}
+    MarkdownCompatibility::EditableWithNormalization(diagnostics) => {
+        show_normalization_confirmation(diagnostics);
+    }
+    MarkdownCompatibility::SourceOnly(_) => unreachable!("Editable apply rejects SourceOnly"),
+}
+```
+
+Frontmatter、footnote、reference link、raw HTML 或未知扩展等无法安全往返的源码会返回
+`SourceOnly`。宿主可以使用 `MarkdownApplyMode::ReadOnlyPreview` 生成只读投影，但不能让
+Cditor 覆盖原始源码。
+
+Markdown Strict export 为支持语法提供语义级 round-trip；复杂表格样式、媒体属性、白板和其他富文本专属 Block 仍应使用 `EditorDocument` JSON 保存。
 
 ## 4. 原生文档格式
 
@@ -492,6 +530,8 @@ match editor.save(cx) {
 - `NotReady`：编辑器尚未准备好；
 - `PersistenceNotConfigured`：调用了需要持久化实现的方法；
 - `InvalidDocument` / `InvalidJson`：文档数据不合法；
+- `MarkdownUnsupported`：Strict export 检测到无法安全写回 Markdown 的富文本内容；
+- `MarkdownSourceOnly`：源码只能保留在 Source 或只读预览模式；
 - `UnsupportedSchemaVersion`：JSON 来自不受支持的未来格式；
 - `IncompleteDocument`：runtime 尚未加载所有 Block payload，不能无损导出；
 - `DocumentIdMismatch`：设置了属于其他文档 ID 的快照；
@@ -503,7 +543,7 @@ match editor.save(cx) {
 
 - 当前接入 API 面向 Rust/GPUI 宿主，没有 C、JavaScript 或其他语言绑定；
 - `EditorPersistence` 是同步 trait，但始终由 Cditor 后台任务调用；
-- 原生 JSON 是无损持久化格式，Markdown 不能表达所有复杂 Block 信息；
+- 原生 JSON 是完整富文本的无损持久化格式；Markdown Strict export 只允许安全子集写回；
 - `EditorHandle` 提供稳定的加载、导出、保存、重载、只读和焦点接口，没有暴露全部底层编辑命令；
 - 第三方不应依赖 `CditorV2View` 私有字段或 `DocumentRuntime` 内部状态；
 - 固定 Git revision 是当前推荐的版本管理方式。

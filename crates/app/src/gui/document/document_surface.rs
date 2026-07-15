@@ -12,6 +12,7 @@ pub struct DocumentSurface {
     pub content_width_px: f32,
     pub min_height_px: f32,
     pub top_inset_px: f32,
+    pub left_inset_px: f32,
     pub before_window_height: f64,
     pub placeholder_window_height: Option<f64>,
     pub placeholder_window_error: Option<String>,
@@ -54,6 +55,7 @@ impl DocumentSurface {
             content_width_px: metrics.content_width_px,
             min_height_px: metrics.min_height_px,
             top_inset_px: metrics.top_inset_px,
+            left_inset_px: metrics.left_inset_px,
             before_window_height,
             placeholder_window_height,
             placeholder_window_error: None,
@@ -95,7 +97,7 @@ impl DocumentSurface {
             .child(
                 div()
                     .relative()
-                    .mx_auto()
+                    .ml(px(self.left_inset_px))
                     .w(px(self.page_width_px))
                     .flex_1()
                     .min_h(px(self.min_height_px))
@@ -145,6 +147,7 @@ mod tests {
         assert_eq!(surface.content_width_px, 860.0);
         assert_eq!(surface.min_height_px, 640.0);
         assert_eq!(surface.top_inset_px, 32.0);
+        assert_eq!(surface.left_inset_px, 48.0);
         assert_eq!(surface.before_window_height, 10.0);
         assert_eq!(surface.placeholder_window_height, None);
         assert_eq!(surface.after_window_height, 20.0);
