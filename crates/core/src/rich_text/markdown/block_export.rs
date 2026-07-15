@@ -46,6 +46,8 @@ struct BlockExporter<'a> {
     diagnostics: Vec<MarkdownDiagnostic>,
     unsupported: bool,
     normalized: bool,
+    rendering: HashSet<u64>,
+    rendered: HashSet<u64>,
 }
 
 impl<'a> BlockExporter<'a> {
@@ -67,6 +69,8 @@ impl<'a> BlockExporter<'a> {
             diagnostics: Vec::new(),
             unsupported: false,
             normalized: false,
+            rendering: HashSet::new(),
+            rendered: HashSet::new(),
         }
     }
 
@@ -85,7 +89,33 @@ impl<'a> BlockExporter<'a> {
                 }
             }
         }
-        self.render_sequence(&roots, 0)
+        let mut rendered = self.render_sequence(&roots, 0);
+        let remaining = self
+            .document
+            .blocks
+            .iter()
+            .map(|block| block.id)
+            .filter(|block_id| !self.rendered.contains(block_id))
+            .collect::<Vec<_>>();
+        if !remaining.is_empty() {
+            for block_id in &remaining {
+                self.unsupported(
+                    *block_id,
+                    "markdown.document.structure_unsupported",
+                    "Block is unreachable from the document root or participates in an invalid parent cycle",
+                );
+            }
+            if self.mode == MarkdownExportMode::BestEffort {
+                let fallback = self.render_sequence(&remaining, 0);
+                if !fallback.is_empty() {
+                    if !rendered.is_empty() {
+                        rendered.push_str("\n\n");
+                    }
+                    rendered.push_str(&fallback);
+                }
+            }
+        }
+        rendered
     }
 
     fn render_sequence(&mut self, block_ids: &[u64], indent: usize) -> String {
@@ -110,6 +140,17 @@ impl<'a> BlockExporter<'a> {
     }
 
     fn render_block(&mut self, block: &RichBlockRecord, indent: usize) -> String {
+        if self.rendered.contains(&block.id) {
+            return String::new();
+        }
+        if !self.rendering.insert(block.id) {
+            self.unsupported(
+                block.id,
+                "markdown.document.parent_cycle_unsupported",
+                "Block parent relationships contain a cycle",
+            );
+            return String::new();
+        }
         self.check_block_attrs(block.id, &block.attrs);
         let text = match &block.kind {
             RichBlockKind::Paragraph => {
@@ -164,11 +205,11 @@ impl<'a> BlockExporter<'a> {
                 }
             },
             RichBlockKind::Mermaid => {
-                let source = block.payload.plain_text();
+                let source = self.render_raw_source(block, "Mermaid");
                 fenced_block(&source, Some("mermaid"))
             }
             RichBlockKind::Math => {
-                let source = block.payload.plain_text();
+                let source = self.render_raw_source(block, "Math");
                 format!("$$\n{source}\n$$")
             }
             RichBlockKind::Image => self.render_image(block),
@@ -235,6 +276,18 @@ impl<'a> BlockExporter<'a> {
         if let Some(children) = self.children.get(&Some(block.id)).cloned()
             && !children.is_empty()
         {
+            let children_are_lists = children.iter().all(|child_id| {
+                self.by_id
+                    .get(child_id)
+                    .is_some_and(|child| is_list_kind(&child.kind))
+            });
+            if !is_list_kind(&block.kind) || !children_are_lists {
+                self.unsupported(
+                    block.id,
+                    "markdown.document.child_structure_unsupported",
+                    "Only nested list-item children can be round-tripped safely in the current Markdown model",
+                );
+            }
             let child_indent = if is_list_kind(&block.kind) {
                 indent + 2
             } else {
@@ -246,6 +299,8 @@ impl<'a> BlockExporter<'a> {
                 rendered.push_str(&child_text);
             }
         }
+        self.rendering.remove(&block.id);
+        self.rendered.insert(block.id);
         rendered
     }
 
@@ -258,6 +313,18 @@ impl<'a> BlockExporter<'a> {
             );
             return block.payload.plain_text();
         };
+        if spans.iter().any(|span| span.text.contains('\n'))
+            && !matches!(
+                block.kind,
+                RichBlockKind::Quote | RichBlockKind::Callout { .. }
+            )
+        {
+            self.unsupported(
+                block.id,
+                "markdown.inline.soft_break_unsupported",
+                "Soft line breaks in this block kind cannot be round-tripped safely by the current Markdown parser",
+            );
+        }
         let mut inline = export_inline_spans(spans, self.mode);
         if inline.fidelity == MarkdownFidelity::Unsupported {
             self.unsupported = true;
@@ -291,6 +358,19 @@ impl<'a> BlockExporter<'a> {
             );
         }
         fenced_block(text, language)
+    }
+
+    fn render_raw_source(&mut self, block: &RichBlockRecord, label: &str) -> String {
+        if let BlockPayload::RichText { spans } = &block.payload
+            && spans.iter().any(|span| !span.marks.is_empty())
+        {
+            self.unsupported(
+                block.id,
+                "markdown.block.source_marks_unsupported",
+                format!("{label} source contains rich-text marks that cannot be preserved"),
+            );
+        }
+        block.payload.plain_text()
     }
 
     fn render_image(&mut self, block: &RichBlockRecord) -> String {
@@ -463,6 +543,13 @@ fn export_table(exporter: &mut BlockExporter<'_>, block_id: u64, table: &TablePa
                 cells.push(String::new());
                 continue;
             };
+            if cell.spans.iter().any(|span| span.text.contains('\n')) {
+                exporter.unsupported(
+                    block_id,
+                    "markdown.table.multiline_cell_unsupported",
+                    "Multiline table cells cannot be represented safely in pipe-table Markdown",
+                );
+            }
             let mut inline = export_inline_spans(&cell.spans, exporter.mode);
             if inline.fidelity == MarkdownFidelity::Unsupported {
                 exporter.unsupported = true;

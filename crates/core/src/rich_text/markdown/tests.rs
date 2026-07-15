@@ -325,6 +325,8 @@ fn compatibility_report_distinguishes_normalization_and_source_only() {
         "::: custom",
         "++underline++",
         "**`code`**",
+        "| A | B |\n| not | alignment |",
+        "```rust\nfn main() {}",
     ] {
         let result = parse_markdown_document_with_report(source, MarkdownImportOptions::default());
         assert!(
