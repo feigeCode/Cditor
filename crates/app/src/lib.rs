@@ -12,9 +12,11 @@ pub use cditor_runtime as runtime;
 pub use cditor_storage_postgres as storage_postgres;
 pub use cditor_storage_sqlite as storage_sqlite;
 pub use integration::{
-    Editor, EditorBlock, EditorBuilder, EditorDocument, EditorError, EditorEvent, EditorHandle,
-    EditorPersistence, EditorPersistenceError, EditorSaveReason, EditorSaveRequest,
-    EditorSaveState,
+    DocumentReplaceReason, Editor, EditorBlock, EditorBuilder, EditorDocument, EditorError,
+    EditorEvent, EditorHandle, EditorPersistence, EditorPersistenceError, EditorSaveReason,
+    EditorSaveRequest, EditorSaveState, MarkdownApplyMode, MarkdownCompatibility,
+    MarkdownDiagnostic, MarkdownDiagnosticSeverity, MarkdownExportMode, MarkdownExportResult,
+    MarkdownFidelity, MarkdownImportResult,
 };
 
 pub mod storage {

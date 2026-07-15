@@ -201,3 +201,135 @@ fn incremental_multiline_callout_is_supported() {
         }
     ));
 }
+
+fn document_from_parsed(parsed: ParsedMarkdownDocument) -> RichTextDocument {
+    RichTextDocument {
+        id: 1,
+        version: crate::rich_text::document::CURRENT_RICH_TEXT_FORMAT_VERSION,
+        metadata: Default::default(),
+        root_blocks: parsed.root_blocks,
+        blocks: parsed.blocks,
+        structure_version: 1,
+    }
+}
+
+#[test]
+fn supported_inline_markdown_round_trips_semantically() {
+    let source =
+        "plain **bold** *italic* ***both*** ~~strike~~ `code` [**link**](https://example.com/a(b))";
+    let first = parse_markdown_document(source, MarkdownImportOptions::default());
+    let exported = export_document_blocks(
+        &document_from_parsed(first.clone()),
+        MarkdownExportMode::Strict,
+    );
+    assert_eq!(exported.fidelity, MarkdownFidelity::Semantic);
+    let second = parse_markdown_document(&exported.markdown, MarkdownImportOptions::default());
+
+    assert_eq!(first.blocks[0].payload, second.blocks[0].payload);
+}
+
+#[test]
+fn escaped_plain_text_round_trips_without_becoming_structure() {
+    let special = r#"\ * _ ~ ` [ ] ( ) < > # heading - item 1. item 中文 😀"#;
+    let mut document = RichTextDocument::empty(1);
+    document.push_root_block(RichBlockRecord::paragraph(1, special));
+
+    let exported = export_document_blocks(&document, MarkdownExportMode::Strict);
+    let reparsed = parse_markdown_document(&exported.markdown, MarkdownImportOptions::default());
+    assert_eq!(reparsed.blocks[0].payload.plain_text(), special);
+    assert!(matches!(reparsed.blocks[0].kind, RichBlockKind::Paragraph));
+}
+
+#[test]
+fn nested_list_structure_round_trips() {
+    let source = "- parent\n  - child\n    1. first\n    2. second";
+    let first = parse_markdown_document(source, MarkdownImportOptions::default());
+    let exported = export_document_blocks(
+        &document_from_parsed(first.clone()),
+        MarkdownExportMode::Strict,
+    );
+    let second = parse_markdown_document(&exported.markdown, MarkdownImportOptions::default());
+
+    let first_structure = first
+        .blocks
+        .iter()
+        .map(|block| (block.kind.clone(), block.parent_id, block.depth))
+        .collect::<Vec<_>>();
+    let second_structure = second
+        .blocks
+        .iter()
+        .map(|block| (block.kind.clone(), block.parent_id, block.depth))
+        .collect::<Vec<_>>();
+    assert_eq!(first_structure, second_structure);
+}
+
+#[test]
+fn code_fence_grows_past_embedded_backticks() {
+    let mut document = RichTextDocument::empty(1);
+    document.push_root_block(RichBlockRecord::code_block(
+        1,
+        Some("rust".to_owned()),
+        "let fence = \"```\";",
+    ));
+    let exported = export_document_blocks(&document, MarkdownExportMode::Strict);
+    assert!(exported.markdown.starts_with("````rust\n"));
+    let reparsed = parse_markdown_document(&exported.markdown, MarkdownImportOptions::default());
+    assert_eq!(
+        reparsed.blocks[0].payload.plain_text(),
+        "let fence = \"```\";"
+    );
+}
+
+#[test]
+fn table_marks_pipes_and_alignment_round_trip() {
+    let source = "| Name | Value |\n| :--- | ---: |\n| **left \\| right** | `42` |";
+    let first = parse_markdown_document(source, MarkdownImportOptions::default());
+    let exported = export_document_blocks(
+        &document_from_parsed(first.clone()),
+        MarkdownExportMode::Strict,
+    );
+    assert_eq!(exported.fidelity, MarkdownFidelity::Semantic);
+    let second = parse_markdown_document(&exported.markdown, MarkdownImportOptions::default());
+    assert_eq!(first.blocks[0].payload, second.blocks[0].payload);
+}
+
+#[test]
+fn image_with_stable_source_round_trips_as_an_image_block() {
+    let source = "![diagram](<images/diagram(a).png>)";
+    let first = parse_markdown_document(source, MarkdownImportOptions::default());
+    assert!(matches!(first.blocks[0].kind, RichBlockKind::Image));
+    let exported = export_document_blocks(
+        &document_from_parsed(first.clone()),
+        MarkdownExportMode::Strict,
+    );
+    let second = parse_markdown_document(&exported.markdown, MarkdownImportOptions::default());
+    assert_eq!(first.blocks[0].payload, second.blocks[0].payload);
+}
+
+#[test]
+fn compatibility_report_distinguishes_normalization_and_source_only() {
+    let normalized = parse_markdown_document_with_report(
+        "2. second\n\n_italic_",
+        MarkdownImportOptions::default(),
+    );
+    assert!(matches!(
+        normalized.compatibility,
+        MarkdownCompatibility::EditableWithNormalization(_)
+    ));
+
+    for source in [
+        "---\ntitle: Notes\n---\nbody",
+        "[^1]: unsupported footnote",
+        "[label]: https://example.com",
+        "<custom-tag>body</custom-tag>",
+        "::: custom",
+        "++underline++",
+        "**`code`**",
+    ] {
+        let result = parse_markdown_document_with_report(source, MarkdownImportOptions::default());
+        assert!(
+            matches!(result.compatibility, MarkdownCompatibility::SourceOnly(_)),
+            "expected SourceOnly for {source:?}"
+        );
+    }
+}

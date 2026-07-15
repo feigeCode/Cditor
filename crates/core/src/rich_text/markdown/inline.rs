@@ -27,7 +27,7 @@ pub(super) fn parse_inline_markdown_extended(text: &str) -> InlineParseResult {
 
     if pairs.is_empty() && atomics.is_empty() {
         return InlineParseResult {
-            spans: vec![InlineSpan::plain(text.to_string())],
+            spans: vec![InlineSpan::plain(unescape_markdown_text(text))],
             changed: false,
         };
     }
@@ -80,36 +80,27 @@ fn find_atomic_spans(text: &str) -> Vec<AtomicSpan> {
 
     while cursor < text.len() {
         let rest = &text[cursor..];
-
-        // Double backtick code: ``text``
-        if rest.starts_with("``") {
-            if let Some(end) = rest[2..].find("``") {
-                atomics.push(AtomicSpan {
-                    start: cursor,
-                    end: cursor + 2 + end + 2,
-                    kind: AtomicKind::Code,
-                    label: rest[2..2 + end].to_string(),
-                    href: String::new(),
-                });
-                cursor += 2 + end + 2;
-                continue;
-            }
+        if is_escaped(text, cursor) {
+            cursor += rest.chars().next().map_or(1, char::len_utf8);
+            continue;
         }
 
-        // Single backtick code: `text`
         if rest.starts_with('`') {
-            if let Some(end) = rest[1..].find('`') {
-                if end > 0 {
-                    atomics.push(AtomicSpan {
-                        start: cursor,
-                        end: cursor + 1 + end + 1,
-                        kind: AtomicKind::Code,
-                        label: rest[1..1 + end].to_string(),
-                        href: String::new(),
-                    });
-                    cursor += 1 + end + 1;
-                    continue;
-                }
+            let delimiter_len = rest.bytes().take_while(|byte| *byte == b'`').count();
+            let delimiter = &rest[..delimiter_len];
+            if let Some(end) = rest[delimiter_len..].find(delimiter) {
+                let raw_label = &rest[delimiter_len..delimiter_len + end];
+                let label = normalize_code_span_content(raw_label);
+                let consumed = delimiter_len + end + delimiter_len;
+                atomics.push(AtomicSpan {
+                    start: cursor,
+                    end: cursor + consumed,
+                    kind: AtomicKind::Code,
+                    label,
+                    href: String::new(),
+                });
+                cursor += consumed;
+                continue;
             }
         }
 
@@ -136,7 +127,7 @@ fn find_atomic_spans(text: &str) -> Vec<AtomicSpan> {
                     end: cursor + consumed,
                     kind: AtomicKind::Link,
                     label: label.to_string(),
-                    href: href.to_string(),
+                    href: unescape_markdown_text(href),
                 });
                 cursor += consumed;
                 continue;
@@ -184,8 +175,8 @@ fn find_delimiter_pairs(text: &str, atomics: &[AtomicSpan]) -> Vec<DelimiterPair
 
     // Mark atomic spans as claimed so delimiters inside them are ignored.
     for atomic in atomics {
-        for i in atomic.start..atomic.end {
-            claimed[i] = true;
+        for claimed_byte in claimed.iter_mut().take(atomic.end).skip(atomic.start) {
+            *claimed_byte = true;
         }
     }
 
@@ -210,6 +201,10 @@ fn find_delimiter_pairs(text: &str, atomics: &[AtomicSpan]) -> Vec<DelimiterPair
             // Check if this position matches the delimiter.
             if !text[cursor..].starts_with(delimiter) {
                 cursor += 1;
+                continue;
+            }
+            if is_escaped(text, cursor) {
+                cursor += dlen;
                 continue;
             }
 
@@ -246,6 +241,10 @@ fn find_delimiter_pairs(text: &str, atomics: &[AtomicSpan]) -> Vec<DelimiterPair
                     search += 1;
                     continue;
                 }
+                if is_escaped(text, search) {
+                    search += dlen;
+                    continue;
+                }
                 // For single-char delimiters, don't match closer if followed by same char.
                 if dlen == 1
                     && search + dlen < text.len()
@@ -266,11 +265,11 @@ fn find_delimiter_pairs(text: &str, atomics: &[AtomicSpan]) -> Vec<DelimiterPair
                 let close_end = search + dlen;
 
                 // Claim the opener and closer bytes.
-                for i in open_start..open_end {
-                    claimed[i] = true;
+                for claimed_byte in claimed.iter_mut().take(open_end).skip(open_start) {
+                    *claimed_byte = true;
                 }
-                for i in close_start..close_end {
-                    claimed[i] = true;
+                for claimed_byte in claimed.iter_mut().take(close_end).skip(close_start) {
+                    *claimed_byte = true;
                 }
 
                 pairs.push(DelimiterPair {
@@ -303,13 +302,17 @@ fn has_unclosed_delimiters(text: &str, pairs: &[DelimiterPair], atomics: &[Atomi
     // Build a set of all positions covered by pairs or atomics.
     let mut covered = vec![false; text.len()];
     for pair in pairs {
-        for i in pair.open_start..pair.close_end {
-            covered[i] = true;
+        for covered_byte in covered
+            .iter_mut()
+            .take(pair.close_end)
+            .skip(pair.open_start)
+        {
+            *covered_byte = true;
         }
     }
     for atomic in atomics {
-        for i in atomic.start..atomic.end {
-            covered[i] = true;
+        for covered_byte in covered.iter_mut().take(atomic.end).skip(atomic.start) {
+            *covered_byte = true;
         }
     }
 
@@ -322,7 +325,7 @@ fn has_unclosed_delimiters(text: &str, pairs: &[DelimiterPair], atomics: &[Atomi
         }
         let rest = &text[cursor..];
         for &(delimiter, _) in DELIMITER_TABLE {
-            if rest.starts_with(delimiter) {
+            if rest.starts_with(delimiter) && !is_escaped(text, cursor) {
                 return true;
             }
         }
@@ -345,20 +348,26 @@ fn build_spans(text: &str, pairs: &[DelimiterPair], atomics: &[AtomicSpan]) -> V
             let marks_at = active_marks_at(cursor, pairs);
             match atomic.kind {
                 AtomicKind::Code => {
-                    spans.push(InlineSpan {
-                        text: atomic.label.clone(),
-                        marks: vec![InlineMark::Code],
-                    });
-                }
-                AtomicKind::Link => {
                     let mut marks = marks_at;
-                    marks.push(InlineMark::Link {
-                        href: atomic.href.clone(),
-                    });
+                    marks.push(InlineMark::Code);
                     spans.push(InlineSpan {
                         text: atomic.label.clone(),
                         marks,
                     });
+                }
+                AtomicKind::Link => {
+                    let label_spans = parse_inline_markdown(&atomic.label);
+                    for mut span in label_spans {
+                        for mark in &marks_at {
+                            if !span.marks.contains(mark) {
+                                span.marks.push(mark.clone());
+                            }
+                        }
+                        span.marks.push(InlineMark::Link {
+                            href: atomic.href.clone(),
+                        });
+                        spans.push(span);
+                    }
                 }
                 AtomicKind::AutoLink => {
                     let mut marks = marks_at;
@@ -416,7 +425,7 @@ fn build_spans(text: &str, pairs: &[DelimiterPair], atomics: &[AtomicSpan]) -> V
         }
 
         spans.push(InlineSpan {
-            text: text[run_start..cursor].to_string(),
+            text: unescape_markdown_text(&text[run_start..cursor]),
             marks,
         });
     }
@@ -489,11 +498,30 @@ fn parse_auto_link(text: &str) -> Option<(&str, usize)> {
 }
 
 fn parse_markdown_image(text: &str) -> Option<usize> {
+    parse_markdown_image_parts(text).map(|(_, _, consumed)| consumed)
+}
+
+pub(super) fn parse_block_image(text: &str) -> Option<(String, String)> {
+    let (alt, source, consumed) = parse_markdown_image_parts(text)?;
+    (consumed == text.len()).then(|| (unescape_markdown_text(alt), unescape_markdown_text(source)))
+}
+
+fn parse_markdown_image_parts(text: &str) -> Option<(&str, &str, usize)> {
     let inner = text.strip_prefix("![")?;
     let label_end = inner.find("](")?;
     let after_label = &inner[label_end + 2..];
-    let href_end = after_label.find(')')?;
-    Some(2 + label_end + 2 + href_end + 1)
+    let (source, href_end) = if let Some(angle) = after_label.strip_prefix('<') {
+        let end = angle.find(">)")?;
+        (&angle[..end], end + 2)
+    } else {
+        let end = after_label.find(')')?;
+        (&after_label[..end], end)
+    };
+    Some((
+        &inner[..label_end],
+        source,
+        2 + label_end + 2 + href_end + 1,
+    ))
 }
 
 fn parse_markdown_link(text: &str) -> Option<(&str, &str, usize)> {
@@ -503,13 +531,76 @@ fn parse_markdown_link(text: &str) -> Option<(&str, &str, usize)> {
         return None;
     }
     let after_label = &inner[label_end + 2..];
-    let href_end = after_label.find(')')?;
+    let (href, href_end) = if let Some(angle) = after_label.strip_prefix('<') {
+        let end = angle.find(">)")?;
+        (&angle[..end], end + 2)
+    } else {
+        let end = after_label.find(')')?;
+        (&after_label[..end], end)
+    };
     if href_end == 0 {
         return None;
     }
     let label = &inner[..label_end];
-    let href = &after_label[..href_end];
     Some((label, href, 1 + label_end + 2 + href_end + 1))
+}
+
+fn normalize_code_span_content(content: &str) -> String {
+    if content.len() >= 2
+        && content.starts_with(' ')
+        && content.ends_with(' ')
+        && !content.chars().all(|ch| ch == ' ')
+    {
+        content[1..content.len() - 1].to_owned()
+    } else {
+        content.to_owned()
+    }
+}
+
+fn is_escaped(text: &str, position: usize) -> bool {
+    let mut backslashes = 0;
+    let mut cursor = position;
+    while cursor > 0 && text.as_bytes()[cursor - 1] == b'\\' {
+        backslashes += 1;
+        cursor -= 1;
+    }
+    backslashes % 2 == 1
+}
+
+fn unescape_markdown_text(text: &str) -> String {
+    let mut unescaped = String::with_capacity(text.len());
+    let mut chars = text.chars().peekable();
+    while let Some(ch) = chars.next() {
+        if ch == '\\'
+            && chars.peek().copied().is_some_and(|next| {
+                matches!(
+                    next,
+                    '\\' | '*'
+                        | '_'
+                        | '~'
+                        | '`'
+                        | '['
+                        | ']'
+                        | '<'
+                        | '>'
+                        | '('
+                        | ')'
+                        | '#'
+                        | '+'
+                        | '-'
+                        | '.'
+                        | '|'
+                )
+            })
+        {
+            if let Some(next) = chars.next() {
+                unescaped.push(next);
+            }
+        } else {
+            unescaped.push(ch);
+        }
+    }
+    unescaped
 }
 
 #[cfg(test)]

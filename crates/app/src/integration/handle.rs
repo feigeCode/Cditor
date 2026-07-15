@@ -2,7 +2,11 @@ use gpui::{AppContext, Entity};
 
 use crate::gui::CditorV2View;
 
-use super::{EditorDocument, EditorError, EditorSaveReason, EditorSaveState};
+use super::{
+    DocumentReplaceReason, EditorDocument, EditorError, EditorSaveReason, EditorSaveState,
+    MarkdownApplyMode, MarkdownCompatibility, MarkdownExportMode, MarkdownExportResult,
+    MarkdownImportResult,
+};
 
 #[derive(Clone)]
 pub struct EditorHandle {
@@ -23,18 +27,54 @@ impl EditorHandle {
         markdown: impl Into<String>,
         cx: &mut C,
     ) -> Result<(), EditorError> {
+        self.apply_markdown(markdown, MarkdownApplyMode::Editable, cx)
+            .map(|_| ())
+    }
+
+    pub fn get_markdown<C: AppContext>(&self, cx: &C) -> Result<String, EditorError> {
+        Ok(self
+            .export_markdown(MarkdownExportMode::BestEffort, cx)?
+            .markdown)
+    }
+
+    pub fn export_markdown<C: AppContext>(
+        &self,
+        mode: MarkdownExportMode,
+        cx: &C,
+    ) -> Result<MarkdownExportResult, EditorError> {
+        self.get_document(cx)?.export_markdown(mode)
+    }
+
+    pub fn apply_markdown<C: AppContext>(
+        &self,
+        markdown: impl Into<String>,
+        mode: MarkdownApplyMode,
+        cx: &mut C,
+    ) -> Result<MarkdownImportResult, EditorError> {
         let document_id = self
             .entity
             .read_with(cx, |view, _| {
                 view.integration_document_id().map(str::to_owned)
             })
             .ok_or(EditorError::NotReady)?;
-        let document = EditorDocument::from_markdown(document_id, &markdown.into())?;
-        self.set_document(document, cx)
-    }
-
-    pub fn get_markdown<C: AppContext>(&self, cx: &C) -> Result<String, EditorError> {
-        self.get_document(cx)?.to_markdown()
+        let result = EditorDocument::from_markdown_with_report(document_id, &markdown.into())?;
+        if mode == MarkdownApplyMode::Editable
+            && matches!(result.compatibility, MarkdownCompatibility::SourceOnly(_))
+        {
+            return Err(EditorError::MarkdownSourceOnly {
+                diagnostics: result.diagnostics.clone(),
+            });
+        }
+        let readonly = mode == MarkdownApplyMode::ReadOnlyPreview;
+        self.entity.update(cx, |view, cx| {
+            view.replace_integration_document(
+                result.document.clone(),
+                DocumentReplaceReason::SourceModeCommit,
+                Some(readonly),
+                cx,
+            )
+        })?;
+        Ok(result)
     }
 
     pub fn set_document<C: AppContext>(
@@ -42,22 +82,17 @@ impl EditorHandle {
         document: EditorDocument,
         cx: &mut C,
     ) -> Result<(), EditorError> {
+        self.replace_document(document, DocumentReplaceReason::Programmatic, cx)
+    }
+
+    pub fn replace_document<C: AppContext>(
+        &self,
+        document: EditorDocument,
+        reason: DocumentReplaceReason,
+        cx: &mut C,
+    ) -> Result<(), EditorError> {
         self.entity.update(cx, |view, cx| {
-            let expected = view
-                .integration_document_id()
-                .ok_or(EditorError::NotReady)?
-                .to_owned();
-            if document.document_id != expected {
-                return Err(EditorError::DocumentIdMismatch {
-                    expected,
-                    actual: document.document_id,
-                });
-            }
-            let runtime = document.into_runtime(720.0)?;
-            view.apply_loaded_runtime(runtime);
-            view.refresh_integration_baseline();
-            cx.notify();
-            Ok(())
+            view.replace_integration_document(document, reason, None, cx)
         })
     }
 
@@ -111,15 +146,22 @@ impl EditorHandle {
         });
         Ok(())
     }
+
+    pub fn is_readonly<C: AppContext>(&self, cx: &C) -> bool {
+        self.entity
+            .read_with(cx, |view, _| view.integration_is_readonly())
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::EditorHandle;
     use crate::integration::{
-        Editor, EditorDocument, EditorPersistence, EditorPersistenceError, EditorSaveRequest,
-        EditorSaveState,
+        DocumentReplaceReason, Editor, EditorDocument, EditorError, EditorEvent, EditorPersistence,
+        EditorPersistenceError, EditorSaveRequest, EditorSaveState, MarkdownApplyMode,
+        MarkdownCompatibility, MarkdownExportMode,
     };
+    use cditor_core::rich_text::{BlockPayload, InlineMark, InlineSpan};
     use gpui::{App, TestAppContext};
     use std::sync::{Arc, Mutex};
     use std::time::Duration;
@@ -291,5 +333,99 @@ mod tests {
         cx.update(|app| handle.reload(app).unwrap());
         cx.run_until_parked();
         assert_eq!(cx.read(|app| handle.get_markdown(app).unwrap()), "Second");
+    }
+
+    #[gpui::test]
+    async fn markdown_apply_rejects_source_only_editing_but_allows_readonly_preview(
+        cx: &TestAppContext,
+    ) {
+        let events = Arc::new(Mutex::new(Vec::new()));
+        let recorded = events.clone();
+        let persistence = MockPersistence::default();
+        let saved = persistence.saved.clone();
+        let handle = cx.update(|app| {
+            Editor::builder()
+                .document_id("doc-1")
+                .initial_markdown("Original")
+                .persistence(persistence)
+                .autosave(Duration::from_millis(100))
+                .on_event(move |event| recorded.lock().unwrap().push(event))
+                .build(app)
+                .unwrap()
+        });
+        cx.run_until_parked();
+        events.lock().unwrap().clear();
+
+        let editable = cx.update(|app| {
+            handle.apply_markdown(
+                "[^1]: unsupported footnote",
+                MarkdownApplyMode::Editable,
+                app,
+            )
+        });
+        assert!(matches!(
+            editable,
+            Err(EditorError::MarkdownSourceOnly { .. })
+        ));
+        assert_eq!(cx.read(|app| handle.get_markdown(app).unwrap()), "Original");
+
+        let preview = cx
+            .update(|app| {
+                handle.apply_markdown(
+                    "[^1]: unsupported footnote",
+                    MarkdownApplyMode::ReadOnlyPreview,
+                    app,
+                )
+            })
+            .unwrap();
+        cx.run_until_parked();
+        assert!(matches!(
+            preview.compatibility,
+            MarkdownCompatibility::SourceOnly(_)
+        ));
+        assert!(cx.read(|app| handle.is_readonly(app)));
+        assert!(!cx.read(|app| handle.is_dirty(app)));
+        assert!(events.lock().unwrap().iter().any(|event| matches!(
+            event,
+            EditorEvent::DocumentReplaced {
+                reason: DocumentReplaceReason::SourceModeCommit,
+                ..
+            }
+        )));
+        assert!(
+            !events
+                .lock()
+                .unwrap()
+                .iter()
+                .any(|event| matches!(event, EditorEvent::Changed { .. }))
+        );
+        assert!(saved.lock().unwrap().is_empty());
+    }
+
+    #[gpui::test]
+    async fn strict_markdown_export_rejects_unsupported_inline_marks(cx: &TestAppContext) {
+        let handle = cx.update(|app| {
+            Editor::builder()
+                .document_id("doc-1")
+                .initial_markdown("Body")
+                .build(app)
+                .unwrap()
+        });
+        cx.update(|app| {
+            let mut document = handle.get_document(app).unwrap();
+            document.blocks[0].payload.payload = BlockPayload::RichText {
+                spans: vec![InlineSpan {
+                    text: "Body".to_owned(),
+                    marks: vec![InlineMark::Underline],
+                }],
+            };
+            handle.set_document(document, app).unwrap();
+        });
+
+        let result = cx.read(|app| handle.export_markdown(MarkdownExportMode::Strict, app));
+        assert!(matches!(
+            result,
+            Err(EditorError::MarkdownUnsupported { .. })
+        ));
     }
 }

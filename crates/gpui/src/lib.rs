@@ -5,9 +5,11 @@
 //! manual [`EditorDocument`] import/export.
 
 pub use cditor_app::{
-    Editor, EditorBlock, EditorBuilder, EditorDocument, EditorError, EditorEvent, EditorHandle,
-    EditorPersistence, EditorPersistenceError, EditorSaveReason, EditorSaveRequest,
-    EditorSaveState,
+    DocumentReplaceReason, Editor, EditorBlock, EditorBuilder, EditorDocument, EditorError,
+    EditorEvent, EditorHandle, EditorPersistence, EditorPersistenceError, EditorSaveReason,
+    EditorSaveRequest, EditorSaveState, MarkdownApplyMode, MarkdownCompatibility,
+    MarkdownDiagnostic, MarkdownDiagnosticSeverity, MarkdownExportMode, MarkdownExportResult,
+    MarkdownFidelity, MarkdownImportResult,
 };
 
 /// Advanced implementation types. Prefer [`Editor`] and [`EditorHandle`] for
@@ -18,12 +20,14 @@ pub mod advanced {
 
 #[cfg(test)]
 mod tests {
-    use super::{Editor, EditorDocument, EditorSaveState};
+    use super::{Editor, EditorDocument, EditorSaveState, MarkdownApplyMode, MarkdownExportMode};
 
     #[test]
     fn stable_component_api_is_available_without_postgres() {
         let document = EditorDocument::from_markdown("third-party-doc", "# Embedded").unwrap();
         let _builder = Editor::builder().initial_document(document);
         let _state = EditorSaveState::Disabled;
+        let _export_mode = MarkdownExportMode::Strict;
+        let _apply_mode = MarkdownApplyMode::Editable;
     }
 }

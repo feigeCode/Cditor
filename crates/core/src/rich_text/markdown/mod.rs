@@ -1,14 +1,24 @@
 use super::{
-    BlockPayload, CalloutVariant, InlineMark, InlineSpan, RichBlockKind, RichBlockRecord,
-    RichTextDocument, TableCellPayload, TablePayload, TableRowPayload,
+    BlockPayload, CalloutVariant, ImagePayload, InlineMark, InlineSpan, RichBlockKind,
+    RichBlockRecord, RichTextDocument, TableCellPayload, TablePayload, TableRowPayload,
 };
 use crate::ids::{BlockId, DocumentId};
 use crate::rich_text::MARKDOWN_PARSE_STATS;
 
 mod block;
+mod block_export;
+mod compatibility;
+mod escape;
 mod export;
+mod inline_export;
 
 pub use block::parse_callout_marker;
+pub use block_export::export_document_blocks;
+pub use compatibility::{
+    MarkdownCompatibility, MarkdownDiagnostic, MarkdownDiagnosticSeverity, MarkdownExportMode,
+    MarkdownExportResult, MarkdownFidelity,
+};
+pub use inline_export::{InlineMarkdownExport, export_inline_spans};
 mod inline;
 mod table;
 
@@ -17,13 +27,20 @@ use block::{
     parse_numbered_item,
 };
 use export::block_to_plain_markdown;
-use inline::{parse_inline_markdown, parse_inline_markdown_extended};
+use inline::{parse_block_image, parse_inline_markdown, parse_inline_markdown_extended};
 use table::{collect_table_candidate_region, is_table_candidate_line, parse_table_region};
 
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct ParsedMarkdownDocument {
     pub root_blocks: Vec<BlockId>,
     pub blocks: Vec<RichBlockRecord>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct MarkdownParseResult {
+    pub document: ParsedMarkdownDocument,
+    pub compatibility: MarkdownCompatibility,
+    pub diagnostics: Vec<MarkdownDiagnostic>,
 }
 
 impl ParsedMarkdownDocument {
@@ -59,6 +76,22 @@ pub fn parse_markdown_document(
     MARKDOWN_PARSE_STATS.record_full_parse(markdown.len());
     let mut parser = MarkdownParser::new(options);
     parser.parse_document(markdown)
+}
+
+#[must_use]
+pub fn parse_markdown_document_with_report(
+    markdown: &str,
+    options: MarkdownImportOptions,
+) -> MarkdownParseResult {
+    let document = parse_markdown_document(markdown, options);
+    let mut diagnostics = analyze_markdown_compatibility(markdown);
+    diagnostics.extend(analyze_parsed_document_compatibility(&document));
+    let compatibility = MarkdownCompatibility::from_diagnostics(&diagnostics);
+    MarkdownParseResult {
+        document,
+        compatibility,
+        diagnostics,
+    }
 }
 
 #[must_use]
@@ -225,6 +258,279 @@ pub fn export_plain_markdown(document: &RichTextDocument) -> String {
         .join("\n")
 }
 
+fn analyze_markdown_compatibility(markdown: &str) -> Vec<MarkdownDiagnostic> {
+    let lines = source_lines(markdown);
+    let mut diagnostics = Vec::new();
+    detect_frontmatter(&lines, &mut diagnostics);
+
+    let mut fence: Option<(char, usize, usize)> = None;
+    let mut index = 0;
+    while index < lines.len() {
+        let (offset, line) = lines[index];
+        let trimmed = line.trim_start();
+        if let Some((marker, length)) = fence_marker(trimmed) {
+            match fence {
+                Some((open_marker, open_length, _))
+                    if marker == open_marker && length >= open_length =>
+                {
+                    fence = None;
+                }
+                None if marker == '~' => diagnostics.push(MarkdownDiagnostic::source(
+                    MarkdownDiagnosticSeverity::Error,
+                    "markdown.source.tilde_fence_unsupported",
+                    "Tilde fenced blocks are not supported by the editable Markdown parser",
+                    offset..offset + line.len(),
+                )),
+                None => fence = Some((marker, length, offset)),
+                _ => {}
+            }
+            index += 1;
+            continue;
+        }
+        if fence.is_some() {
+            index += 1;
+            continue;
+        }
+
+        if trimmed.starts_with('|') {
+            let start = index;
+            while index < lines.len() && lines[index].1.trim_start().starts_with('|') {
+                index += 1;
+            }
+            if index > start + 1 {
+                let table_lines = lines[start..index]
+                    .iter()
+                    .map(|(_, line)| *line)
+                    .collect::<Vec<_>>();
+                if parse_table_region(&table_lines).is_none() {
+                    let end = lines[index - 1].0 + lines[index - 1].1.len();
+                    diagnostics.push(MarkdownDiagnostic::source(
+                        MarkdownDiagnosticSeverity::Error,
+                        "markdown.source.table_fallback_unsupported",
+                        "A table-like region could not be parsed safely and would fall back to paragraphs",
+                        offset..end,
+                    ));
+                }
+            }
+            continue;
+        }
+
+        if trimmed.starts_with("[^") && trimmed.contains("]:") {
+            diagnostics.push(MarkdownDiagnostic::source(
+                MarkdownDiagnosticSeverity::Error,
+                "markdown.source.footnote_unsupported",
+                "Footnote definitions are SourceOnly in the first round-trip version",
+                offset..offset + line.len(),
+            ));
+        } else if is_reference_definition(trimmed) || contains_reference_link(trimmed) {
+            diagnostics.push(MarkdownDiagnostic::source(
+                MarkdownDiagnosticSeverity::Error,
+                "markdown.source.reference_link_unsupported",
+                "Reference-style links are not supported by the editable Markdown parser",
+                offset..offset + line.len(),
+            ));
+        } else if looks_like_raw_html(trimmed) {
+            diagnostics.push(MarkdownDiagnostic::source(
+                MarkdownDiagnosticSeverity::Error,
+                "markdown.source.raw_html_unsupported",
+                "Raw HTML is SourceOnly until its original source can be projected without fallback",
+                offset..offset + line.len(),
+            ));
+        } else if trimmed == "$$" || trimmed.starts_with("$$") {
+            diagnostics.push(MarkdownDiagnostic::source(
+                MarkdownDiagnosticSeverity::Error,
+                "markdown.source.math_unsupported",
+                "Block math source is not yet supported by the editable Markdown parser",
+                offset..offset + line.len(),
+            ));
+        } else if trimmed.starts_with(":::") || trimmed.contains("{{") {
+            diagnostics.push(MarkdownDiagnostic::source(
+                MarkdownDiagnosticSeverity::Error,
+                "markdown.source.custom_extension_unsupported",
+                "Custom Markdown extensions are SourceOnly",
+                offset..offset + line.len(),
+            ));
+        }
+
+        if let Some(number) = ordered_list_number(trimmed)
+            && number != 1
+        {
+            diagnostics.push(MarkdownDiagnostic::source(
+                MarkdownDiagnosticSeverity::Info,
+                "markdown.source.ordered_list_normalized",
+                "Ordered-list markers are normalized to 1.",
+                offset..offset + line.len(),
+            ));
+        }
+        if trimmed.starts_with("* ") || trimmed.starts_with("+ ") {
+            diagnostics.push(MarkdownDiagnostic::source(
+                MarkdownDiagnosticSeverity::Info,
+                "markdown.source.bullet_normalized",
+                "Bullet markers are normalized to -",
+                offset..offset + line.len(),
+            ));
+        }
+        if contains_underscore_emphasis(trimmed) {
+            diagnostics.push(MarkdownDiagnostic::source(
+                MarkdownDiagnosticSeverity::Info,
+                "markdown.source.emphasis_normalized",
+                "Underscore emphasis is normalized to asterisk emphasis",
+                offset..offset + line.len(),
+            ));
+        }
+        index += 1;
+    }
+
+    if let Some((_, _, start)) = fence {
+        diagnostics.push(MarkdownDiagnostic::source(
+            MarkdownDiagnosticSeverity::Error,
+            "markdown.source.unclosed_fence",
+            "An unclosed fenced block cannot be edited safely in WYSIWYG mode",
+            start..markdown.len(),
+        ));
+    }
+    diagnostics
+}
+
+fn analyze_parsed_document_compatibility(
+    document: &ParsedMarkdownDocument,
+) -> Vec<MarkdownDiagnostic> {
+    let mut diagnostics = Vec::new();
+    for block in &document.blocks {
+        let span_groups: Vec<&[InlineSpan]> = match &block.payload {
+            BlockPayload::RichText { spans } => vec![spans],
+            BlockPayload::Table(table) => table
+                .rows
+                .iter()
+                .flat_map(|row| row.cells.iter().map(|cell| cell.spans.as_slice()))
+                .collect(),
+            _ => Vec::new(),
+        };
+        for spans in span_groups {
+            for span in spans {
+                if span.marks.iter().any(|mark| {
+                    matches!(
+                        mark,
+                        InlineMark::Underline | InlineMark::Color(_) | InlineMark::Background(_)
+                    )
+                }) {
+                    diagnostics.push(MarkdownDiagnostic::block(
+                        MarkdownDiagnosticSeverity::Error,
+                        "markdown.source.inline_mark_unsupported",
+                        "The parsed source contains an inline mark that cannot be exported safely to standard Markdown",
+                        block.id,
+                    ));
+                }
+                if span.marks.contains(&InlineMark::Code) && span.marks.len() > 1 {
+                    diagnostics.push(MarkdownDiagnostic::block(
+                        MarkdownDiagnosticSeverity::Error,
+                        "markdown.source.inline_mark_combination_unsupported",
+                        "Inline code combined with other marks cannot be round-tripped safely",
+                        block.id,
+                    ));
+                }
+            }
+        }
+    }
+    diagnostics
+}
+
+fn source_lines(markdown: &str) -> Vec<(usize, &str)> {
+    let mut offset = 0;
+    markdown
+        .split_inclusive('\n')
+        .map(|line| {
+            let start = offset;
+            offset += line.len();
+            let line = line.strip_suffix('\n').unwrap_or(line);
+            let line = line.strip_suffix('\r').unwrap_or(line);
+            (start, line)
+        })
+        .chain((markdown.is_empty() || markdown.ends_with('\n')).then_some((markdown.len(), "")))
+        .collect()
+}
+
+fn detect_frontmatter(lines: &[(usize, &str)], diagnostics: &mut Vec<MarkdownDiagnostic>) {
+    if lines.first().is_none_or(|(_, line)| line.trim() != "---") {
+        return;
+    }
+    let Some(end_index) = lines
+        .iter()
+        .enumerate()
+        .skip(1)
+        .find_map(|(index, (_, line))| (line.trim() == "---").then_some(index))
+    else {
+        return;
+    };
+    if !lines[1..end_index]
+        .iter()
+        .any(|(_, line)| line.contains(':'))
+    {
+        return;
+    }
+    let end = lines[end_index].0 + lines[end_index].1.len();
+    diagnostics.push(MarkdownDiagnostic::source(
+        MarkdownDiagnosticSeverity::Error,
+        "markdown.source.frontmatter_unsupported",
+        "Frontmatter is SourceOnly and must not be rewritten by the rich-text editor",
+        0..end,
+    ));
+}
+
+fn fence_marker(line: &str) -> Option<(char, usize)> {
+    let marker = line.chars().next()?;
+    if !matches!(marker, '`' | '~') {
+        return None;
+    }
+    let length = line.chars().take_while(|ch| *ch == marker).count();
+    (length >= 3).then_some((marker, length))
+}
+
+fn is_reference_definition(line: &str) -> bool {
+    line.starts_with('[')
+        && !line.starts_with("[^")
+        && line.find("]:").is_some_and(|index| index > 1)
+}
+
+fn contains_reference_link(line: &str) -> bool {
+    line.contains("][") && !line.contains("](")
+}
+
+fn looks_like_raw_html(line: &str) -> bool {
+    let Some(rest) = line.strip_prefix('<') else {
+        return false;
+    };
+    if (rest.starts_with("https://") || rest.starts_with("http://")) && rest.ends_with('>') {
+        return false;
+    }
+    rest.starts_with("!--")
+        || rest.starts_with('/')
+        || rest
+            .chars()
+            .next()
+            .is_some_and(|ch| ch.is_ascii_alphabetic())
+}
+
+fn ordered_list_number(line: &str) -> Option<u64> {
+    let digits = line.bytes().take_while(u8::is_ascii_digit).count();
+    if digits == 0 || !line[digits..].starts_with(". ") {
+        return None;
+    }
+    line[..digits].parse().ok()
+}
+
+fn contains_underscore_emphasis(line: &str) -> bool {
+    let bytes = line.as_bytes();
+    bytes.iter().enumerate().any(|(index, byte)| {
+        if *byte != b'_' || index + 2 >= bytes.len() {
+            return false;
+        }
+        line[index + 1..].find('_').is_some_and(|relative_end| {
+            relative_end > 0 && !line[index + 1..index + 1 + relative_end].trim().is_empty()
+        })
+    })
+}
+
 struct MarkdownParser {
     document_id: DocumentId,
     next_block_id: BlockId,
@@ -282,13 +588,27 @@ impl MarkdownParser {
                 }
             }
 
-            if let Some((language, _)) = parse_fence_start(line) {
+            if line.trim_start().starts_with('>') {
+                let region_start = index;
+                while index < lines.len() && lines[index].trim_start().starts_with('>') {
+                    index += 1;
+                }
+                let source = lines[region_start..index].join("\n");
+                if let Some(block) = self.parse_incremental_quote_or_callout_block(&source) {
+                    list_stack.clear();
+                    document.push_root_block(block);
+                    continue;
+                }
+                index = region_start;
+            }
+
+            if let Some((language, fence)) = parse_fence_start(line) {
                 list_stack.clear();
                 let mut content = String::new();
                 index += 1;
                 while index < lines.len() {
                     let code_line = lines[index];
-                    if code_line.trim_start().starts_with("```") {
+                    if is_closing_fence(code_line, fence) {
                         index += 1;
                         break;
                     }
@@ -299,15 +619,20 @@ impl MarkdownParser {
                 if content.ends_with('\n') {
                     content.pop();
                 }
-                document.push_root_block(self.new_block(
-                    RichBlockKind::Code {
-                        language: language.clone(),
-                    },
-                    BlockPayload::Code {
-                        language,
-                        text: content,
-                    },
-                ));
+                let block = if language.as_deref() == Some("mermaid") {
+                    self.rich_text_block(RichBlockKind::Mermaid, vec![InlineSpan::plain(content)])
+                } else {
+                    self.new_block(
+                        RichBlockKind::Code {
+                            language: language.clone(),
+                        },
+                        BlockPayload::Code {
+                            language,
+                            text: content,
+                        },
+                    )
+                };
+                document.push_root_block(block);
                 continue;
             }
 
@@ -342,19 +667,21 @@ impl MarkdownParser {
         if lines.len() < 2 {
             return None;
         }
-        let (language, _) = parse_fence_start(lines.first()?)?;
-        if !lines.last()?.trim_start().starts_with("```") {
+        let (language, fence) = parse_fence_start(lines.first()?)?;
+        if !is_closing_fence(lines.last()?, fence) {
             return None;
         }
-        Some(self.new_block(
-            RichBlockKind::Code {
-                language: language.clone(),
-            },
-            BlockPayload::Code {
-                language,
-                text: lines[1..lines.len() - 1].join("\n"),
-            },
-        ))
+        let text = lines[1..lines.len() - 1].join("\n");
+        if language.as_deref() == Some("mermaid") {
+            Some(self.rich_text_block(RichBlockKind::Mermaid, vec![InlineSpan::plain(text)]))
+        } else {
+            Some(self.new_block(
+                RichBlockKind::Code {
+                    language: language.clone(),
+                },
+                BlockPayload::Code { language, text },
+            ))
+        }
     }
 
     fn parse_incremental_table_block(&mut self, markdown: &str) -> Option<RichBlockRecord> {
@@ -395,7 +722,7 @@ impl MarkdownParser {
 
         Some(self.rich_text_block(
             RichBlockKind::Quote,
-            vec![InlineSpan::plain(lines.join("\n"))],
+            parse_inline_markdown(&lines.join("\n")),
         ))
     }
 
@@ -473,6 +800,17 @@ impl MarkdownParser {
         if let Some(text) = trimmed.strip_prefix("> ") {
             return self.rich_text_block(RichBlockKind::Quote, parse_inline_markdown(text));
         }
+        if let Some((alt, source)) = parse_block_image(trimmed) {
+            return self.new_block(
+                RichBlockKind::Image,
+                BlockPayload::Image(ImagePayload {
+                    source,
+                    alt,
+                    caption: String::new(),
+                    display_width_ratio_milli: None,
+                }),
+            );
+        }
 
         self.rich_text_block(RichBlockKind::Paragraph, parse_inline_markdown(trimmed))
     }
@@ -511,6 +849,13 @@ fn push_markdown_list_block(
     let block_id = block.id;
     document.blocks.push(block.clone());
     list_stack.push((indent, block_id));
+}
+
+fn is_closing_fence(line: &str, opening_fence: &str) -> bool {
+    let trimmed = line.trim();
+    trimmed.len() >= opening_fence.len()
+        && trimmed.bytes().all(|byte| byte == b'`')
+        && trimmed.starts_with(opening_fence)
 }
 
 #[cfg(test)]

@@ -7,8 +7,8 @@ use crate::gui::app::CditorV2View;
 #[cfg(test)]
 use crate::gui::app::cditor_v2_view::CditorViewState;
 use crate::integration::{
-    EditorDocument, EditorError, EditorEvent, EditorPersistence, EditorSaveReason,
-    EditorSaveRequest, EditorSaveState, IntegrationPersistenceState,
+    DocumentReplaceReason, EditorDocument, EditorError, EditorEvent, EditorPersistence,
+    EditorSaveReason, EditorSaveRequest, EditorSaveState, IntegrationPersistenceState,
 };
 
 pub(crate) type EditorEventCallback = Arc<dyn Fn(EditorEvent) + Send + Sync>;
@@ -164,6 +164,45 @@ impl CditorV2View {
         EditorDocument::from_runtime(integration.document_id.clone(), runtime)
     }
 
+    pub(crate) fn replace_integration_document(
+        &mut self,
+        document: EditorDocument,
+        reason: DocumentReplaceReason,
+        readonly: Option<bool>,
+        cx: &mut Context<Self>,
+    ) -> Result<(), EditorError> {
+        let expected = self
+            .integration_document_id()
+            .ok_or(EditorError::NotReady)?
+            .to_owned();
+        if document.document_id != expected {
+            return Err(EditorError::DocumentIdMismatch {
+                expected,
+                actual: document.document_id,
+            });
+        }
+        let runtime = document.into_runtime(720.0)?;
+        if let Some(readonly) = readonly {
+            self.readonly = readonly;
+        }
+        self.apply_loaded_runtime(runtime);
+        if let Some(callback) = self
+            .integration
+            .as_ref()
+            .and_then(|integration| integration.callback.clone())
+        {
+            callback(EditorEvent::DocumentReplaced {
+                document_id: expected,
+                reason,
+            });
+            callback(EditorEvent::SaveStateChanged {
+                state: self.integration_save_state(),
+            });
+        }
+        cx.notify();
+        Ok(())
+    }
+
     #[cfg(test)]
     pub(crate) fn integration_runtime_mut(
         &mut self,
@@ -204,6 +243,10 @@ impl CditorV2View {
 
     pub(crate) fn set_integration_readonly(&mut self, readonly: bool) {
         self.readonly = readonly;
+    }
+
+    pub(crate) fn integration_is_readonly(&self) -> bool {
+        self.readonly
     }
 
     pub(crate) fn request_integration_focus(&mut self) {

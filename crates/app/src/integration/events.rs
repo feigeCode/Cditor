@@ -1,4 +1,4 @@
-use super::{EditorSaveReason, EditorSaveState};
+use super::{DocumentReplaceReason, EditorSaveReason, EditorSaveState};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum EditorEvent {
@@ -8,6 +8,10 @@ pub enum EditorEvent {
     Changed {
         document_id: String,
         document_version: u64,
+    },
+    DocumentReplaced {
+        document_id: String,
+        reason: DocumentReplaceReason,
     },
     SaveStateChanged {
         state: EditorSaveState,
