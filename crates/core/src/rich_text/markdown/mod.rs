@@ -638,6 +638,22 @@ impl MarkdownParser {
 
             if let Some((indent, mut block)) = self.parse_list_line(line) {
                 push_markdown_list_block(&mut document, &mut list_stack, indent, &mut block);
+            } else if is_plain_paragraph_line(line) {
+                list_stack.clear();
+                let paragraph_start = index;
+                index += 1;
+                while index < lines.len() && is_plain_paragraph_line(lines[index]) {
+                    index += 1;
+                }
+                let source = lines[paragraph_start..index]
+                    .iter()
+                    .map(|line| line.trim_start())
+                    .collect::<Vec<_>>()
+                    .join("\n");
+                document.push_root_block(
+                    self.rich_text_block(RichBlockKind::Paragraph, parse_inline_markdown(&source)),
+                );
+                continue;
             } else {
                 list_stack.clear();
                 let block = self.parse_markdown_line(line);
@@ -814,6 +830,33 @@ impl MarkdownParser {
 
         self.rich_text_block(RichBlockKind::Paragraph, parse_inline_markdown(trimmed))
     }
+}
+
+fn is_plain_paragraph_line(line: &str) -> bool {
+    let trimmed = line.trim_start();
+    if trimmed.is_empty()
+        || trimmed == "---"
+        || trimmed == "***"
+        || trimmed == "___"
+        || trimmed.starts_with('>')
+        || parse_fence_start(trimmed).is_some()
+        || parse_heading(trimmed).is_some()
+        || parse_block_image(trimmed).is_some()
+        || is_table_candidate_line(line)
+        || parse_numbered_item(trimmed).is_some()
+    {
+        return false;
+    }
+
+    !trimmed.starts_with("- [ ] ")
+        && !trimmed.starts_with("- [x] ")
+        && !trimmed.starts_with("- [X] ")
+        && !trimmed.starts_with("[ ] ")
+        && !trimmed.starts_with("[x] ")
+        && !trimmed.starts_with("[X] ")
+        && !trimmed.starts_with("- ")
+        && !trimmed.starts_with("* ")
+        && !trimmed.starts_with("+ ")
 }
 
 fn push_markdown_list_block(

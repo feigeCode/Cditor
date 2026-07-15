@@ -229,6 +229,42 @@ fn supported_inline_markdown_round_trips_semantically() {
 }
 
 #[test]
+fn paragraph_soft_line_break_round_trips_without_becoming_a_block_break() {
+    let source = "first line\nsecond **line**";
+    let first = parse_markdown_document(source, MarkdownImportOptions::default());
+
+    assert_eq!(first.blocks.len(), 1);
+    assert_eq!(
+        first.blocks[0].payload.plain_text(),
+        "first line\nsecond line"
+    );
+
+    let exported = export_document_blocks(
+        &document_from_parsed(first.clone()),
+        MarkdownExportMode::Strict,
+    );
+    assert_eq!(exported.fidelity, MarkdownFidelity::Semantic);
+    assert_eq!(exported.markdown, source);
+
+    let second = parse_markdown_document(&exported.markdown, MarkdownImportOptions::default());
+    assert_eq!(first.blocks[0].payload, second.blocks[0].payload);
+}
+
+#[test]
+fn editor_paragraph_newline_is_supported_by_strict_markdown_export() {
+    let mut document = RichTextDocument::empty(1);
+    document.push_root_block(RichBlockRecord::paragraph(1, "alpha\nbeta"));
+
+    let exported = export_document_blocks(&document, MarkdownExportMode::Strict);
+    assert_eq!(exported.fidelity, MarkdownFidelity::Semantic);
+    assert_eq!(exported.markdown, "alpha\nbeta");
+
+    let reparsed = parse_markdown_document(&exported.markdown, MarkdownImportOptions::default());
+    assert_eq!(reparsed.blocks.len(), 1);
+    assert_eq!(reparsed.blocks[0].payload.plain_text(), "alpha\nbeta");
+}
+
+#[test]
 fn escaped_plain_text_round_trips_without_becoming_structure() {
     let special = r#"\ * _ ~ ` [ ] ( ) < > # heading - item 1. item 中文 😀"#;
     let mut document = RichTextDocument::empty(1);

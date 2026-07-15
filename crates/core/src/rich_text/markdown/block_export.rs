@@ -331,7 +331,7 @@ impl<'a> BlockExporter<'a> {
         if spans.iter().any(|span| span.text.contains('\n'))
             && !matches!(
                 block.kind,
-                RichBlockKind::Quote | RichBlockKind::Callout { .. }
+                RichBlockKind::Paragraph | RichBlockKind::Quote | RichBlockKind::Callout { .. }
             )
         {
             self.unsupported(
