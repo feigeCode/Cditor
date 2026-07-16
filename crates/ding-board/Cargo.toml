@@ -7,7 +7,7 @@ license = "GPL-3.0-or-later"
 
 [dependencies]
 # Same git revision as the host application so Cargo unifies to one gpui.
-gpui = { git = "https://github.com/zed-industries/zed", rev = "76c93968da5b8b8809bdd72e4ad9e7d0e946bad0" }
+gpui = { git = "https://github.com/zed-industries/zed", rev = "23bb2fc135a69492847c3aa68444a7d14cc282f6" }
 
 # The board model (`Scene` + camera, and elements once drawing lands) is owned
 # and (de)serialized by this crate, so the host can persist it as an opaque
@@ -25,7 +25,7 @@ log = "0.4"
 ttf-parser = "0.25"
 
 [dev-dependencies]
-gpui_platform = { git = "https://github.com/zed-industries/zed", rev = "76c93968da5b8b8809bdd72e4ad9e7d0e946bad0" }
+gpui_platform = { git = "https://github.com/zed-industries/zed", rev = "23bb2fc135a69492847c3aa68444a7d14cc282f6" }
 
 [[example]]
 name = "minimal_board"
