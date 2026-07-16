@@ -1,4 +1,4 @@
-use std::fmt;
+use std::{fmt, sync::Arc};
 
 use gpui::{App, Task, WeakEntity};
 
@@ -11,6 +11,7 @@ use super::{
         CloseGuard, DocumentInfo, DocumentSelection, SaveReport, SaveStatus, ScrollAlignment,
     },
     error::CditorError,
+    providers::{AiModelDescriptor, AiProvider},
 };
 
 /// Non-retaining control surface for a Cditor component.
@@ -63,6 +64,54 @@ impl CditorHandle {
         self.entity
             .update(cx, |view, cx| view.sdk_set_readonly(readonly, cx))
             .map_err(|_| CditorError::ComponentDropped)
+    }
+
+    pub fn set_ai_provider(
+        &self,
+        provider: Arc<dyn AiProvider>,
+        cx: &mut App,
+    ) -> Result<(), CditorError> {
+        self.entity
+            .update(cx, |view, cx| view.sdk_set_ai_provider(provider, cx))
+            .map_err(|_| CditorError::ComponentDropped)
+    }
+
+    pub fn set_ai_enabled(&self, enabled: bool, cx: &mut App) -> Result<(), CditorError> {
+        self.entity
+            .update(cx, |view, cx| view.sdk_set_ai_enabled(enabled, cx))
+            .map_err(|_| CditorError::ComponentDropped)
+    }
+
+    pub fn is_ai_enabled(&self, cx: &App) -> bool {
+        self.entity
+            .read_with(cx, |view, _| view.sdk_ai_enabled())
+            .unwrap_or(false)
+    }
+
+    pub fn ai_models(&self, cx: &App) -> Vec<AiModelDescriptor> {
+        self.entity
+            .read_with(cx, |view, _| view.sdk_ai_models())
+            .unwrap_or_default()
+    }
+
+    pub fn refresh_ai_models(&self, cx: &mut App) -> Result<(), CditorError> {
+        self.entity
+            .update(cx, |view, cx| view.sdk_refresh_ai_models(cx))
+            .map_err(|_| CditorError::ComponentDropped)
+    }
+
+    pub fn selected_ai_model(&self, cx: &App) -> Option<AiModelDescriptor> {
+        self.entity
+            .read_with(cx, |view, _| view.sdk_selected_ai_model())
+            .ok()
+            .flatten()
+    }
+
+    pub fn select_ai_model(&self, model_id: &str, cx: &mut App) -> Result<(), CditorError> {
+        self.entity
+            .update(cx, |view, cx| view.sdk_select_ai_model(model_id, cx))
+            .map_err(|_| CditorError::ComponentDropped)??;
+        Ok(())
     }
 
     pub fn undo(&self, cx: &mut App) -> Result<(), CditorError> {

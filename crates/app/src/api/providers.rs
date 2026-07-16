@@ -1,7 +1,10 @@
 use std::{fmt, path::PathBuf};
 
 use async_trait::async_trait;
-pub use cditor_ai::{AiProvider, AiProviderError, AiProviderRequest as AiRequest, AiTaskKind};
+pub use cditor_ai::{
+    AiCancellationToken, AiModelDescriptor, AiProvider, AiProviderError,
+    AiProviderRequest as AiRequest, AiStreamEvent, AiStreamSender, AiTaskKind,
+};
 pub use cditor_core::rich_text::AssetRef;
 use ding_board::Scene as WhiteboardScene;
 

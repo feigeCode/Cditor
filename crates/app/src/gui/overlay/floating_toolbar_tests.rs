@@ -4,6 +4,8 @@ fn toolbar_state() -> FloatingToolbarState {
     FloatingToolbarState {
         x: 0.0,
         y: 0.0,
+        viewport_width: 1000.0,
+        viewport_height: 800.0,
         block_id: Some(1),
         has_text_selection: true,
         show_inline_format: true,
@@ -37,7 +39,7 @@ fn toolbar_state() -> FloatingToolbarState {
 fn toolbar_prefers_above_selection_and_clamps_to_viewport() {
     assert_eq!(
         floating_toolbar_position(100.0, 420.0, 180.0, 444.0, 800.0, 600.0),
-        (43.0, 88.0),
+        (43.0, 50.0),
     );
     assert_eq!(
         floating_toolbar_position(0.0, 12.0, 20.0, 32.0, 200.0, 100.0),
@@ -49,7 +51,7 @@ fn toolbar_prefers_above_selection_and_clamps_to_viewport() {
 fn left_aligned_toolbar_uses_anchor_left_and_clamps_to_viewport() {
     assert_eq!(
         left_aligned_floating_toolbar_position(140.0, 420.0, 444.0, 800.0, 600.0),
-        (140.0, 88.0),
+        (140.0, 50.0),
     );
     assert_eq!(
         left_aligned_floating_toolbar_position(0.0, 12.0, 32.0, 200.0, 100.0),

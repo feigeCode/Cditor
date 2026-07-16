@@ -7,8 +7,8 @@ use serde::Deserialize;
 use serde_json::{Value, json};
 
 use crate::provider::{
-    AiCancellationToken, AiProvider, AiProviderError, AiProviderRequest, AiStreamEvent, AiTaskKind,
-    send_stream_event,
+    AiCancellationToken, AiModelDescriptor, AiProvider, AiProviderError, AiProviderRequest,
+    AiStreamEvent, AiTaskKind, send_stream_event,
 };
 
 #[derive(Clone)]
@@ -196,6 +196,22 @@ impl AiProvider for OpenAiCompatibleProvider {
         "openai-compatible"
     }
 
+    fn models(&self) -> Vec<AiModelDescriptor> {
+        let provider_name = provider_name_for_base_url(&self.config.base_url);
+        vec![
+            AiModelDescriptor::new(
+                self.config.model.clone(),
+                format!("{provider_name} / {}", self.config.model),
+                provider_name,
+            )
+            .with_description("正式模型"),
+        ]
+    }
+
+    fn default_model_id(&self) -> Option<String> {
+        Some(self.config.model.clone())
+    }
+
     fn stream(
         &self,
         request: AiProviderRequest,
@@ -209,7 +225,10 @@ impl AiProvider for OpenAiCompatibleProvider {
             .client
             .post(self.config.completions_url())
             .bearer_auth(&self.config.api_key)
-            .json(&request_body(&self.config.model, &request))
+            .json(&request_body(
+                request.model_id.as_deref().unwrap_or(&self.config.model),
+                &request,
+            ))
             .send()
             .map_err(|error| AiProviderError::Request(error.to_string()))?;
         if !response.status().is_success() {
@@ -323,6 +342,17 @@ fn request_body(model: &str, request: &AiProviderRequest) -> Value {
     })
 }
 
+fn provider_name_for_base_url(base_url: &str) -> &'static str {
+    let base_url = base_url.to_ascii_lowercase();
+    if base_url.contains("deepseek.com") {
+        "DeepSeek"
+    } else if base_url.contains("localhost") || base_url.contains("127.0.0.1") {
+        "OpenAI Compatible"
+    } else {
+        "OpenAI Compatible"
+    }
+}
+
 fn truncate_error(message: &str) -> String {
     const MAX: usize = 512;
     if message.len() <= MAX {
@@ -355,6 +385,7 @@ mod tests {
         let request = AiProviderRequest {
             request_id: 1,
             task: AiTaskKind::RewriteSelection,
+            model_id: Some("model".to_owned()),
             instruction: "Improve writing".to_owned(),
             selected_text: "draft".to_owned(),
             prefix: "before".to_owned(),

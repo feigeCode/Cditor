@@ -3,6 +3,7 @@ use std::time::Duration;
 
 use gpui::AppContext;
 
+use crate::api::AiProvider;
 use crate::gui::CditorV2View;
 
 use super::handle::EditorHandle;
@@ -30,6 +31,8 @@ pub struct EditorBuilder {
     persistence: Option<Arc<dyn EditorPersistence>>,
     autosave: Option<Duration>,
     callback: Option<Arc<dyn Fn(EditorEvent) + Send + Sync>>,
+    ai_provider: Option<Arc<dyn AiProvider>>,
+    ai_enabled: bool,
 }
 
 impl Default for EditorBuilder {
@@ -42,6 +45,8 @@ impl Default for EditorBuilder {
             persistence: None,
             autosave: None,
             callback: None,
+            ai_provider: None,
+            ai_enabled: true,
         }
     }
 }
@@ -99,6 +104,26 @@ impl EditorBuilder {
         self
     }
 
+    pub fn ai_provider<P>(mut self, provider: P) -> Self
+    where
+        P: AiProvider + 'static,
+    {
+        self.ai_provider = Some(Arc::new(provider));
+        self.ai_enabled = true;
+        self
+    }
+
+    pub fn ai_provider_arc(mut self, provider: Arc<dyn AiProvider>) -> Self {
+        self.ai_provider = Some(provider);
+        self.ai_enabled = true;
+        self
+    }
+
+    pub fn without_ai(mut self) -> Self {
+        self.ai_enabled = false;
+        self
+    }
+
     pub fn build<C: AppContext>(self, cx: &mut C) -> Result<EditorHandle, EditorError> {
         let initial_document = self.resolve_initial_document()?;
         let runtime = initial_document.clone().into_runtime(720.0)?;
@@ -106,6 +131,8 @@ impl EditorBuilder {
         let persistence = self.persistence.clone();
         let autosave = self.autosave;
         let callback = self.callback.clone();
+        let ai_provider = self.ai_provider.clone();
+        let ai_enabled = self.ai_enabled;
         let readonly = self.readonly;
         let debug_overlay = self.debug_overlay;
         let has_persistence = persistence.is_some();
@@ -113,6 +140,7 @@ impl EditorBuilder {
         let entity = cx.new(|cx| {
             let mut view =
                 CditorV2View::from_runtime_with_options(runtime, debug_overlay, readonly, cx);
+            view.sdk_configure_ai(ai_provider, ai_enabled);
             view.install_editor_integration(
                 document_id.clone(),
                 persistence,

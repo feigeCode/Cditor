@@ -9,15 +9,17 @@ use crate::gui::app::CditorV2View;
 use crate::gui::input::{
     AiPromptState, SINGLE_LINE_INPUT_FONT_SIZE_PX, SingleLineTextInputElement,
 };
+use cditor_ai::AiModelDescriptor;
 use cditor_core::ids::BlockId;
 
+use super::ai_inline::render_ai_model_selector;
 use super::block_transform_menu::{
     BlockTransformAction, BlockTransformAvailability, render_block_transform_menu,
 };
 use super::color_menu::{ActiveColor, ColorMenuAction, PaletteColor, render_color_menu};
 
 const TOOLBAR_WIDTH_PX: f32 = 194.0;
-const TOOLBAR_HEIGHT_PX: f32 = 324.0;
+const TOOLBAR_HEIGHT_PX: f32 = 362.0;
 const VIEWPORT_MARGIN_PX: f32 = 10.0;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -33,6 +35,8 @@ pub enum InlineFormatAction {
 pub struct FloatingToolbarState {
     pub x: f32,
     pub y: f32,
+    pub viewport_width: f32,
+    pub viewport_height: f32,
     pub block_id: Option<BlockId>,
     pub has_text_selection: bool,
     pub show_inline_format: bool,
@@ -127,7 +131,18 @@ pub fn render_floating_toolbar(
     prompt: Option<&AiPromptState>,
     prompt_focus: FocusHandle,
     color_scroll_handle: &ScrollHandle,
+    ai_models: &[AiModelDescriptor],
+    selected_ai_model_id: Option<&str>,
+    ai_model_menu_open: bool,
+    ai_model_scroll_handle: &ScrollHandle,
 ) -> AnyElement {
+    let ai_model_menu_width = (state.viewport_width - VIEWPORT_MARGIN_PX * 2.0)
+        .min(420.0)
+        .max(TOOLBAR_WIDTH_PX - 16.0);
+    let ai_model_menu_opens_left =
+        state.x + ai_model_menu_width > state.viewport_width - VIEWPORT_MARGIN_PX;
+    let ai_model_menu_opens_up =
+        state.y + TOOLBAR_HEIGHT_PX / 2.0 + 360.0 > state.viewport_height - VIEWPORT_MARGIN_PX;
     let panel = div()
         .absolute()
         .left(px(state.x))
@@ -180,6 +195,20 @@ pub fn render_floating_toolbar(
                 .text_color(rgb(theme.muted))
                 .child("AI"),
         )
+        .when(state.ai_enabled && !ai_models.is_empty(), |panel| {
+            panel.child(render_ai_model_selector(
+                ai_models,
+                selected_ai_model_id,
+                ai_model_menu_open,
+                theme,
+                view.clone(),
+                ai_model_scroll_handle,
+                TOOLBAR_WIDTH_PX - 16.0,
+                ai_model_menu_width,
+                ai_model_menu_opens_left,
+                ai_model_menu_opens_up,
+            ))
+        })
         .child(render_ai_actions(theme, view.clone(), state.ai_enabled))
         .child(render_custom_ai_button(
             theme,

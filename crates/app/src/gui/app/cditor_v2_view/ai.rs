@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{collections::HashSet, sync::Arc};
 
 #[cfg(feature = "ai-openai")]
 use cditor_ai::OpenAiCompatibleProvider;
@@ -26,7 +26,110 @@ pub(in crate::gui::app) fn default_ai_provider() -> Arc<dyn AiProvider> {
     }
 }
 
+pub(in crate::gui::app) fn ai_model_catalog(
+    provider: &dyn AiProvider,
+    preferred_model_id: Option<&str>,
+) -> (Vec<cditor_ai::AiModelDescriptor>, Option<String>) {
+    let mut seen = HashSet::new();
+    let models = provider
+        .models()
+        .into_iter()
+        .filter_map(|mut model| {
+            model.id = model.id.trim().to_owned();
+            model.display_name = model.display_name.trim().to_owned();
+            model.provider_name = model.provider_name.trim().to_owned();
+            model.description = model
+                .description
+                .map(|description| description.trim().to_owned())
+                .filter(|description| !description.is_empty());
+            (!model.id.is_empty()
+                && !model.display_name.is_empty()
+                && seen.insert(model.id.clone()))
+            .then_some(model)
+        })
+        .collect::<Vec<_>>();
+    let selected = preferred_model_id
+        .filter(|model_id| models.iter().any(|model| model.id == *model_id))
+        .map(ToOwned::to_owned)
+        .or_else(|| {
+            provider
+                .default_model_id()
+                .filter(|model_id| models.iter().any(|model| model.id == *model_id))
+        })
+        .or_else(|| models.first().map(|model| model.id.clone()));
+    (models, selected)
+}
+
 impl CditorV2View {
+    pub(crate) fn refresh_ai_model_catalog(&mut self, preferred_model_id: Option<&str>) {
+        let preferred = preferred_model_id.or(self.selected_ai_model_id.as_deref());
+        let (models, selected) = ai_model_catalog(self.ai_provider.as_ref(), preferred);
+        self.ai_models = models;
+        self.selected_ai_model_id = selected;
+        self.ai_model_menu_open = false;
+        self.ai_model_scroll_handle
+            .set_offset(gpui::point(px(0.0), px(0.0)));
+    }
+
+    pub(crate) fn toggle_ai_model_menu_from_gui(&mut self, cx: &mut Context<Self>) -> bool {
+        if !self.ai_enabled || self.ai_models.is_empty() {
+            return false;
+        }
+        self.ai_model_menu_open = !self.ai_model_menu_open;
+        if self.ai_model_menu_open {
+            self.ai_model_scroll_handle
+                .set_offset(gpui::point(px(0.0), px(0.0)));
+        }
+        cx.notify();
+        true
+    }
+
+    pub(crate) fn select_ai_model_from_gui(
+        &mut self,
+        model_id: &str,
+        cx: &mut Context<Self>,
+    ) -> bool {
+        self.apply_ai_model_selection(model_id, cx).unwrap_or(false)
+    }
+
+    pub(crate) fn apply_ai_model_selection(
+        &mut self,
+        model_id: &str,
+        cx: &mut Context<Self>,
+    ) -> Option<bool> {
+        let model = self
+            .ai_models
+            .iter()
+            .find(|model| model.id == model_id)
+            .cloned()?;
+        let changed = self.selected_ai_model_id.as_deref() != Some(model_id);
+        self.selected_ai_model_id = Some(model_id.to_owned());
+        self.ai_model_menu_open = false;
+        if changed {
+            cx.emit(crate::api::CditorEvent::AiModelChanged {
+                model: model.clone(),
+            });
+            if let Some(callback) = self
+                .integration
+                .as_ref()
+                .and_then(|integration| integration.callback.clone())
+            {
+                callback(crate::integration::EditorEvent::AiModelChanged { model });
+            }
+        }
+        cx.notify();
+        Some(changed)
+    }
+
+    pub(crate) fn dismiss_ai_model_menu(&mut self, cx: &mut Context<Self>) -> bool {
+        if !self.ai_model_menu_open {
+            return false;
+        }
+        self.ai_model_menu_open = false;
+        cx.notify();
+        true
+    }
+
     pub(crate) fn invoke_empty_line_ai_from_gui(&mut self, cx: &mut Context<Self>) -> bool {
         if !self.ai_enabled
             || self.readonly
@@ -92,6 +195,7 @@ impl CditorV2View {
         if let Some(runtime) = self.ready_runtime() {
             runtime.cancel_ai_request();
         }
+        self.ai_model_menu_open = false;
         self.slash_menu = None;
         self.code_language_edit = None;
         self.ai_prompt = Some(AiPromptState::with_presentation(
@@ -125,11 +229,16 @@ impl CditorV2View {
                     AiRequestPresentation::Automatic
                 }
             });
+        let selected_model_id = self.selected_ai_model_id.clone();
         let dispatch = match self
             .ready_runtime()
             .ok_or_else(|| "runtime is not ready".to_owned())
             .and_then(|runtime| {
-                runtime.begin_ai_request_with_presentation(instruction, presentation)
+                runtime.begin_ai_request_with_model_and_presentation(
+                    instruction,
+                    selected_model_id,
+                    presentation,
+                )
             }) {
             Ok(dispatch) => dispatch,
             Err(error) => {
@@ -139,6 +248,7 @@ impl CditorV2View {
             }
         };
         self.ai_prompt = None;
+        self.ai_model_menu_open = false;
         self.platform_input_target = None;
 
         let provider = self.ai_provider.clone();
@@ -217,6 +327,7 @@ impl CditorV2View {
 
     pub(crate) fn cancel_ai_prompt(&mut self, cx: &mut Context<Self>) -> bool {
         let had_prompt = self.ai_prompt.take().is_some();
+        self.ai_model_menu_open = false;
         if had_prompt {
             self.platform_input_target = None;
             cx.notify();

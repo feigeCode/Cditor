@@ -266,6 +266,8 @@ JSON 中包含 `schema_version`。当前版本不接受未知的未来 schema，
 
 快捷键、菜单、工具栏和命令面板可以通过稳定命令 ID 调用统一编辑命令。完整示例和命令表参见 [三方宿主快捷键与 Markdown 命令集成指南](third-party-shortcut-command-integration.md)。
 
+宿主自己的 AI 网关和模型注册表可以通过 `EditorBuilder::ai_provider` 注入；AI 面板支持展示和切换宿主模型。完整 Provider、流式事件和模型目录示例参见 [三方宿主 AI Provider 与模型切换集成指南](third-party-ai-integration.md)。
+
 ### 5.1 Entity
 
 ```rust
@@ -609,7 +611,7 @@ match editor.save(cx) {
 - 当前接入 API 面向 Rust/GPUI 宿主，没有 C、JavaScript 或其他语言绑定；
 - `EditorPersistence` 是同步 trait，但始终由 Cditor 后台任务调用；
 - 原生 JSON 是完整富文本的无损持久化格式；Markdown Strict export 只允许安全子集写回；
-- `EditorHandle` 提供稳定的加载、导出、保存、重载、只读、焦点和常用 Markdown/块命令接口；需要参数或 Provider 的插入操作仍不通过无参数快捷键 ID 构造；
+- `EditorHandle` 提供稳定的加载、导出、保存、重载、只读、焦点、常用 Markdown/块命令和宿主 AI Provider/模型选择接口；需要参数或 Provider 的插入操作仍不通过无参数快捷键 ID 构造；
 - 第三方不应依赖 `CditorV2View` 私有字段或 `DocumentRuntime` 内部状态；
 - 固定 Git revision 是当前推荐的版本管理方式。
 

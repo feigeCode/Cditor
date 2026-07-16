@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 
+use cditor_ai::AiModelDescriptor;
 use cditor_core::ids::BlockId;
 use cditor_runtime::{AiApplyMode, AiPreviewKind, AiPreviewSnapshot, AiPreviewStatus};
 use gpui::prelude::FluentBuilder;
@@ -26,7 +27,10 @@ use cditor_core::rich_text::{
 };
 
 const AI_PROMPT_WIDTH_PX: f32 = 720.0;
-const AI_PROMPT_HEIGHT_PX: f32 = 48.0;
+const AI_PROMPT_INPUT_HEIGHT_PX: f32 = 48.0;
+const AI_MODEL_SELECTOR_HEIGHT_PX: f32 = 32.0;
+const AI_MODEL_SELECTOR_GAP_PX: f32 = 6.0;
+const AI_MODEL_MENU_MAX_HEIGHT_PX: f32 = 360.0;
 const AI_PREVIEW_WIDTH_PX: f32 = 520.0;
 const AI_ASSISTANT_PANEL_WIDTH_PX: f32 = 640.0;
 const AI_ASSISTANT_PANEL_HEIGHT_PX: f32 = 320.0;
@@ -57,43 +61,35 @@ struct AiPromptGeometry {
 
 pub(crate) fn render_ai_prompt(
     prompt: &AiPromptState,
+    models: &[AiModelDescriptor],
+    selected_model_id: Option<&str>,
+    model_menu_open: bool,
+    model_scroll_handle: &ScrollHandle,
     theme: GuiTheme,
     view: Entity<CditorV2View>,
     focus: FocusHandle,
     viewport: EditorViewport,
 ) -> AnyElement {
+    let show_model_selector = !models.is_empty();
+    let prompt_height = ai_prompt_height(show_model_selector);
     let geometry = ai_prompt_geometry(
         f32::from(prompt.x),
         f32::from(prompt.y),
         viewport.width,
         viewport.height,
+        prompt_height,
     );
     let can_submit = ai_prompt_can_submit(&prompt.draft);
-    let panel = div()
-        .absolute()
-        .left(px(geometry.x))
-        .top(px(geometry.y))
-        .w(px(geometry.width))
-        .h(px(AI_PROMPT_HEIGHT_PX))
-        .px(px(10.0))
+    let model_menu_opens_up =
+        geometry.y + AI_MODEL_SELECTOR_HEIGHT_PX + 4.0 + ai_model_menu_height(models.len())
+            > viewport.height - AI_VIEWPORT_MARGIN_PX;
+    let submit_view = view.clone();
+    let input_row = div()
+        .w_full()
+        .h(px(AI_PROMPT_INPUT_HEIGHT_PX - 16.0))
         .flex()
         .items_center()
         .gap(px(8.0))
-        .rounded(px(12.0))
-        .border_1()
-        .border_color(rgb(theme.border))
-        .bg(rgb(theme.panel))
-        .shadow_sm()
-        .occlude()
-        .on_mouse_down(MouseButton::Left, |_event, _window, cx| {
-            cx.stop_propagation();
-        })
-        .on_mouse_down_out({
-            let view = view.clone();
-            move |_event, _window, cx| {
-                let _ = view.update(cx, |view, cx| view.cancel_ai_prompt(cx));
-            }
-        })
         .child(
             div()
                 .size(px(28.0))
@@ -148,13 +144,255 @@ pub(crate) fn render_ai_prompt(
                         .cursor_pointer()
                         .hover(move |style| style.bg(rgb(theme.action_accent)))
                         .on_mouse_down(MouseButton::Left, move |_event, _window, cx| {
-                            let _ = view.update(cx, |view, cx| view.submit_ai_prompt_from_gui(cx));
+                            let _ = submit_view
+                                .update(cx, |view, cx| view.submit_ai_prompt_from_gui(cx));
                             cx.stop_propagation();
                         })
                 })
                 .child("↑"),
         );
+    let panel = div()
+        .absolute()
+        .left(px(geometry.x))
+        .top(px(geometry.y))
+        .w(px(geometry.width))
+        .h(px(prompt_height))
+        .p(px(8.0))
+        .flex()
+        .flex_col()
+        .gap(px(AI_MODEL_SELECTOR_GAP_PX))
+        .rounded(px(12.0))
+        .border_1()
+        .border_color(rgb(theme.border))
+        .bg(rgb(theme.panel))
+        .shadow_sm()
+        .occlude()
+        .on_mouse_down(MouseButton::Left, |_event, _window, cx| {
+            cx.stop_propagation();
+        })
+        .on_mouse_down_out({
+            let view = view.clone();
+            move |_event, _window, cx| {
+                let _ = view.update(cx, |view, cx| view.cancel_ai_prompt(cx));
+            }
+        })
+        .when(show_model_selector, |panel| {
+            panel.child(render_ai_model_selector(
+                models,
+                selected_model_id,
+                model_menu_open,
+                theme,
+                view.clone(),
+                model_scroll_handle,
+                geometry.width - 16.0,
+                (geometry.width - 16.0).min(480.0),
+                false,
+                model_menu_opens_up,
+            ))
+        })
+        .child(input_row);
     deferred(panel).with_priority(150).into_any_element()
+}
+
+pub(crate) fn render_ai_model_selector(
+    models: &[AiModelDescriptor],
+    selected_model_id: Option<&str>,
+    menu_open: bool,
+    theme: GuiTheme,
+    view: Entity<CditorV2View>,
+    scroll_handle: &ScrollHandle,
+    selector_width: f32,
+    menu_width: f32,
+    opens_left: bool,
+    opens_up: bool,
+) -> AnyElement {
+    let selected = selected_model_id
+        .and_then(|selected| models.iter().find(|model| model.id == selected))
+        .or_else(|| models.first());
+    let label = selected
+        .map(|model| model.display_name.clone())
+        .unwrap_or_else(|| "选择模型".to_owned());
+    let can_open = models.len() > 1;
+    let trigger = div()
+        .id("ai-model-selector")
+        .w(px(selector_width.max(1.0)))
+        .h(px(AI_MODEL_SELECTOR_HEIGHT_PX))
+        .px(px(10.0))
+        .flex()
+        .items_center()
+        .gap(px(6.0))
+        .rounded(px(8.0))
+        .border_1()
+        .border_color(rgb(if menu_open {
+            theme.focused
+        } else {
+            theme.border
+        }))
+        .bg(rgb(theme.surface))
+        .text_color(rgb(theme.text))
+        .when(can_open, |trigger| {
+            let view = view.clone();
+            trigger
+                .cursor_pointer()
+                .hover(|style| style.bg(rgb(theme.hover_surface)))
+                .on_mouse_down(MouseButton::Left, move |_event, _window, cx| {
+                    let _ = view.update(cx, |view, cx| view.toggle_ai_model_menu_from_gui(cx));
+                    cx.stop_propagation();
+                })
+        })
+        .child(
+            div()
+                .min_w(px(0.0))
+                .flex_1()
+                .overflow_hidden()
+                .text_ellipsis()
+                .whitespace_nowrap()
+                .text_size(px(13.0))
+                .child(label),
+        )
+        .when(can_open, |trigger| {
+            trigger.child(
+                div()
+                    .flex_none()
+                    .text_size(px(12.0))
+                    .text_color(rgb(theme.muted))
+                    .child(if menu_open { "⌃" } else { "⌄" }),
+            )
+        });
+    div()
+        .relative()
+        .w(px(selector_width.max(1.0)))
+        .child(trigger)
+        .when(menu_open && can_open, |selector| {
+            selector.child(render_ai_model_menu(
+                models,
+                selected_model_id,
+                theme,
+                view,
+                scroll_handle,
+                menu_width,
+                opens_left,
+                opens_up,
+            ))
+        })
+        .into_any_element()
+}
+
+fn render_ai_model_menu(
+    models: &[AiModelDescriptor],
+    selected_model_id: Option<&str>,
+    theme: GuiTheme,
+    view: Entity<CditorV2View>,
+    scroll_handle: &ScrollHandle,
+    menu_width: f32,
+    opens_left: bool,
+    opens_up: bool,
+) -> AnyElement {
+    let menu = div()
+        .id("ai-model-menu")
+        .absolute()
+        .when(opens_up, |menu| {
+            menu.bottom(px(AI_MODEL_SELECTOR_HEIGHT_PX + 4.0))
+        })
+        .when(!opens_up, |menu| {
+            menu.top(px(AI_MODEL_SELECTOR_HEIGHT_PX + 4.0))
+        })
+        .when(opens_left, |menu| menu.right(px(0.0)))
+        .when(!opens_left, |menu| menu.left(px(0.0)))
+        .w(px(menu_width.max(1.0)))
+        .max_h(px(AI_MODEL_MENU_MAX_HEIGHT_PX))
+        .p(px(6.0))
+        .flex()
+        .flex_col()
+        .gap(px(2.0))
+        .overflow_y_scroll()
+        .track_scroll(scroll_handle)
+        .rounded(px(10.0))
+        .border_1()
+        .border_color(rgb(theme.border))
+        .bg(rgb(theme.panel))
+        .shadow_lg()
+        .occlude()
+        .on_mouse_down(MouseButton::Left, |_event, _window, cx| {
+            cx.stop_propagation();
+        })
+        .children(models.iter().enumerate().map(|(index, model)| {
+            let active = selected_model_id == Some(model.id.as_str());
+            let model_id = model.id.clone();
+            let view = view.clone();
+            let subtitle = model.subtitle();
+            div()
+                .id(("ai-model-option", index))
+                .min_h(px(56.0))
+                .w_full()
+                .px(px(12.0))
+                .py(px(7.0))
+                .flex()
+                .items_center()
+                .gap(px(8.0))
+                .rounded(px(7.0))
+                .bg(rgb(if active {
+                    theme.action_background
+                } else {
+                    theme.panel
+                }))
+                .cursor_pointer()
+                .hover(|style| style.bg(rgb(theme.hover_surface)))
+                .on_mouse_down(MouseButton::Left, move |_event, _window, cx| {
+                    let _ =
+                        view.update(cx, |view, cx| view.select_ai_model_from_gui(&model_id, cx));
+                    cx.stop_propagation();
+                })
+                .child(
+                    div()
+                        .min_w(px(0.0))
+                        .flex_1()
+                        .flex()
+                        .flex_col()
+                        .gap(px(2.0))
+                        .child(
+                            div()
+                                .overflow_hidden()
+                                .text_ellipsis()
+                                .whitespace_nowrap()
+                                .text_size(px(15.0))
+                                .text_color(rgb(theme.text))
+                                .child(model.display_name.clone()),
+                        )
+                        .child(
+                            div()
+                                .overflow_hidden()
+                                .text_ellipsis()
+                                .whitespace_nowrap()
+                                .text_size(px(12.0))
+                                .text_color(rgb(theme.muted))
+                                .child(subtitle),
+                        ),
+                )
+                .when(active, |row| {
+                    row.child(
+                        div()
+                            .flex_none()
+                            .text_size(px(13.0))
+                            .text_color(rgb(theme.focused))
+                            .child("✓"),
+                    )
+                })
+        }));
+    deferred(menu).with_priority(180).into_any_element()
+}
+
+fn ai_model_menu_height(model_count: usize) -> f32 {
+    (model_count as f32 * 58.0 + 12.0).min(AI_MODEL_MENU_MAX_HEIGHT_PX)
+}
+
+fn ai_prompt_height(show_model_selector: bool) -> f32 {
+    AI_PROMPT_INPUT_HEIGHT_PX
+        + if show_model_selector {
+            AI_MODEL_SELECTOR_HEIGHT_PX + AI_MODEL_SELECTOR_GAP_PX
+        } else {
+            0.0
+        }
 }
 
 fn ai_prompt_geometry(
@@ -162,15 +400,16 @@ fn ai_prompt_geometry(
     anchor_y: f32,
     viewport_width: f32,
     viewport_height: f32,
+    prompt_height: f32,
 ) -> AiPromptGeometry {
     const PROMPT_GAP_PX: f32 = 8.0;
     let available_width = (viewport_width - AI_VIEWPORT_MARGIN_PX * 2.0).max(1.0);
     let width = AI_PROMPT_WIDTH_PX.min(available_width);
     let max_x = (viewport_width - AI_VIEWPORT_MARGIN_PX - width).max(AI_VIEWPORT_MARGIN_PX);
     let x = anchor_x.clamp(AI_VIEWPORT_MARGIN_PX, max_x);
-    let above = anchor_y - AI_PROMPT_HEIGHT_PX - PROMPT_GAP_PX;
+    let above = anchor_y - prompt_height - PROMPT_GAP_PX;
     let max_y =
-        (viewport_height - AI_VIEWPORT_MARGIN_PX - AI_PROMPT_HEIGHT_PX).max(AI_VIEWPORT_MARGIN_PX);
+        (viewport_height - AI_VIEWPORT_MARGIN_PX - prompt_height).max(AI_VIEWPORT_MARGIN_PX);
     let y = if anchor_y <= max_y {
         anchor_y.max(AI_VIEWPORT_MARGIN_PX)
     } else if above >= AI_VIEWPORT_MARGIN_PX {
@@ -560,7 +799,7 @@ mod tests {
     #[test]
     fn prompt_geometry_matches_notion_bar_and_stays_in_viewport() {
         assert_eq!(
-            ai_prompt_geometry(120.0, 100.0, 1200.0, 800.0),
+            ai_prompt_geometry(120.0, 100.0, 1200.0, 800.0, ai_prompt_height(true)),
             AiPromptGeometry {
                 x: 120.0,
                 y: 100.0,
@@ -568,15 +807,15 @@ mod tests {
             }
         );
         assert_eq!(
-            ai_prompt_geometry(700.0, 600.0, 800.0, 640.0),
+            ai_prompt_geometry(700.0, 600.0, 800.0, 640.0, ai_prompt_height(true)),
             AiPromptGeometry {
                 x: 68.0,
-                y: 544.0,
+                y: 506.0,
                 width: 720.0,
             }
         );
         assert_eq!(
-            ai_prompt_geometry(0.0, 40.0, 300.0, 200.0),
+            ai_prompt_geometry(0.0, 40.0, 300.0, 200.0, ai_prompt_height(false)),
             AiPromptGeometry {
                 x: 12.0,
                 y: 40.0,

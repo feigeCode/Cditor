@@ -146,6 +146,8 @@ pub(in crate::gui::app) fn formatting_toolbar_state(
         return Some(FloatingToolbarState {
             x,
             y,
+            viewport_width: viewport.width,
+            viewport_height: viewport.height,
             block_id: Some(block_id),
             has_text_selection: false,
             show_inline_format: true,
@@ -195,6 +197,8 @@ pub(in crate::gui::app) fn formatting_toolbar_state(
         return Some(FloatingToolbarState {
             x,
             y,
+            viewport_width: viewport.width,
+            viewport_height: viewport.height,
             block_id: runtime.focused_block_id(),
             has_text_selection: true,
             show_inline_format: true,
@@ -247,6 +251,8 @@ pub(in crate::gui::app) fn formatting_toolbar_state(
     Some(FloatingToolbarState {
         x,
         y,
+        viewport_width: viewport.width,
+        viewport_height: viewport.height,
         block_id: Some(block_id),
         has_text_selection: true,
         show_inline_format: true,

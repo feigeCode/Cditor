@@ -1,6 +1,10 @@
+use std::sync::Arc;
+
 use gpui::{AppContext, Entity};
 
-use crate::api::{CditorCommand, CommandDescriptor, CommandOutcome, CommandState};
+use crate::api::{
+    AiModelDescriptor, AiProvider, CditorCommand, CommandDescriptor, CommandOutcome, CommandState,
+};
 use crate::gui::CditorV2View;
 
 use super::{
@@ -199,6 +203,66 @@ impl EditorHandle {
             .read_with(cx, |view, _| view.integration_is_readonly())
     }
 
+    pub fn set_ai_provider<C: AppContext, P>(
+        &self,
+        provider: P,
+        cx: &mut C,
+    ) -> Result<(), EditorError>
+    where
+        P: AiProvider + 'static,
+    {
+        self.set_ai_provider_arc(Arc::new(provider), cx)
+    }
+
+    pub fn set_ai_provider_arc<C: AppContext>(
+        &self,
+        provider: Arc<dyn AiProvider>,
+        cx: &mut C,
+    ) -> Result<(), EditorError> {
+        self.entity
+            .update(cx, |view, cx| view.sdk_set_ai_provider(provider, cx));
+        Ok(())
+    }
+
+    pub fn set_ai_enabled<C: AppContext>(
+        &self,
+        enabled: bool,
+        cx: &mut C,
+    ) -> Result<(), EditorError> {
+        self.entity
+            .update(cx, |view, cx| view.sdk_set_ai_enabled(enabled, cx));
+        Ok(())
+    }
+
+    pub fn is_ai_enabled<C: AppContext>(&self, cx: &C) -> bool {
+        self.entity.read_with(cx, |view, _| view.sdk_ai_enabled())
+    }
+
+    pub fn ai_models<C: AppContext>(&self, cx: &C) -> Vec<AiModelDescriptor> {
+        self.entity.read_with(cx, |view, _| view.sdk_ai_models())
+    }
+
+    pub fn refresh_ai_models<C: AppContext>(&self, cx: &mut C) -> Result<(), EditorError> {
+        self.entity
+            .update(cx, |view, cx| view.sdk_refresh_ai_models(cx));
+        Ok(())
+    }
+
+    pub fn selected_ai_model<C: AppContext>(&self, cx: &C) -> Option<AiModelDescriptor> {
+        self.entity
+            .read_with(cx, |view, _| view.sdk_selected_ai_model())
+    }
+
+    pub fn select_ai_model<C: AppContext>(
+        &self,
+        model_id: &str,
+        cx: &mut C,
+    ) -> Result<(), EditorError> {
+        self.entity
+            .update(cx, |view, cx| view.sdk_select_ai_model(model_id, cx))
+            .map_err(EditorError::from)
+    }
+
     pub fn execute_command<C: AppContext>(
         &self,
         command: CditorCommand,
@@ -246,6 +310,10 @@ impl EditorHandle {
 #[cfg(test)]
 mod tests {
     use super::EditorHandle;
+    use crate::api::{
+        AiCancellationToken, AiModelDescriptor, AiProvider, AiProviderError, AiRequest,
+        AiStreamEvent, AiStreamSender,
+    };
     use crate::integration::{
         DocumentReplaceReason, Editor, EditorDocument, EditorError, EditorEvent, EditorPersistence,
         EditorPersistenceError, EditorSaveRequest, EditorSaveState, MarkdownApplyMode,
@@ -261,6 +329,56 @@ mod tests {
         loaded: Arc<Mutex<Option<EditorDocument>>>,
         saved: Arc<Mutex<Vec<EditorSaveRequest>>>,
         save_error: Arc<Mutex<Option<String>>>,
+    }
+
+    #[derive(Clone, Default)]
+    struct HostAiProvider {
+        requests: Arc<Mutex<Vec<AiRequest>>>,
+    }
+
+    impl AiProvider for HostAiProvider {
+        fn id(&self) -> &str {
+            "host-ai"
+        }
+
+        fn models(&self) -> Vec<AiModelDescriptor> {
+            vec![
+                AiModelDescriptor::new("cpa:gpt-5.5", "CPA / gpt-5.5", "OpenAI Compatible")
+                    .with_description("正式模型"),
+                AiModelDescriptor::new(
+                    "deepseek:v4-flash",
+                    "DeepSeek / deepseek-v4-flash",
+                    "DeepSeek",
+                )
+                .with_description("正式模型"),
+            ]
+        }
+
+        fn default_model_id(&self) -> Option<String> {
+            Some("deepseek:v4-flash".to_owned())
+        }
+
+        fn stream(
+            &self,
+            request: AiRequest,
+            sender: AiStreamSender,
+            cancellation: AiCancellationToken,
+        ) -> Result<(), AiProviderError> {
+            if cancellation.is_cancelled() {
+                return Err(AiProviderError::Cancelled);
+            }
+            let request_id = request.request_id;
+            self.requests.lock().unwrap().push(request);
+            sender
+                .send_blocking(AiStreamEvent::Delta {
+                    request_id,
+                    text: "host response".to_owned(),
+                })
+                .map_err(|_| AiProviderError::ChannelClosed)?;
+            sender
+                .send_blocking(AiStreamEvent::Done { request_id })
+                .map_err(|_| AiProviderError::ChannelClosed)
+        }
     }
 
     impl EditorPersistence for MockPersistence {
@@ -527,6 +645,49 @@ mod tests {
                 .shortcut_commands()
                 .iter()
                 .any(|command| command.id == "format.toggle_bold")
+        );
+    }
+
+    #[gpui::test]
+    async fn editor_handle_uses_host_ai_catalog_and_selected_model(cx: &TestAppContext) {
+        let provider = HostAiProvider::default();
+        let requests = provider.requests.clone();
+        let events = Arc::new(Mutex::new(Vec::new()));
+        let recorded_events = events.clone();
+        let handle = cx.update(|app| {
+            Editor::builder()
+                .document_id("doc-ai")
+                .initial_markdown("Body")
+                .ai_provider(provider)
+                .on_event(move |event| recorded_events.lock().unwrap().push(event))
+                .build(app)
+                .unwrap()
+        });
+
+        assert_eq!(cx.read(|app| handle.ai_models(app)).len(), 2);
+        assert_eq!(
+            cx.read(|app| handle.selected_ai_model(app).unwrap().id),
+            "deepseek:v4-flash"
+        );
+        cx.update(|app| handle.select_ai_model("cpa:gpt-5.5", app).unwrap());
+        assert!(events.lock().unwrap().iter().any(|event| matches!(
+            event,
+            EditorEvent::AiModelChanged { model } if model.id == "cpa:gpt-5.5"
+        )));
+
+        cx.update(|app| {
+            handle.entity().update(app, |view, cx| {
+                view.integration_runtime_mut()
+                    .unwrap()
+                    .focus_block_at_offset(1, 4)
+                    .unwrap();
+                assert!(view.submit_ai_prompt_instruction_from_gui("continue", cx));
+            });
+        });
+        cx.run_until_parked();
+        assert_eq!(
+            requests.lock().unwrap()[0].model_id.as_deref(),
+            Some("cpa:gpt-5.5")
         );
     }
 

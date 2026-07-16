@@ -3,12 +3,14 @@ pub mod gui;
 pub mod integration;
 
 pub use api::{
-    Cditor, CditorBackend, CditorBuilder, CditorCommand, CditorCommandAction, CditorComponent,
-    CditorError, CditorEvent, CditorHandle, CditorKeyBinding, CditorOptions, CommandDescriptor,
-    CommandOutcome, CommandState, WorkspaceId,
+    AiCancellationToken, AiModelDescriptor, AiProvider, AiProviderError, AiRequest, AiStreamEvent,
+    AiStreamSender, AiTaskKind, Cditor, CditorBackend, CditorBuilder, CditorCommand,
+    CditorCommandAction, CditorComponent, CditorError, CditorEvent, CditorHandle, CditorKeyBinding,
+    CditorOptions, CommandDescriptor, CommandOutcome, CommandState, WorkspaceId,
 };
 #[cfg(feature = "sqlite")]
 pub use api::{SqliteDurability, SqliteStorageOptions};
+pub use cditor_ai as ai;
 pub use cditor_core as core;
 pub use cditor_runtime as runtime;
 #[cfg(feature = "postgres")]

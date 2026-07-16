@@ -536,6 +536,10 @@ impl Render for CditorV2View {
                 self.ai_prompt.as_ref().filter(|_| embedded_ai_prompt),
                 self.ai_prompt_focus.clone(),
                 &self.color_menu_scroll_handle,
+                &self.ai_models,
+                self.selected_ai_model_id.as_deref(),
+                self.ai_model_menu_open,
+                &self.ai_model_scroll_handle,
             ));
         }
         if let Some(preview_overlay) = render_image_preview_overlay(window, cx) {
@@ -548,6 +552,10 @@ impl Render for CditorV2View {
             if let Some(prompt) = self.ai_prompt.as_ref() {
                 root = root.child(render_ai_prompt(
                     prompt,
+                    &self.ai_models,
+                    self.selected_ai_model_id.as_deref(),
+                    self.ai_model_menu_open,
+                    &self.ai_model_scroll_handle,
                     theme,
                     cx.entity(),
                     self.ai_prompt_focus.clone(),

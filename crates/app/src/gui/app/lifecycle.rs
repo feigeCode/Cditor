@@ -4,7 +4,7 @@ use gpui::Context;
 
 use cditor_core::ids::BlockId;
 
-use crate::gui::app::cditor_v2_view::ai::default_ai_provider;
+use crate::gui::app::cditor_v2_view::ai::{ai_model_catalog, default_ai_provider};
 use crate::gui::app::cditor_v2_view::{CditorV2View, CditorViewState, save_status_for_mode};
 use crate::gui::app::interaction::table_mode::GuiTableInteractionMode;
 use crate::gui::block::code::highlight::DEFAULT_CODE_HIGHLIGHT_THEME;
@@ -63,13 +63,19 @@ impl CditorV2View {
         autosave_interval: Option<Duration>,
         cx: &mut Context<Self>,
     ) -> Self {
+        let ai_provider = default_ai_provider();
+        let (ai_models, selected_ai_model_id) = ai_model_catalog(ai_provider.as_ref(), None);
         Self {
             state: CditorViewState::Ready(runtime),
             focus: cx.focus_handle(),
             code_language_focus: cx.focus_handle(),
             ai_prompt_focus: cx.focus_handle(),
-            ai_provider: default_ai_provider(),
+            ai_provider,
             ai_enabled: true,
+            ai_models,
+            selected_ai_model_id,
+            ai_model_menu_open: false,
+            ai_model_scroll_handle: Default::default(),
             ai_prompt: None,
             ai_preview_scroll_handle: Default::default(),
             show_debug,
@@ -136,6 +142,8 @@ impl CditorV2View {
         autosave_interval: Option<Duration>,
         cx: &mut Context<Self>,
     ) -> Self {
+        let ai_provider = default_ai_provider();
+        let (ai_models, selected_ai_model_id) = ai_model_catalog(ai_provider.as_ref(), None);
         Self {
             state: CditorViewState::Loading {
                 message: message.into(),
@@ -143,8 +151,12 @@ impl CditorV2View {
             focus: cx.focus_handle(),
             code_language_focus: cx.focus_handle(),
             ai_prompt_focus: cx.focus_handle(),
-            ai_provider: default_ai_provider(),
+            ai_provider,
             ai_enabled: true,
+            ai_models,
+            selected_ai_model_id,
+            ai_model_menu_open: false,
+            ai_model_scroll_handle: Default::default(),
             ai_prompt: None,
             ai_preview_scroll_handle: Default::default(),
             show_debug,
@@ -212,6 +224,8 @@ impl CditorV2View {
         readonly: bool,
         cx: &mut Context<Self>,
     ) -> Self {
+        let ai_provider = default_ai_provider();
+        let (ai_models, selected_ai_model_id) = ai_model_catalog(ai_provider.as_ref(), None);
         Self {
             state: CditorViewState::LoadFailed {
                 message: message.into(),
@@ -219,8 +233,12 @@ impl CditorV2View {
             focus: cx.focus_handle(),
             code_language_focus: cx.focus_handle(),
             ai_prompt_focus: cx.focus_handle(),
-            ai_provider: default_ai_provider(),
+            ai_provider,
             ai_enabled: true,
+            ai_models,
+            selected_ai_model_id,
+            ai_model_menu_open: false,
+            ai_model_scroll_handle: Default::default(),
             ai_prompt: None,
             ai_preview_scroll_handle: Default::default(),
             show_debug,

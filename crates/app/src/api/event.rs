@@ -3,7 +3,7 @@ use cditor_core::ids::DocumentId;
 use super::{
     document::{DocumentInfo, DocumentSelection},
     error::CditorError,
-    providers::AssetDescriptor,
+    providers::{AiModelDescriptor, AssetDescriptor},
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -31,6 +31,7 @@ pub enum CditorEvent {
     SaveSucceeded { revision: u64 },
     SaveFailed { revision: u64, error: CditorError },
     DirtyChanged { dirty: bool },
+    AiModelChanged { model: AiModelDescriptor },
     LinkActivated { url: String },
     AssetActivated { asset: AssetDescriptor },
 }

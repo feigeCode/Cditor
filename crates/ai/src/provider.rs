@@ -4,6 +4,8 @@ use std::sync::{
     atomic::{AtomicBool, Ordering},
 };
 
+use serde::{Deserialize, Serialize};
+
 pub const DEFAULT_AI_STREAM_CAPACITY: usize = 64;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -13,10 +15,60 @@ pub enum AiTaskKind {
     RewriteBlocks,
 }
 
+/// Host-provided model metadata rendered by Cditor's model selector.
+///
+/// `id` is the stable value returned to the provider in every request.
+/// `display_name` is the primary row label, while `provider_name` and
+/// `description` form the secondary line shown in the dropdown.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AiModelDescriptor {
+    pub id: String,
+    pub display_name: String,
+    pub provider_name: String,
+    pub description: Option<String>,
+}
+
+impl AiModelDescriptor {
+    pub fn new(
+        id: impl Into<String>,
+        display_name: impl Into<String>,
+        provider_name: impl Into<String>,
+    ) -> Self {
+        Self {
+            id: id.into(),
+            display_name: display_name.into(),
+            provider_name: provider_name.into(),
+            description: None,
+        }
+    }
+
+    pub fn with_description(mut self, description: impl Into<String>) -> Self {
+        self.description = Some(description.into());
+        self
+    }
+
+    pub fn subtitle(&self) -> String {
+        match self
+            .description
+            .as_deref()
+            .filter(|value| !value.is_empty())
+        {
+            Some(description) if !self.provider_name.is_empty() => {
+                format!("{} · {description}", self.provider_name)
+            }
+            Some(description) => description.to_owned(),
+            None => self.provider_name.clone(),
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AiProviderRequest {
     pub request_id: u64,
     pub task: AiTaskKind,
+    /// The model selected in Cditor's UI. Providers that expose no model
+    /// catalog receive `None` and may keep their own internal default.
+    pub model_id: Option<String>,
     pub instruction: String,
     pub selected_text: String,
     pub prefix: String,
@@ -29,6 +81,8 @@ pub enum AiStreamEvent {
     Done { request_id: u64 },
     Error { request_id: u64, message: String },
 }
+
+pub type AiStreamSender = async_channel::Sender<AiStreamEvent>;
 
 impl AiStreamEvent {
     pub const fn request_id(&self) -> u64 {
@@ -90,11 +144,22 @@ impl std::error::Error for AiProviderError {}
 pub trait AiProvider: Send + Sync {
     fn id(&self) -> &str;
 
+    /// Models offered to the editor UI. A host can aggregate models from
+    /// multiple backends behind one provider and route by `model_id`.
+    fn models(&self) -> Vec<AiModelDescriptor> {
+        Vec::new()
+    }
+
+    /// Initial selection. Invalid or missing ids fall back to the first model.
+    fn default_model_id(&self) -> Option<String> {
+        None
+    }
+
     /// This method is blocking and must be invoked on a background executor.
     fn stream(
         &self,
         request: AiProviderRequest,
-        sender: async_channel::Sender<AiStreamEvent>,
+        sender: AiStreamSender,
         cancellation: AiCancellationToken,
     ) -> Result<(), AiProviderError>;
 }

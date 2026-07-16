@@ -1,8 +1,8 @@
 use std::time::Duration;
 
 use crate::provider::{
-    AiCancellationToken, AiProvider, AiProviderError, AiProviderRequest, AiStreamEvent, AiTaskKind,
-    send_stream_event,
+    AiCancellationToken, AiModelDescriptor, AiProvider, AiProviderError, AiProviderRequest,
+    AiStreamEvent, AiTaskKind, send_stream_event,
 };
 
 #[derive(Debug, Clone)]
@@ -64,6 +64,17 @@ impl MockAiProvider {
 impl AiProvider for MockAiProvider {
     fn id(&self) -> &str {
         "mock"
+    }
+
+    fn models(&self) -> Vec<AiModelDescriptor> {
+        vec![
+            AiModelDescriptor::new("mock", "Cditor Mock / mock", "Cditor")
+                .with_description("测试模型"),
+        ]
+    }
+
+    fn default_model_id(&self) -> Option<String> {
+        Some("mock".to_owned())
     }
 
     fn stream(
@@ -149,6 +160,7 @@ mod tests {
         AiProviderRequest {
             request_id: 3,
             task,
+            model_id: Some("mock".to_owned()),
             instruction: instruction.to_owned(),
             selected_text: text.to_owned(),
             prefix: String::new(),

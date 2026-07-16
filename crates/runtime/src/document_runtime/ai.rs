@@ -39,6 +39,7 @@ pub struct AiRequestDispatch {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AiSessionSnapshot {
     pub request_id: u64,
+    pub model_id: Option<String>,
     pub target: RuntimeAiTarget,
     pub selection_fingerprint: u64,
     pub instruction: String,
@@ -57,6 +58,7 @@ pub enum AiStreamApplyResult {
 #[derive(Debug, Clone)]
 pub(super) struct RuntimeAiSession {
     request_id: u64,
+    model_id: Option<String>,
     target: RuntimeAiTarget,
     target_block_versions: Vec<(BlockId, u64)>,
     selection_fingerprint: u64,
@@ -117,12 +119,25 @@ impl DocumentRuntime {
         &mut self,
         instruction: impl Into<String>,
     ) -> Result<AiRequestDispatch, String> {
-        self.begin_ai_request_with_presentation(instruction, AiRequestPresentation::Automatic)
+        self.begin_ai_request_with_model_and_presentation(
+            instruction,
+            None,
+            AiRequestPresentation::Automatic,
+        )
     }
 
     pub fn begin_ai_request_with_presentation(
         &mut self,
         instruction: impl Into<String>,
+        presentation: AiRequestPresentation,
+    ) -> Result<AiRequestDispatch, String> {
+        self.begin_ai_request_with_model_and_presentation(instruction, None, presentation)
+    }
+
+    pub fn begin_ai_request_with_model_and_presentation(
+        &mut self,
+        instruction: impl Into<String>,
+        model_id: Option<String>,
         presentation: AiRequestPresentation,
     ) -> Result<AiRequestDispatch, String> {
         if self.active_composition().is_some() {
@@ -173,6 +188,7 @@ impl DocumentRuntime {
         let request = AiProviderRequest {
             request_id,
             task,
+            model_id: model_id.clone(),
             instruction: instruction.clone(),
             selected_text,
             prefix,
@@ -180,6 +196,7 @@ impl DocumentRuntime {
         };
         self.ai_session = Some(RuntimeAiSession {
             request_id,
+            model_id,
             target,
             target_block_versions,
             selection_fingerprint,
@@ -233,6 +250,7 @@ impl DocumentRuntime {
         self.ai_session_is_current(session)
             .then(|| AiSessionSnapshot {
                 request_id: session.request_id,
+                model_id: session.model_id.clone(),
                 target: session.target.clone(),
                 selection_fingerprint: session.selection_fingerprint,
                 instruction: session.instruction.clone(),

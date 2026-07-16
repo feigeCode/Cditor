@@ -18,8 +18,76 @@ impl CditorV2View {
     ) {
         if let Some(provider) = provider {
             self.ai_provider = provider;
+            self.refresh_ai_model_catalog(None);
         }
         self.ai_enabled = enabled;
+    }
+
+    pub(crate) fn sdk_set_ai_provider(
+        &mut self,
+        provider: std::sync::Arc<dyn cditor_ai::AiProvider>,
+        cx: &mut Context<Self>,
+    ) {
+        if let Some(runtime) = self.ready_runtime() {
+            runtime.cancel_ai_request();
+        }
+        self.ai_prompt = None;
+        self.platform_input_target = None;
+        self.ai_provider = provider;
+        self.ai_enabled = true;
+        self.refresh_ai_model_catalog(None);
+        cx.notify();
+    }
+
+    pub(crate) fn sdk_set_ai_enabled(&mut self, enabled: bool, cx: &mut Context<Self>) {
+        if self.ai_enabled == enabled {
+            return;
+        }
+        self.ai_enabled = enabled;
+        if !enabled {
+            if let Some(runtime) = self.ready_runtime() {
+                runtime.cancel_ai_request();
+            }
+            self.ai_prompt = None;
+            self.ai_model_menu_open = false;
+            self.platform_input_target = None;
+        }
+        cx.notify();
+    }
+
+    pub(crate) fn sdk_ai_enabled(&self) -> bool {
+        self.ai_enabled
+    }
+
+    pub(crate) fn sdk_ai_models(&self) -> Vec<cditor_ai::AiModelDescriptor> {
+        self.ai_models.clone()
+    }
+
+    pub(crate) fn sdk_refresh_ai_models(&mut self, cx: &mut Context<Self>) {
+        self.refresh_ai_model_catalog(None);
+        cx.notify();
+    }
+
+    pub(crate) fn sdk_selected_ai_model(&self) -> Option<cditor_ai::AiModelDescriptor> {
+        let selected = self.selected_ai_model_id.as_deref()?;
+        self.ai_models
+            .iter()
+            .find(|model| model.id == selected)
+            .cloned()
+    }
+
+    pub(crate) fn sdk_select_ai_model(
+        &mut self,
+        model_id: &str,
+        cx: &mut Context<Self>,
+    ) -> Result<(), CditorError> {
+        if !self.ai_models.iter().any(|model| model.id == model_id) {
+            return Err(CditorError::InvalidInput(format!(
+                "unknown AI model id: {model_id}"
+            )));
+        }
+        self.apply_ai_model_selection(model_id, cx);
+        Ok(())
     }
 
     pub(crate) fn sdk_is_ready(&self) -> bool {

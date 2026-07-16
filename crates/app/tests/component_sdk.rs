@@ -6,6 +6,7 @@ use cditor_app::core::rich_text::RichBlockKind;
 use cditor_app::storage::StorageBackendKind;
 use cditor_app::{CditorBuilder, CditorCommand, CditorError, CditorKeyBinding};
 use gpui::TestAppContext;
+use std::sync::Arc;
 use tempfile::TempDir;
 
 #[gpui::test]
@@ -340,4 +341,25 @@ fn external_keymap_binding_validates_command_ids(cx: &mut TestAppContext) {
         )),
         Err(CditorError::InvalidInput(_))
     ));
+}
+
+#[gpui::test]
+fn component_handle_exposes_ai_provider_models_and_enablement(cx: &mut TestAppContext) {
+    let component = cx.update(|cx| {
+        CditorBuilder::new()
+            .memory()
+            .with_ai_provider(Arc::new(cditor_app::ai::MockAiProvider::instant()))
+            .build(cx)
+            .unwrap()
+    });
+    let handle = component.handle;
+    assert!(cx.read(|cx| handle.is_ai_enabled(cx)));
+    assert_eq!(cx.read(|cx| handle.ai_models(cx))[0].id, "mock");
+    cx.update(|cx| handle.select_ai_model("mock", cx).unwrap());
+    assert_eq!(
+        cx.read(|cx| handle.selected_ai_model(cx).unwrap().id),
+        "mock"
+    );
+    cx.update(|cx| handle.set_ai_enabled(false, cx).unwrap());
+    assert!(!cx.read(|cx| handle.is_ai_enabled(cx)));
 }

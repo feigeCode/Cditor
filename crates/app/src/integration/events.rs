@@ -1,6 +1,9 @@
+use crate::api::AiModelDescriptor;
+
 use super::{DocumentReplaceReason, EditorSaveReason, EditorSaveState};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum EditorEvent {
     Ready {
         document_id: String,
@@ -29,5 +32,8 @@ pub enum EditorEvent {
     LoadFailed {
         document_id: String,
         message: String,
+    },
+    AiModelChanged {
+        model: AiModelDescriptor,
     },
 }

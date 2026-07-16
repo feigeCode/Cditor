@@ -210,6 +210,9 @@ impl CditorV2View {
     }
 
     fn handle_bound_ai_prompt_action(&mut self, action: BoundInputAction, cx: &mut Context<Self>) {
+        if matches!(action, BoundInputAction::Cancel) && self.dismiss_ai_model_menu(cx) {
+            return;
+        }
         let edit_action = match action {
             BoundInputAction::Newline | BoundInputAction::NewlineBelow => {
                 Some(AiPromptEditAction::Submit)

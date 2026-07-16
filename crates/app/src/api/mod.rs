@@ -43,8 +43,8 @@ pub use options::{CditorBackend, CditorOptions, WorkspaceId};
 #[cfg(feature = "sqlite")]
 pub use options::{SqliteDurability, SqliteStorageOptions};
 pub use providers::{
-    AiProvider, AiProviderError, AiRequest, AiRequestId, AiTaskKind, AssetDescriptor, AssetError,
-    AssetInput, AssetProvider, AssetRef, CditorExtension, CditorHostDelegate, FilePickerRequest,
-    MenuContext, ResolvedAsset, ThemeProvider, TranslationProvider, WhiteboardId,
-    WhiteboardProvider,
+    AiCancellationToken, AiModelDescriptor, AiProvider, AiProviderError, AiRequest, AiRequestId,
+    AiStreamEvent, AiStreamSender, AiTaskKind, AssetDescriptor, AssetError, AssetInput,
+    AssetProvider, AssetRef, CditorExtension, CditorHostDelegate, FilePickerRequest, MenuContext,
+    ResolvedAsset, ThemeProvider, TranslationProvider, WhiteboardId, WhiteboardProvider,
 };
