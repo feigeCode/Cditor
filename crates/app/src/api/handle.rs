@@ -5,7 +5,7 @@ use gpui::{App, Task, WeakEntity};
 use crate::gui::CditorV2View;
 
 use super::{
-    command::{CditorCommand, CommandOutcome, CommandState},
+    command::{CditorCommand, CommandDescriptor, CommandOutcome, CommandState},
     diagnostics::CditorDiagnostics,
     document::{
         CloseGuard, DocumentInfo, DocumentSelection, SaveReport, SaveStatus, ScrollAlignment,
@@ -188,10 +188,36 @@ impl CditorHandle {
             .map_err(|_| CditorError::ComponentDropped)?
     }
 
+    pub fn execute_by_id(
+        &self,
+        command_id: &str,
+        cx: &mut App,
+    ) -> Result<CommandOutcome, CditorError> {
+        let command = CditorCommand::from_stable_id(command_id).ok_or_else(|| {
+            CditorError::InvalidInput(format!("unknown shortcut command id: {command_id}"))
+        })?;
+        self.execute(command, cx)
+    }
+
     pub fn command_state(&self, command: &CditorCommand, cx: &App) -> CommandState {
         self.entity
             .read_with(cx, |view, _| view.sdk_command_state(command))
             .unwrap_or(CommandState::DISABLED)
+    }
+
+    pub fn command_state_by_id(
+        &self,
+        command_id: &str,
+        cx: &App,
+    ) -> Result<CommandState, CditorError> {
+        let command = CditorCommand::from_stable_id(command_id).ok_or_else(|| {
+            CditorError::InvalidInput(format!("unknown shortcut command id: {command_id}"))
+        })?;
+        Ok(self.command_state(&command, cx))
+    }
+
+    pub fn shortcut_commands(&self) -> Vec<CommandDescriptor> {
+        CditorCommand::shortcut_descriptors()
     }
 
     fn require_component(&self) -> Result<(), CditorError> {

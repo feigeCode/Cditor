@@ -1,6 +1,37 @@
 use super::*;
 
 impl DocumentRuntime {
+    /// Duplicate the selected block range, or the focused block when there is
+    /// no explicit block selection. The operation reuses the structured
+    /// clipboard insertion path so nested block structure and undo metadata are
+    /// preserved.
+    pub fn duplicate_selected_or_focused_blocks(&mut self) -> Result<bool, String> {
+        let temporary_focus_selection = if self.selected_block_ids.is_empty() {
+            let Some(block_id) = self.focused_block_id() else {
+                return Ok(false);
+            };
+            self.selected_block_ids.insert(block_id);
+            Some(block_id)
+        } else {
+            None
+        };
+
+        let snapshot = self.clipboard_selection_snapshot();
+        let Some(snapshot @ ClipboardSelection::Blocks { .. }) = snapshot.as_ref() else {
+            if let Some(block_id) = temporary_focus_selection {
+                self.selected_block_ids.remove(&block_id);
+            }
+            return Ok(false);
+        };
+        let result = self.paste_clipboard_selection(snapshot);
+        if result.is_err()
+            && let Some(block_id) = temporary_focus_selection
+        {
+            self.selected_block_ids.remove(&block_id);
+        }
+        result
+    }
+
     pub fn paste_clipboard_selection(
         &mut self,
         selection: &ClipboardSelection,

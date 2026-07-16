@@ -4,7 +4,7 @@ use cditor_app::api::{
 };
 use cditor_app::core::rich_text::RichBlockKind;
 use cditor_app::storage::StorageBackendKind;
-use cditor_app::{CditorBuilder, CditorCommand, CditorError};
+use cditor_app::{CditorBuilder, CditorCommand, CditorError, CditorKeyBinding};
 use gpui::TestAppContext;
 use tempfile::TempDir;
 
@@ -229,5 +229,115 @@ fn sdk_save_rejects_non_persistent_backends(cx: &mut TestAppContext) {
     assert!(matches!(
         cx.foreground_executor().block_test(task),
         Err(CditorError::Unsupported(_))
+    ));
+}
+
+#[gpui::test]
+fn shortcut_command_ids_execute_and_report_active_state(cx: &mut TestAppContext) {
+    let component = cx.update(|cx| CditorBuilder::new().demo().build(cx).unwrap());
+    let handle = component.handle;
+    let selection = DocumentSelection {
+        anchor: DocumentPosition {
+            block_id: 1,
+            offset: TextOffset::Utf8Bytes(0),
+            affinity: Affinity::Downstream,
+        },
+        head: DocumentPosition {
+            block_id: 1,
+            offset: TextOffset::Utf8Bytes(6),
+            affinity: Affinity::Downstream,
+        },
+    };
+    cx.update(|cx| handle.set_selection(selection, cx).unwrap());
+
+    let bold_before = cx.read(|cx| {
+        handle
+            .command_state_by_id("format.toggle_bold", cx)
+            .unwrap()
+    });
+    assert!(bold_before.enabled);
+    assert!(!bold_before.active);
+    assert!(
+        cx.update(|cx| handle.execute_by_id("format.toggle_bold", cx).unwrap())
+            .changed
+    );
+    assert!(cx.read(|cx| {
+        handle
+            .command_state_by_id("format.toggle_bold", cx)
+            .unwrap()
+            .active
+    }));
+
+    let caret = DocumentSelection::caret(DocumentPosition {
+        block_id: 1,
+        offset: TextOffset::Utf8Bytes(0),
+        affinity: Affinity::Downstream,
+    });
+    cx.update(|cx| handle.set_selection(caret, cx).unwrap());
+    assert!(
+        cx.update(|cx| handle.execute_by_id("block.toggle_quote", cx).unwrap())
+            .changed
+    );
+    assert!(cx.read(|cx| {
+        handle
+            .command_state_by_id("block.toggle_quote", cx)
+            .unwrap()
+            .active
+    }));
+    assert!(
+        cx.update(|cx| handle.execute_by_id("block.toggle_quote", cx).unwrap())
+            .changed
+    );
+    assert!(!cx.read(|cx| {
+        handle
+            .command_state_by_id("block.toggle_quote", cx)
+            .unwrap()
+            .active
+    }));
+
+    let blocks_before = cx.read(|cx| handle.document_info(cx).unwrap().block_count);
+    assert!(
+        cx.update(|cx| {
+            handle
+                .execute_by_id("block.duplicate_selected", cx)
+                .unwrap()
+        })
+        .changed
+    );
+    assert_eq!(
+        cx.read(|cx| handle.document_info(cx).unwrap().block_count),
+        blocks_before + 1
+    );
+    assert!(
+        handle
+            .shortcut_commands()
+            .iter()
+            .any(|command| command.id == "block.set_heading_6")
+    );
+    assert!(matches!(
+        cx.update(|cx| handle.execute_by_id("missing.command", cx)),
+        Err(CditorError::InvalidInput(_))
+    ));
+}
+
+#[gpui::test]
+fn external_keymap_binding_validates_command_ids(cx: &mut TestAppContext) {
+    cx.update(cditor_app::init_for_external_keymap);
+    cx.update(|cx| {
+        cditor_app::bind_command_keys(
+            cx,
+            [
+                CditorKeyBinding::new("secondary-shift-x", "format.toggle_strike"),
+                CditorKeyBinding::new("secondary-1", "block.set_heading_1"),
+            ],
+        )
+        .unwrap()
+    });
+    assert!(matches!(
+        cx.update(|cx| cditor_app::bind_command_keys(
+            cx,
+            [CditorKeyBinding::new("secondary-q", "missing.command")]
+        )),
+        Err(CditorError::InvalidInput(_))
     ));
 }

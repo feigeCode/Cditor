@@ -3,8 +3,9 @@ pub mod gui;
 pub mod integration;
 
 pub use api::{
-    Cditor, CditorBackend, CditorBuilder, CditorCommand, CditorComponent, CditorError, CditorEvent,
-    CditorHandle, CditorOptions, WorkspaceId,
+    Cditor, CditorBackend, CditorBuilder, CditorCommand, CditorCommandAction, CditorComponent,
+    CditorError, CditorEvent, CditorHandle, CditorKeyBinding, CditorOptions, CommandDescriptor,
+    CommandOutcome, CommandState, WorkspaceId,
 };
 #[cfg(feature = "sqlite")]
 pub use api::{SqliteDurability, SqliteStorageOptions};
@@ -29,6 +30,29 @@ pub use integration::{
 /// creating an [`Editor`].
 pub fn init(cx: &mut gpui::App) {
     gui::input::bind_cditor_keys(cx);
+}
+
+/// Initializes embedded editors when the host owns all configurable command
+/// shortcuts.
+///
+/// This installs text input, navigation, deletion, Enter/Tab and clipboard
+/// behavior, but does not install Undo/Redo, Select All, formatting or block
+/// command shortcuts. Register those afterwards with [`bind_command_keys`].
+pub fn init_for_external_keymap(cx: &mut gpui::App) {
+    gui::input::bind_cditor_core_keys(cx);
+}
+
+/// Adds host-defined key bindings for Cditor's stable command ids.
+///
+/// Call this after [`init`] so bindings loaded from the host settings layer can
+/// override Cditor's defaults. Navigation, text input and clipboard bindings
+/// remain owned by the editor; only Markdown/editing commands need entries
+/// here.
+pub fn bind_command_keys(
+    cx: &mut gpui::App,
+    bindings: impl IntoIterator<Item = CditorKeyBinding>,
+) -> Result<(), CditorError> {
+    gui::input::bind_cditor_command_keys(cx, bindings)
 }
 
 pub mod storage {

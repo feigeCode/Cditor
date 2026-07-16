@@ -5,6 +5,7 @@ use super::{EditorPersistenceError, MarkdownDiagnostic};
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum EditorError {
     NotReady,
+    Readonly,
     PersistenceNotConfigured,
     InvalidMarkdown(String),
     MarkdownUnsupported {
@@ -24,6 +25,8 @@ pub enum EditorError {
         actual: String,
     },
     EntityUpdate(String),
+    InvalidCommand(String),
+    Command(String),
     Persistence(EditorPersistenceError),
 }
 
@@ -31,6 +34,7 @@ impl Display for EditorError {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::NotReady => formatter.write_str("editor is not ready"),
+            Self::Readonly => formatter.write_str("editor is readonly"),
             Self::PersistenceNotConfigured => {
                 formatter.write_str("editor persistence is not configured")
             }
@@ -63,6 +67,10 @@ impl Display for EditorError {
             Self::EntityUpdate(message) => {
                 write!(formatter, "editor entity update failed: {message}")
             }
+            Self::InvalidCommand(command_id) => {
+                write!(formatter, "unknown editor command id: {command_id}")
+            }
+            Self::Command(message) => write!(formatter, "editor command failed: {message}"),
             Self::Persistence(error) => write!(formatter, "editor persistence failed: {error}"),
         }
     }
@@ -73,5 +81,15 @@ impl std::error::Error for EditorError {}
 impl From<EditorPersistenceError> for EditorError {
     fn from(error: EditorPersistenceError) -> Self {
         Self::Persistence(error)
+    }
+}
+
+impl From<crate::api::CditorError> for EditorError {
+    fn from(error: crate::api::CditorError) -> Self {
+        match error {
+            crate::api::CditorError::NotReady => Self::NotReady,
+            crate::api::CditorError::Readonly => Self::Readonly,
+            other => Self::Command(other.to_string()),
+        }
     }
 }

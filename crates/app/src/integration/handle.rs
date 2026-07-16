@@ -1,5 +1,6 @@
 use gpui::{AppContext, Entity};
 
+use crate::api::{CditorCommand, CommandDescriptor, CommandOutcome, CommandState};
 use crate::gui::CditorV2View;
 
 use super::{
@@ -196,6 +197,49 @@ impl EditorHandle {
     pub fn is_readonly<C: AppContext>(&self, cx: &C) -> bool {
         self.entity
             .read_with(cx, |view, _| view.integration_is_readonly())
+    }
+
+    pub fn execute_command<C: AppContext>(
+        &self,
+        command: CditorCommand,
+        cx: &mut C,
+    ) -> Result<CommandOutcome, EditorError> {
+        self.entity
+            .update(cx, |view, cx| {
+                let outcome = view.sdk_execute_command(command, cx)?;
+                view.sync_integration_document_change(cx);
+                Ok::<CommandOutcome, crate::api::CditorError>(outcome)
+            })
+            .map_err(EditorError::from)
+    }
+
+    pub fn execute_command_by_id<C: AppContext>(
+        &self,
+        command_id: &str,
+        cx: &mut C,
+    ) -> Result<CommandOutcome, EditorError> {
+        let command = CditorCommand::from_stable_id(command_id)
+            .ok_or_else(|| EditorError::InvalidCommand(command_id.to_owned()))?;
+        self.execute_command(command, cx)
+    }
+
+    pub fn command_state<C: AppContext>(&self, command: &CditorCommand, cx: &C) -> CommandState {
+        self.entity
+            .read_with(cx, |view, _| view.sdk_command_state(command))
+    }
+
+    pub fn command_state_by_id<C: AppContext>(
+        &self,
+        command_id: &str,
+        cx: &C,
+    ) -> Result<CommandState, EditorError> {
+        let command = CditorCommand::from_stable_id(command_id)
+            .ok_or_else(|| EditorError::InvalidCommand(command_id.to_owned()))?;
+        Ok(self.command_state(&command, cx))
+    }
+
+    pub fn shortcut_commands(&self) -> Vec<CommandDescriptor> {
+        CditorCommand::shortcut_descriptors()
     }
 }
 
@@ -446,6 +490,44 @@ mod tests {
                 .any(|event| matches!(event, EditorEvent::Changed { .. }))
         );
         assert!(saved.lock().unwrap().is_empty());
+    }
+
+    #[gpui::test]
+    async fn editor_handle_exposes_stable_shortcut_commands(cx: &TestAppContext) {
+        let handle = cx.update(|app| {
+            Editor::builder()
+                .document_id("doc-1")
+                .initial_markdown("Body")
+                .build(app)
+                .unwrap()
+        });
+        cx.update(|app| {
+            handle.entity().update(app, |view, _| {
+                view.integration_runtime_mut()
+                    .unwrap()
+                    .focus_block_at_offset(1, 0)
+                    .unwrap();
+            });
+            assert!(
+                handle
+                    .execute_command_by_id("block.set_heading_1", app)
+                    .unwrap()
+                    .changed
+            );
+        });
+        assert_eq!(cx.read(|app| handle.get_markdown(app).unwrap()), "# Body");
+        assert!(cx.read(|app| {
+            handle
+                .command_state_by_id("block.set_heading_1", app)
+                .unwrap()
+                .active
+        }));
+        assert!(
+            handle
+                .shortcut_commands()
+                .iter()
+                .any(|command| command.id == "format.toggle_bold")
+        );
     }
 
     #[gpui::test]

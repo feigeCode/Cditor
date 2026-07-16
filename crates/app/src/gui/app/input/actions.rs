@@ -1,5 +1,6 @@
 use gpui::Context;
 
+use crate::api::CditorCommand;
 use crate::gui::app::cditor_v2_view::{CditorV2View, CditorViewState, TableCellLayoutKey};
 use crate::gui::app::input_trace::trace_input;
 use crate::gui::image_preview::close_active_preview_if_escape_enabled;
@@ -29,6 +30,27 @@ pub(in crate::gui::app) enum BoundInputAction {
 }
 
 impl CditorV2View {
+    pub(in crate::gui::app) fn handle_bound_cditor_command(
+        &mut self,
+        command_id: &str,
+        cx: &mut Context<Self>,
+    ) {
+        if self.ai_prompt.is_some()
+            || self.code_language_edit.is_some()
+            || self.table_interaction_mode.cell_selection().is_some()
+            || self.table_interaction_mode.axis_selection().is_some()
+        {
+            cx.stop_propagation();
+            return;
+        }
+        if let Some(command) = CditorCommand::from_stable_id(command_id) {
+            let _ = self.sdk_execute_command(command, cx);
+            self.sync_slash_menu_from_runtime(cx);
+        }
+        cx.stop_propagation();
+        cx.notify();
+    }
+
     pub(in crate::gui::app) fn handle_bound_input_action(
         &mut self,
         action: BoundInputAction,

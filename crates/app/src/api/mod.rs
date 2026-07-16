@@ -21,8 +21,8 @@ pub use cold_start::{
 #[cfg(feature = "postgres")]
 pub use cold_start::{CditorPostgresStores, PostgresRuntimeLoadOptions};
 pub use command::{
-    BlockTransform, CditorCommand, CommandDescriptor, CommandOutcome, CommandState, SlashItem,
-    ToolbarItem,
+    BlockTransform, CditorCommand, CditorCommandAction, CditorKeyBinding, CommandDescriptor,
+    CommandOutcome, CommandState, SlashItem, ToolbarItem,
 };
 pub use component::CditorComponent;
 pub use diagnostics::CditorDiagnostics;

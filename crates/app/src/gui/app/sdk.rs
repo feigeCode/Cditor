@@ -291,12 +291,52 @@ impl CditorV2View {
             CditorCommand::ToggleInlineCode => {
                 toggle_mark(runtime, cditor_core::rich_text::InlineMark::Code)?
             }
+            CditorCommand::InsertParagraphAfter => runtime
+                .insert_paragraph_after_focused()
+                .map(|_| true)
+                .map_err(CditorError::Internal)?,
+            CditorCommand::IndentBlock => runtime
+                .indent_focused_block()
+                .map_err(CditorError::Internal)?,
+            CditorCommand::OutdentBlock => runtime
+                .outdent_focused_block()
+                .map_err(CditorError::Internal)?,
             CditorCommand::TransformBlock(BlockTransform::Kind(kind)) => runtime
                 .convert_focused_block_kind(kind)
                 .map_err(CditorError::Internal)?,
+            CditorCommand::TransformBlock(BlockTransform::ToggleKind(kind)) => {
+                let target = runtime
+                    .focused_block_id()
+                    .and_then(|block_id| runtime.block_kind(block_id))
+                    .filter(|current| same_shortcut_block_kind(current, &kind))
+                    .map(|_| cditor_core::rich_text::RichBlockKind::Paragraph)
+                    .unwrap_or(kind);
+                runtime
+                    .convert_focused_block_kind(target)
+                    .map_err(CditorError::Internal)?
+            }
+            CditorCommand::DeleteCurrentBlock => {
+                let block_id = runtime
+                    .focused_block_id()
+                    .ok_or(CditorError::InvalidSelection)?;
+                runtime
+                    .delete_block_by_id(block_id)
+                    .map_err(CditorError::Internal)?
+            }
             CditorCommand::DeleteSelectedBlocks => runtime
                 .delete_selected_block_selection()
                 .map_err(CditorError::Internal)?,
+            CditorCommand::DuplicateSelectedBlocks => runtime
+                .duplicate_selected_or_focused_blocks()
+                .map_err(CditorError::Internal)?,
+            CditorCommand::ToggleTodoChecked => {
+                let block_id = runtime
+                    .focused_block_id()
+                    .ok_or(CditorError::InvalidSelection)?;
+                runtime
+                    .toggle_todo_checked(block_id)
+                    .map_err(CditorError::Internal)?
+            }
             CditorCommand::FoldHeading => {
                 let block_id = runtime
                     .focused_block_id()
@@ -357,13 +397,44 @@ impl CditorV2View {
             | CditorCommand::ToggleInlineCode => {
                 !self.readonly && runtime.focused_text_selection_range().is_some()
             }
-            CditorCommand::FoldHeading | CditorCommand::UnfoldHeading => {
+            CditorCommand::InsertParagraphAfter
+            | CditorCommand::IndentBlock
+            | CditorCommand::OutdentBlock => !self.readonly && runtime.focused_block_id().is_some(),
+            CditorCommand::DeleteCurrentBlock => {
+                !self.readonly
+                    && runtime
+                        .focused_block_id()
+                        .is_some_and(|block_id| runtime.can_delete_block(block_id))
+            }
+            CditorCommand::DeleteSelectedBlocks => !self.readonly && runtime.has_selected_blocks(),
+            CditorCommand::DuplicateSelectedBlocks => {
+                !self.readonly && runtime.can_duplicate_selected_or_focused_blocks()
+            }
+            CditorCommand::ToggleTodoChecked => {
+                !self.readonly
+                    && runtime.focused_block_id().is_some_and(|block_id| {
+                        matches!(
+                            runtime.block_kind(block_id),
+                            Some(cditor_core::rich_text::RichBlockKind::Todo { .. })
+                        )
+                    })
+            }
+            CditorCommand::FoldHeading => {
                 !self.readonly
                     && runtime.focused_block_id().is_some_and(|block_id| {
                         matches!(
                             runtime.block_kind(block_id),
                             Some(cditor_core::rich_text::RichBlockKind::Heading { .. })
-                        )
+                        ) && !runtime.is_block_folded(block_id)
+                    })
+            }
+            CditorCommand::UnfoldHeading => {
+                !self.readonly
+                    && runtime.focused_block_id().is_some_and(|block_id| {
+                        matches!(
+                            runtime.block_kind(block_id),
+                            Some(cditor_core::rich_text::RichBlockKind::Heading { .. })
+                        ) && runtime.is_block_folded(block_id)
                     })
             }
             CditorCommand::TransformBlock(BlockTransform::Kind(kind)) => {
@@ -372,11 +443,54 @@ impl CditorV2View {
                         .focused_block_id()
                         .is_some_and(|block_id| runtime.can_convert_block_kind(block_id, kind))
             }
+            CditorCommand::TransformBlock(BlockTransform::ToggleKind(kind)) => {
+                !self.readonly
+                    && runtime.focused_block_id().is_some_and(|block_id| {
+                        let target = runtime
+                            .block_kind(block_id)
+                            .filter(|current| same_shortcut_block_kind(current, kind))
+                            .map(|_| cditor_core::rich_text::RichBlockKind::Paragraph)
+                            .unwrap_or_else(|| kind.clone());
+                        runtime.can_convert_block_kind(block_id, &target)
+                    })
+            }
+            _ => false,
+        };
+        let active = match command {
+            CditorCommand::ToggleBold => {
+                runtime.selection_has_inline_mark(&cditor_core::rich_text::InlineMark::Bold)
+            }
+            CditorCommand::ToggleItalic => {
+                runtime.selection_has_inline_mark(&cditor_core::rich_text::InlineMark::Italic)
+            }
+            CditorCommand::ToggleUnderline => {
+                runtime.selection_has_inline_mark(&cditor_core::rich_text::InlineMark::Underline)
+            }
+            CditorCommand::ToggleStrike => {
+                runtime.selection_has_inline_mark(&cditor_core::rich_text::InlineMark::Strike)
+            }
+            CditorCommand::ToggleInlineCode => {
+                runtime.selection_has_inline_mark(&cditor_core::rich_text::InlineMark::Code)
+            }
+            CditorCommand::TransformBlock(BlockTransform::Kind(kind))
+            | CditorCommand::TransformBlock(BlockTransform::ToggleKind(kind)) => runtime
+                .focused_block_id()
+                .and_then(|block_id| runtime.block_kind(block_id))
+                .is_some_and(|current| same_shortcut_block_kind(&current, kind)),
+            CditorCommand::ToggleTodoChecked => runtime
+                .focused_block_id()
+                .and_then(|block_id| runtime.block_kind(block_id))
+                .is_some_and(|kind| {
+                    matches!(
+                        kind,
+                        cditor_core::rich_text::RichBlockKind::Todo { checked: true }
+                    )
+                }),
             _ => false,
         };
         CommandState {
             enabled,
-            active: false,
+            active,
             visible: true,
         }
     }
@@ -467,6 +581,27 @@ fn toggle_mark(
     runtime
         .toggle_inline_mark_on_selection(mark)
         .map_err(CditorError::Internal)
+}
+
+fn same_shortcut_block_kind(
+    current: &cditor_core::rich_text::RichBlockKind,
+    target: &cditor_core::rich_text::RichBlockKind,
+) -> bool {
+    match (current, target) {
+        (
+            cditor_core::rich_text::RichBlockKind::Todo { .. },
+            cditor_core::rich_text::RichBlockKind::Todo { .. },
+        )
+        | (
+            cditor_core::rich_text::RichBlockKind::Code { .. },
+            cditor_core::rich_text::RichBlockKind::Code { .. },
+        )
+        | (
+            cditor_core::rich_text::RichBlockKind::Callout { .. },
+            cditor_core::rich_text::RichBlockKind::Callout { .. },
+        ) => true,
+        _ => current == target,
+    }
 }
 
 #[cfg(test)]

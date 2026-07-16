@@ -1,6 +1,40 @@
 use super::*;
 
 impl DocumentRuntime {
+    pub fn selection_has_inline_mark(&self, mark: &InlineMark) -> bool {
+        let Some(block_id) = self.focused_block_id() else {
+            return false;
+        };
+        let Some(range) = self.focused_text_selection_range() else {
+            return false;
+        };
+        let Some(record) = self.payload_window.get(block_id) else {
+            return false;
+        };
+        let BlockPayload::RichText { spans } = &record.payload else {
+            return false;
+        };
+        let text = plain_text_from_spans(spans);
+        let range = safe_char_range(&text, range);
+        if range.is_empty() {
+            return false;
+        }
+
+        let mut offset = 0usize;
+        let mut saw_selected_text = false;
+        for span in spans {
+            let span_range = offset..offset + span.text.len();
+            offset = span_range.end;
+            if span_range.start < range.end && range.start < span_range.end {
+                saw_selected_text = true;
+                if !span.marks.contains(mark) {
+                    return false;
+                }
+            }
+        }
+        saw_selected_text
+    }
+
     pub fn toggle_inline_mark_on_selection(&mut self, mark: InlineMark) -> Result<bool, String> {
         let Some(block_id) = self.focused_block_id() else {
             return Ok(false);

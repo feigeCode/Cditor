@@ -54,13 +54,21 @@ impl DocumentRuntime {
     }
 
     pub fn toggle_todo_checked(&mut self, block_id: BlockId) -> Result<bool, String> {
-        let Some(record) = self.payload_window.payloads.get_mut(&block_id) else {
+        let Some(checked) = self.payload_window.get(block_id).and_then(|record| {
+            if let RichBlockKind::Todo { checked } = &record.kind {
+                Some(*checked)
+            } else {
+                None
+            }
+        }) else {
             return Ok(false);
         };
-        let checked = match &record.kind {
-            RichBlockKind::Todo { checked } => *checked,
-            _ => return Ok(false),
-        };
+        self.push_undo_snapshot(block_id)?;
+        let record = self
+            .payload_window
+            .payloads
+            .get_mut(&block_id)
+            .ok_or_else(|| format!("missing todo payload for block {block_id}"))?;
         record.kind = RichBlockKind::Todo { checked: !checked };
         record.content_version = record.content_version.saturating_add(1);
         if let Some(editing) = self

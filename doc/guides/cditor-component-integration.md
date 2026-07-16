@@ -350,6 +350,8 @@ if state.enabled {
 }
 ```
 
+宿主自定义快捷键可以保存稳定命令 ID，并使用 `execute_by_id`、`command_state_by_id` 或公共 `CditorCommandAction`。完整接入方式和命令清单参见 [三方宿主快捷键与 Markdown 命令集成指南](third-party-shortcut-command-integration.md)。
+
 ## 8. 冷启动高级接口
 
 应用层还导出了以下 PostgreSQL 冷启动类型：

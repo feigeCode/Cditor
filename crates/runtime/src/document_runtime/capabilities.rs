@@ -1,6 +1,17 @@
 use super::*;
 
 impl DocumentRuntime {
+    pub fn can_duplicate_selected_or_focused_blocks(&self) -> bool {
+        if self.selected_block_ids.is_empty() {
+            return self
+                .focused_block_id()
+                .is_some_and(|block_id| self.payload_window.get(block_id).is_some());
+        }
+        self.selected_block_ids
+            .iter()
+            .all(|block_id| self.payload_window.get(*block_id).is_some())
+    }
+
     /// A conversion is offered only when the source payload has a defined,
     /// non-destructive text export. Complex asset payloads keep their metadata
     /// instead of being silently flattened by a menu click.

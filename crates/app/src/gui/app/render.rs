@@ -3,6 +3,7 @@ use gpui::{
     StatefulInteractiveElement, Styled, Window, div, point, px, rgb, size,
 };
 
+use crate::api::CditorCommandAction;
 use crate::gui::GuiTheme;
 use crate::gui::app::cditor_v2_view::{CditorV2View, CditorViewState, formatting_toolbar_state};
 use crate::gui::app::input::actions::BoundInputAction;
@@ -109,6 +110,11 @@ impl Render for CditorV2View {
             .track_scroll(&self.editor_viewport_handle)
             .key_context(CDITOR_KEY_CONTEXT)
             .track_focus(&self.focus)
+            .on_action(
+                cx.listener(|view, action: &CditorCommandAction, _window, cx| {
+                    view.handle_bound_cditor_command(&action.command_id, cx)
+                }),
+            )
             .on_action(cx.listener(|view, _: &Newline, _window, cx| {
                 view.handle_bound_input_action(BoundInputAction::Newline, cx)
             }))

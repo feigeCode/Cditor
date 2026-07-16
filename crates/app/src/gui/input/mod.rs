@@ -8,7 +8,10 @@ pub mod mouse;
 pub mod platform_adapter;
 pub mod single_line;
 
-pub use actions::bind_cditor_keys;
+pub use actions::{
+    bind_cditor_command_keys, bind_cditor_core_keys, bind_cditor_default_command_keys,
+    bind_cditor_keys,
+};
 pub use ai_prompt::{AiPromptEditAction, AiPromptKeyResult, AiPromptState, apply_ai_prompt_action};
 pub use code_language::{
     CODE_LANGUAGE_MAX_SUGGESTIONS, CODE_LANGUAGE_VISIBLE_SUGGESTIONS, CodeLanguageEditAction,
