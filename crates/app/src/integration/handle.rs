@@ -4,8 +4,8 @@ use crate::gui::CditorV2View;
 
 use super::{
     DocumentReplaceReason, EditorDocument, EditorError, EditorSaveReason, EditorSaveState,
-    MarkdownApplyMode, MarkdownCompatibility, MarkdownExportMode, MarkdownExportResult,
-    MarkdownImportResult,
+    MarkdownApplyMode, MarkdownAssetResolver, MarkdownBundleExportResult, MarkdownBundleOptions,
+    MarkdownCompatibility, MarkdownExportMode, MarkdownExportResult, MarkdownImportResult,
 };
 
 #[derive(Clone)]
@@ -45,6 +45,15 @@ impl EditorHandle {
         self.get_document(cx)?.export_markdown(mode)
     }
 
+    pub fn export_markdown_bundle<C: AppContext>(
+        &self,
+        mode: MarkdownExportMode,
+        options: &MarkdownBundleOptions,
+        cx: &C,
+    ) -> Result<MarkdownBundleExportResult, EditorError> {
+        self.get_document(cx)?.export_markdown_bundle(mode, options)
+    }
+
     pub fn apply_markdown<C: AppContext>(
         &self,
         markdown: impl Into<String>,
@@ -58,6 +67,43 @@ impl EditorHandle {
             })
             .ok_or(EditorError::NotReady)?;
         let result = EditorDocument::from_markdown_with_report(document_id, &markdown.into())?;
+        if mode == MarkdownApplyMode::Editable
+            && matches!(result.compatibility, MarkdownCompatibility::SourceOnly(_))
+        {
+            return Err(EditorError::MarkdownSourceOnly {
+                diagnostics: result.diagnostics.clone(),
+            });
+        }
+        let readonly = mode == MarkdownApplyMode::ReadOnlyPreview;
+        self.entity.update(cx, |view, cx| {
+            view.replace_integration_document(
+                result.document.clone(),
+                DocumentReplaceReason::SourceModeCommit,
+                Some(readonly),
+                cx,
+            )
+        })?;
+        Ok(result)
+    }
+
+    pub fn apply_markdown_bundle<C: AppContext>(
+        &self,
+        markdown: impl Into<String>,
+        resolver: &dyn MarkdownAssetResolver,
+        mode: MarkdownApplyMode,
+        cx: &mut C,
+    ) -> Result<MarkdownImportResult, EditorError> {
+        let document_id = self
+            .entity
+            .read_with(cx, |view, _| {
+                view.integration_document_id().map(str::to_owned)
+            })
+            .ok_or(EditorError::NotReady)?;
+        let result = EditorDocument::from_markdown_bundle_with_report(
+            document_id,
+            &markdown.into(),
+            resolver,
+        )?;
         if mode == MarkdownApplyMode::Editable
             && matches!(result.compatibility, MarkdownCompatibility::SourceOnly(_))
         {

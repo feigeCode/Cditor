@@ -4,6 +4,7 @@ mod error;
 mod events;
 mod handle;
 mod markdown;
+mod markdown_bundle;
 mod persistence;
 
 pub use builder::{Editor, EditorBuilder};
@@ -12,9 +13,10 @@ pub use error::EditorError;
 pub use events::EditorEvent;
 pub use handle::EditorHandle;
 pub use markdown::{
-    DocumentReplaceReason, MarkdownApplyMode, MarkdownCompatibility, MarkdownDiagnostic,
-    MarkdownDiagnosticSeverity, MarkdownExportMode, MarkdownExportResult, MarkdownFidelity,
-    MarkdownImportResult,
+    DocumentReplaceReason, MarkdownApplyMode, MarkdownAsset, MarkdownAssetError,
+    MarkdownAssetResolver, MarkdownAssetRole, MarkdownBundleExportResult, MarkdownBundleOptions,
+    MarkdownCompatibility, MarkdownDiagnostic, MarkdownDiagnosticSeverity, MarkdownExportMode,
+    MarkdownExportResult, MarkdownFidelity, MarkdownImportResult,
 };
 pub(crate) use persistence::IntegrationPersistenceState;
 pub use persistence::{

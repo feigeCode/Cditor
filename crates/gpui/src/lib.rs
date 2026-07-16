@@ -7,9 +7,10 @@
 pub use cditor_app::{
     DocumentReplaceReason, Editor, EditorBlock, EditorBuilder, EditorDocument, EditorError,
     EditorEvent, EditorHandle, EditorPersistence, EditorPersistenceError, EditorSaveReason,
-    EditorSaveRequest, EditorSaveState, MarkdownApplyMode, MarkdownCompatibility,
-    MarkdownDiagnostic, MarkdownDiagnosticSeverity, MarkdownExportMode, MarkdownExportResult,
-    MarkdownFidelity, MarkdownImportResult,
+    EditorSaveRequest, EditorSaveState, MarkdownApplyMode, MarkdownAsset, MarkdownAssetError,
+    MarkdownAssetResolver, MarkdownAssetRole, MarkdownBundleExportResult, MarkdownBundleOptions,
+    MarkdownCompatibility, MarkdownDiagnostic, MarkdownDiagnosticSeverity, MarkdownExportMode,
+    MarkdownExportResult, MarkdownFidelity, MarkdownImportResult,
 };
 
 /// Advanced implementation types. Prefer [`Editor`] and [`EditorHandle`] for

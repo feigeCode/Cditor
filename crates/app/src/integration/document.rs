@@ -187,7 +187,7 @@ impl EditorDocument {
         ))
     }
 
-    fn from_rich_text_document(
+    pub(crate) fn from_rich_text_document(
         document_id: String,
         document: RichTextDocument,
     ) -> Result<Self, EditorError> {
@@ -195,7 +195,7 @@ impl EditorDocument {
         Self::from_runtime(document_id, &runtime)
     }
 
-    fn rich_text_document(&self) -> RichTextDocument {
+    pub(crate) fn rich_text_document(&self) -> RichTextDocument {
         let runtime_id = runtime_document_id(&self.document_id);
         RichTextDocument {
             id: runtime_id,
@@ -216,7 +216,7 @@ impl EditorDocument {
         }
     }
 
-    fn validate(&self) -> Result<(), EditorError> {
+    pub(crate) fn validate(&self) -> Result<(), EditorError> {
         if self.schema_version != Self::CURRENT_SCHEMA_VERSION {
             return Err(EditorError::UnsupportedSchemaVersion {
                 version: self.schema_version,

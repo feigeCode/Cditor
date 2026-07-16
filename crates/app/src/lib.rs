@@ -17,9 +17,10 @@ pub use cditor_storage_sqlite as storage_sqlite;
 pub use integration::{
     DocumentReplaceReason, Editor, EditorBlock, EditorBuilder, EditorDocument, EditorError,
     EditorEvent, EditorHandle, EditorPersistence, EditorPersistenceError, EditorSaveReason,
-    EditorSaveRequest, EditorSaveState, MarkdownApplyMode, MarkdownCompatibility,
-    MarkdownDiagnostic, MarkdownDiagnosticSeverity, MarkdownExportMode, MarkdownExportResult,
-    MarkdownFidelity, MarkdownImportResult,
+    EditorSaveRequest, EditorSaveState, MarkdownApplyMode, MarkdownAsset, MarkdownAssetError,
+    MarkdownAssetResolver, MarkdownAssetRole, MarkdownBundleExportResult, MarkdownBundleOptions,
+    MarkdownCompatibility, MarkdownDiagnostic, MarkdownDiagnosticSeverity, MarkdownExportMode,
+    MarkdownExportResult, MarkdownFidelity, MarkdownImportResult,
 };
 
 /// Installs Cditor's application-level key bindings for embedded editors.

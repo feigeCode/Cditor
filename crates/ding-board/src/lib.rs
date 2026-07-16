@@ -24,6 +24,7 @@
 
 mod font;
 mod render_perf;
+mod svg_export;
 
 use std::cell::Cell;
 use std::collections::{HashMap, HashSet};
@@ -34,6 +35,7 @@ use std::sync::Arc;
 
 pub use font::Font;
 use render_perf::WorldViewport;
+pub use svg_export::{SvgExportError, SvgExportOptions, SvgExportResult, export_scene_svg};
 
 use gpui::{
     AnyElement, AnyView, App, AppContext, Bounds, Context, CursorStyle, Div, ElementId,
