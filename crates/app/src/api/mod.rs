@@ -5,6 +5,7 @@ pub mod command;
 pub mod component;
 pub mod diagnostics;
 pub mod document;
+pub mod document_rendering;
 pub mod error;
 pub mod event;
 pub mod handle;
@@ -32,6 +33,10 @@ pub use document::{
     CURRENT_DOCUMENT_SNAPSHOT_SCHEMA_VERSION, CloseGuard, ClosePolicy, DocumentInfo,
     DocumentPosition, DocumentSelection, DocumentSnapshot, DocumentSource, InsertPosition,
     SaveReport, SaveStatus, ScrollAlignment, TextOffset,
+};
+pub use document_rendering::{
+    DocumentRenderArtifact, DocumentRenderError, DocumentRenderFuture, DocumentRenderRequest,
+    DocumentRenderTheme, DocumentRendererProvider,
 };
 pub use error::CditorError;
 pub use event::{CditorEvent, ChangeOrigin};

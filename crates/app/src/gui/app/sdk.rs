@@ -1,5 +1,6 @@
 use gpui::{AppContext, Context, EventEmitter, Task, Window};
 
+use crate::api::DocumentRendererProvider;
 use crate::api::SyntaxHighlightProvider;
 use crate::api::{
     Affinity, BlockTransform, CditorCommand, CditorDiagnostics, CditorError, CditorEvent,
@@ -12,6 +13,21 @@ use crate::gui::persistence::{EditorSaveStatus, PersistenceBarrierKind};
 impl EventEmitter<CditorEvent> for CditorV2View {}
 
 impl CditorV2View {
+    pub(crate) fn sdk_configure_document_rendering(
+        &mut self,
+        provider: Option<std::sync::Arc<dyn DocumentRendererProvider>>,
+    ) {
+        self.mermaid_renders.configure(provider);
+    }
+
+    pub(crate) fn sdk_set_document_renderer_provider(
+        &mut self,
+        provider: std::sync::Arc<dyn DocumentRendererProvider>,
+        cx: &mut Context<Self>,
+    ) {
+        self.sdk_configure_document_rendering(Some(provider));
+        cx.notify();
+    }
     pub(crate) fn sdk_configure_syntax_highlighting(
         &mut self,
         provider: Option<std::sync::Arc<dyn SyntaxHighlightProvider>>,

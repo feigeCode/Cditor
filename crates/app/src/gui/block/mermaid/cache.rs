@@ -7,12 +7,15 @@ use cditor_core::rich_text::{BlockPayloadView, RichBlockKind};
 use cditor_runtime::EditorViewProjection;
 use gpui::{AppContext, Context, RenderImage, Task};
 
+use crate::api::{DocumentRenderRequest, DocumentRenderTheme, DocumentRendererProvider};
 use crate::gui::GuiTheme;
 use crate::gui::app::CditorV2View;
 
+#[cfg(feature = "builtin-mermaid-rendering")]
 use super::theme::build_mermaid_theme;
 
 const MAX_MERMAID_SOURCE_BYTES: usize = 256 * 1024;
+const MAX_SVG_BYTES: usize = 4 * 1024 * 1024;
 
 type RenderResult = Result<Arc<RenderImage>, Arc<str>>;
 
@@ -27,6 +30,7 @@ struct MermaidRenderEntry {
     content_version: u64,
     source_hash: u64,
     theme: GuiTheme,
+    provider_revision: u64,
     result: Arc<OnceLock<RenderResult>>,
     fallback: Option<Arc<RenderImage>>,
     _task: Option<Task<()>>,
@@ -39,15 +43,18 @@ impl MermaidRenderEntry {
         source: String,
         theme: GuiTheme,
         fallback: Option<Arc<RenderImage>>,
+        provider: Option<Arc<dyn DocumentRendererProvider>>,
         cx: &mut Context<CditorV2View>,
     ) -> Self {
         let result = Arc::new(OnceLock::new());
         if let Err(message) = validate_source(&source) {
+            let provider_revision = provider.as_ref().map_or(0, |provider| provider.revision());
             let _ = result.set(Err(message.into()));
             return Self {
                 content_version,
                 source_hash,
                 theme,
+                provider_revision,
                 result,
                 fallback,
                 _task: None,
@@ -56,14 +63,14 @@ impl MermaidRenderEntry {
 
         let result_for_task = result.clone();
         let renderer = cx.svg_renderer();
-        let render_theme = build_mermaid_theme(theme);
+        let provider_revision = provider.as_ref().map_or(0, |provider| provider.revision());
         let task = cx.spawn(async move |view, cx| {
             let rendered = cx
                 .background_spawn(async move {
-                    let svg = mermaid_render::render_to_svg(&source, &render_theme)
-                        .map_err(|error| Arc::<str>::from(format!("{error:#}")))?;
+                    let svg = render_svg(provider, source, theme).await?;
+                    validate_svg(&svg)?;
                     renderer
-                        .render_single_frame(svg.as_bytes(), 1.0)
+                        .render_single_frame(&svg, 1.0)
                         .map_err(|error| Arc::<str>::from(error.to_string()))
                 })
                 .await;
@@ -75,6 +82,7 @@ impl MermaidRenderEntry {
             content_version,
             source_hash,
             theme,
+            provider_revision,
             result,
             fallback,
             _task: Some(task),
@@ -100,16 +108,24 @@ impl MermaidRenderEntry {
         }
     }
 
-    fn matches(&self, content_version: u64, source_hash: u64, theme: GuiTheme) -> bool {
+    fn matches(
+        &self,
+        content_version: u64,
+        source_hash: u64,
+        theme: GuiTheme,
+        provider_revision: u64,
+    ) -> bool {
         self.content_version == content_version
             && self.source_hash == source_hash
             && self.theme == theme
+            && self.provider_revision == provider_revision
     }
 }
 
 #[derive(Default)]
 pub(crate) struct MermaidRenderCache {
     entries: HashMap<BlockId, MermaidRenderEntry>,
+    provider: Option<Arc<dyn DocumentRendererProvider>>,
 }
 
 impl MermaidRenderCache {
@@ -144,11 +160,16 @@ impl MermaidRenderCache {
             .retain(|block_id, _| visible_ids.contains(block_id));
 
         for (block_id, content_version, hash, source) in visible {
-            if self
-                .entries
-                .get(&block_id)
-                .is_some_and(|entry| entry.matches(content_version, hash, theme))
-            {
+            if self.entries.get(&block_id).is_some_and(|entry| {
+                entry.matches(
+                    content_version,
+                    hash,
+                    theme,
+                    self.provider
+                        .as_ref()
+                        .map_or(0, |provider| provider.revision()),
+                )
+            }) {
                 continue;
             }
             let fallback = self
@@ -157,7 +178,15 @@ impl MermaidRenderCache {
                 .and_then(|entry| entry.best_image());
             self.entries.insert(
                 block_id,
-                MermaidRenderEntry::new(content_version, hash, source, theme, fallback, cx),
+                MermaidRenderEntry::new(
+                    content_version,
+                    hash,
+                    source,
+                    theme,
+                    fallback,
+                    self.provider.clone(),
+                    cx,
+                ),
             );
         }
     }
@@ -169,6 +198,74 @@ impl MermaidRenderCache {
     pub(crate) fn clear(&mut self) {
         self.entries.clear();
     }
+
+    pub(crate) fn configure(&mut self, provider: Option<Arc<dyn DocumentRendererProvider>>) {
+        self.provider = provider;
+        self.clear();
+    }
+}
+
+async fn render_svg(
+    provider: Option<Arc<dyn DocumentRendererProvider>>,
+    source: String,
+    theme: GuiTheme,
+) -> Result<Vec<u8>, Arc<str>> {
+    if let Some(provider) = provider.filter(|provider| provider.supports("mermaid")) {
+        let artifact = provider
+            .render(DocumentRenderRequest {
+                renderer: "mermaid".to_owned(),
+                source,
+                available_width: 0.0,
+                scale_factor: 1.0,
+                theme: DocumentRenderTheme {
+                    dark: false,
+                    background: theme.code_background,
+                    foreground: theme.text,
+                    border: theme.strong_border,
+                    muted: theme.muted,
+                    accent: theme.action_accent,
+                    danger: theme.danger,
+                    font_family: "Inter, ui-sans-serif, system-ui, -apple-system, sans-serif"
+                        .to_owned(),
+                },
+            })
+            .await
+            .map_err(|error| Arc::<str>::from(error.to_string()))?;
+        if artifact.media_type != "image/svg+xml" {
+            return Err("文档渲染扩展返回了不支持的媒体类型".into());
+        }
+        return Ok(artifact.bytes);
+    }
+    #[cfg(feature = "builtin-mermaid-rendering")]
+    {
+        let render_theme = build_mermaid_theme(theme);
+        return mermaid_render::render_to_svg(&source, &render_theme)
+            .map(|svg| svg.into_bytes())
+            .map_err(|error| Arc::<str>::from(format!("{error:#}")));
+    }
+    #[cfg(not(feature = "builtin-mermaid-rendering"))]
+    Err("未安装 Mermaid 文档渲染扩展".into())
+}
+
+fn validate_svg(svg: &[u8]) -> Result<(), Arc<str>> {
+    if svg.len() > MAX_SVG_BYTES {
+        return Err("SVG 输出超过 4 MiB 安全上限".into());
+    }
+    let text = std::str::from_utf8(svg).map_err(|_| Arc::<str>::from("SVG 输出不是 UTF-8"))?;
+    let lower = text.to_ascii_lowercase();
+    if !lower.contains("<svg")
+        || lower.contains("<script")
+        || lower.contains("<foreignobject")
+        || lower.contains("file://")
+        || lower.contains("javascript:")
+        || lower.contains("http://")
+        || lower.contains("https://")
+        || lower.contains(" onload=")
+        || lower.contains(" onclick=")
+    {
+        return Err("SVG 输出包含不安全或不受支持的内容".into());
+    }
+    Ok(())
 }
 
 fn source_hash(source: &str) -> u64 {
@@ -205,5 +302,13 @@ mod tests {
     fn source_hash_changes_with_content() {
         assert_eq!(source_hash("A --> B"), source_hash("A --> B"));
         assert_ne!(source_hash("A --> B"), source_hash("A --> C"));
+    }
+
+    #[test]
+    fn svg_validation_rejects_active_and_external_content() {
+        assert!(validate_svg(b"<svg><path d='M0 0'/></svg>").is_ok());
+        assert!(validate_svg(b"<svg><script/></svg>").is_err());
+        assert!(validate_svg(b"<svg><foreignObject/></svg>").is_err());
+        assert!(validate_svg(b"<svg><image href='https://example.com/a'/></svg>").is_err());
     }
 }

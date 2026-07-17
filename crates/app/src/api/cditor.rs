@@ -9,6 +9,7 @@ use cditor_storage::{StorageError, block_on_storage};
 
 use super::cold_start::{CditorColdStartPlan, load_runtime_from_options};
 use super::component::CditorComponent;
+use super::document_rendering::DocumentRendererProvider;
 use super::error::CditorError;
 use super::event::CditorEvent;
 #[cfg(feature = "sqlite")]
@@ -23,6 +24,7 @@ pub struct Cditor {
     ai_enabled: bool,
     syntax_highlight_provider: Option<Arc<dyn SyntaxHighlightProvider>>,
     syntax_highlighting_enabled: bool,
+    document_renderer_provider: Option<Arc<dyn DocumentRendererProvider>>,
 }
 
 impl Default for Cditor {
@@ -33,6 +35,7 @@ impl Default for Cditor {
             ai_enabled: true,
             syntax_highlight_provider: None,
             syntax_highlighting_enabled: true,
+            document_renderer_provider: None,
         }
     }
 }
@@ -58,6 +61,13 @@ impl fmt::Debug for Cditor {
                 "syntax_highlighting_enabled",
                 &self.syntax_highlighting_enabled,
             )
+            .field(
+                "document_renderer_provider",
+                &self
+                    .document_renderer_provider
+                    .as_ref()
+                    .map(|provider| provider.id()),
+            )
             .finish()
     }
 }
@@ -75,6 +85,14 @@ impl PartialEq for Cditor {
                 .map(|provider| provider.id())
                 == other
                     .syntax_highlight_provider
+                    .as_ref()
+                    .map(|provider| provider.id())
+            && self
+                .document_renderer_provider
+                .as_ref()
+                .map(|provider| provider.id())
+                == other
+                    .document_renderer_provider
                     .as_ref()
                     .map(|provider| provider.id())
     }
@@ -202,6 +220,14 @@ impl Cditor {
         self
     }
 
+    pub fn with_document_renderer_provider(
+        mut self,
+        provider: Arc<dyn DocumentRendererProvider>,
+    ) -> Self {
+        self.document_renderer_provider = Some(provider);
+        self
+    }
+
     #[cfg(feature = "postgres")]
     pub fn with_postgres_large_demo_seed(mut self, block_count: usize, force: bool) -> Self {
         self.options.seed_large_demo_to_postgres = true;
@@ -223,6 +249,7 @@ impl Cditor {
         let ai_enabled = self.ai_enabled;
         let syntax_highlight_provider = self.syntax_highlight_provider.clone();
         let syntax_highlighting_enabled = self.syntax_highlighting_enabled;
+        let document_renderer_provider = self.document_renderer_provider.clone();
         let mut view = match CditorColdStartPlan::from_options(&self.options) {
             CditorColdStartPlan::Demo | CditorColdStartPlan::Memory => {
                 let runtime = match CditorColdStartPlan::from_options(&self.options) {
@@ -290,6 +317,7 @@ impl Cditor {
             syntax_highlight_provider,
             syntax_highlighting_enabled,
         );
+        view.sdk_configure_document_rendering(document_renderer_provider);
         view
     }
 

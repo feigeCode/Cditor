@@ -1,12 +1,17 @@
+#[cfg(feature = "builtin-mermaid-rendering")]
 use gpui::{Hsla, rgb};
+#[cfg(feature = "builtin-mermaid-rendering")]
 use mermaid_render::{AccentColor, MermaidTheme, text_color_for_background};
 
+#[cfg(feature = "builtin-mermaid-rendering")]
 use crate::gui::GuiTheme;
 
+#[cfg(feature = "builtin-mermaid-rendering")]
 fn color(value: u32) -> Hsla {
     rgb(value).into()
 }
 
+#[cfg(feature = "builtin-mermaid-rendering")]
 pub(super) fn build_mermaid_theme(theme: GuiTheme) -> MermaidTheme {
     let git_branch_colors = [
         color(0x2383e2),
@@ -64,7 +69,7 @@ pub(super) fn build_mermaid_theme(theme: GuiTheme) -> MermaidTheme {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "builtin-mermaid-rendering"))]
 mod tests {
     use gpui::Rgba;
 
