@@ -49,6 +49,8 @@ pub(crate) fn render_code_block(
         .w_full()
         .min_h(px(V1_CODE_BLOCK_MIN_HEIGHT_PX))
         .rounded(px(V1_CODE_BLOCK_RADIUS_PX))
+        .border_1()
+        .border_color(rgb(theme.border))
         .group("notion-code-block")
         .bg(rgb(if action_active {
             blend_rgb(code_theme.background, theme.focused, 0.12)

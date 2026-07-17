@@ -50,6 +50,6 @@ pub use providers::{
     ResolvedAsset, ThemeProvider, TranslationProvider, WhiteboardId, WhiteboardProvider,
 };
 pub use syntax_highlighting::{
-    SyntaxHighlightError, SyntaxHighlightPalette, SyntaxHighlightProvider, SyntaxHighlightRun,
-    SyntaxHighlightStyle,
+    SyntaxHighlightError, SyntaxHighlightLanguage, SyntaxHighlightPalette, SyntaxHighlightProvider,
+    SyntaxHighlightRun, SyntaxHighlightStyle,
 };

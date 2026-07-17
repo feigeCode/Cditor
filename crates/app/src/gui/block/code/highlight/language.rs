@@ -1,8 +1,34 @@
+use std::collections::HashSet;
 use std::hash::{DefaultHasher, Hash, Hasher};
 
 use cditor_core::ids::BlockId;
 use cditor_core::rich_text::{BlockPayload, BlockPayloadView, RichBlockKind};
 use cditor_runtime::EditorViewProjection;
+
+use crate::api::SyntaxHighlightLanguage;
+use crate::gui::input::CodeLanguageItem;
+
+pub(super) fn provider_language_items(
+    languages: Vec<SyntaxHighlightLanguage>,
+) -> Vec<CodeLanguageItem> {
+    let mut seen = HashSet::new();
+    seen.insert("plain text".to_owned());
+    seen.insert("text".to_owned());
+    let mut items = vec![CodeLanguageItem::labeled("plain text", "Plain Text")];
+    for language in languages {
+        let id = language.id.trim().to_ascii_lowercase();
+        if id.is_empty() || !seen.insert(id.clone()) {
+            continue;
+        }
+        let label = if language.label.trim().is_empty() {
+            id.clone()
+        } else {
+            language.label.trim().to_owned()
+        };
+        items.push(CodeLanguageItem::labeled(id, label));
+    }
+    items
+}
 
 pub(super) fn visible_code_blocks(
     projection: &EditorViewProjection,

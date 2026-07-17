@@ -2,6 +2,7 @@ use cditor_core::ids::BlockId;
 use gpui::{Context, Window};
 
 use crate::gui::app::cditor_v2_view::{CditorV2View, GuiPlatformInputTarget};
+use crate::gui::input::code_language::CodeLanguageDropdownOptions;
 use crate::gui::input::{
     CodeLanguageEditAction, CodeLanguageEditKeyResult, CodeLanguageEditState,
     CodeLanguagePopupPlacement, apply_code_language_action,
@@ -57,8 +58,13 @@ impl CditorV2View {
             window.viewport_size(),
         );
         let placement = code_language_popup_placement(pointer_y_px, viewport);
-        self.code_language_edit = Some(CodeLanguageEditState::new_dropdown_with_placement(
-            block_id, language, placement,
+        self.code_language_edit = Some(CodeLanguageEditState::new_dropdown_with_items(
+            block_id,
+            language,
+            CodeLanguageDropdownOptions {
+                placement,
+                items: self.code_highlights.language_items(),
+            },
         ));
         cx.notify();
     }
@@ -91,17 +97,7 @@ impl CditorV2View {
         language: String,
         cx: &mut Context<Self>,
     ) {
-        self.code_language_edit = Some(CodeLanguageEditState {
-            block_id,
-            original: String::new(),
-            draft: language,
-            is_open: false,
-            selected_index: 0,
-            scroll_start: 0,
-            placement: CodeLanguagePopupPlacement::Below,
-            caret_offset: 0,
-            marked_range: None,
-        });
+        self.code_language_edit = Some(CodeLanguageEditState::for_commit(block_id, language));
         self.platform_input_target = Some(GuiPlatformInputTarget::code_language(block_id));
         self.commit_code_language_edit(cx);
         cx.notify();

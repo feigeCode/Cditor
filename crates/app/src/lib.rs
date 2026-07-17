@@ -7,8 +7,8 @@ pub use api::{
     AiStreamSender, AiTaskKind, Cditor, CditorBackend, CditorBuilder, CditorCommand,
     CditorCommandAction, CditorComponent, CditorError, CditorEvent, CditorHandle, CditorKeyBinding,
     CditorOptions, CommandDescriptor, CommandOutcome, CommandState, SyntaxHighlightError,
-    SyntaxHighlightPalette, SyntaxHighlightProvider, SyntaxHighlightRun, SyntaxHighlightStyle,
-    WorkspaceId,
+    SyntaxHighlightLanguage, SyntaxHighlightPalette, SyntaxHighlightProvider, SyntaxHighlightRun,
+    SyntaxHighlightStyle, WorkspaceId,
 };
 #[cfg(feature = "sqlite")]
 pub use api::{SqliteDurability, SqliteStorageOptions};

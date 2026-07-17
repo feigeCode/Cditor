@@ -19,6 +19,8 @@ use gpui::{AppContext, Context, Task};
 
 use crate::api::SyntaxHighlightProvider;
 use crate::gui::app::CditorV2View;
+use crate::gui::input::CodeLanguageItem;
+use crate::gui::input::code_language::code_language_items;
 
 pub(crate) use theme::{
     CODE_THEME_ITEMS, CodeThemeItem, DEFAULT_CODE_HIGHLIGHT_THEME, code_theme_item,
@@ -262,6 +264,17 @@ impl CodeHighlightCache {
             return true;
         }
         false
+    }
+
+    pub(crate) fn language_items(&self) -> Vec<CodeLanguageItem> {
+        match &self.engine {
+            HighlightEngine::External(provider) => {
+                language::provider_language_items(provider.languages())
+            }
+            #[cfg(feature = "builtin-syntax-highlighting")]
+            HighlightEngine::Builtin => code_language_items(),
+            HighlightEngine::Disabled => code_language_items(),
+        }
     }
 
     pub(crate) fn clear(&mut self) {

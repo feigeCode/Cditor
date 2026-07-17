@@ -1,5 +1,6 @@
 use cditor_core::ids::BlockId;
 use std::ops::Range;
+use std::sync::Arc;
 
 pub const CODE_LANGUAGE_MAX_SUGGESTIONS: usize = 64;
 pub const CODE_LANGUAGE_VISIBLE_SUGGESTIONS: usize = 7;
@@ -14,6 +15,11 @@ pub enum CodeLanguagePopupPlacement {
 pub struct CodeLanguageItem {
     pub value: String,
     pub label: String,
+}
+
+pub(crate) struct CodeLanguageDropdownOptions {
+    pub placement: CodeLanguagePopupPlacement,
+    pub items: Vec<CodeLanguageItem>,
 }
 
 impl CodeLanguageItem {
@@ -44,6 +50,7 @@ pub struct CodeLanguageEditState {
     pub placement: CodeLanguagePopupPlacement,
     pub caret_offset: usize,
     pub marked_range: Option<Range<usize>>,
+    items: Arc<Vec<CodeLanguageItem>>,
 }
 
 impl CodeLanguageEditState {
@@ -67,6 +74,7 @@ impl CodeLanguageEditState {
             placement,
             caret_offset: original.len(),
             marked_range: None,
+            items: Arc::new(code_language_items()),
         }
     }
 
@@ -75,10 +83,27 @@ impl CodeLanguageEditState {
         language: Option<&str>,
         placement: CodeLanguagePopupPlacement,
     ) -> Self {
-        let mut state = Self::new_with_placement(block_id, language, placement);
+        Self::new_dropdown_with_items(
+            block_id,
+            language,
+            CodeLanguageDropdownOptions {
+                placement,
+                items: code_language_items(),
+            },
+        )
+    }
+
+    pub(crate) fn new_dropdown_with_items(
+        block_id: BlockId,
+        language: Option<&str>,
+        options: CodeLanguageDropdownOptions,
+    ) -> Self {
+        let mut state = Self::new_with_placement(block_id, language, options.placement);
+        state.items = Arc::new(options.items);
         state.draft.clear();
         state.caret_offset = 0;
-        state.selected_index = code_language_items()
+        state.selected_index = state
+            .items
             .iter()
             .position(|item| {
                 language
@@ -86,8 +111,23 @@ impl CodeLanguageEditState {
                     .unwrap_or_else(|| item.value == "plain text")
             })
             .unwrap_or(0);
-        state.keep_selected_item_visible(code_language_items().len());
+        state.keep_selected_item_visible(state.items.len());
         state
+    }
+
+    pub(crate) fn for_commit(block_id: BlockId, language: String) -> Self {
+        Self {
+            block_id,
+            original: String::new(),
+            draft: language,
+            is_open: false,
+            selected_index: 0,
+            scroll_start: 0,
+            placement: CodeLanguagePopupPlacement::Below,
+            caret_offset: 0,
+            marked_range: None,
+            items: Default::default(),
+        }
     }
 
     pub fn normalized_draft(&self) -> Option<String> {
@@ -95,7 +135,11 @@ impl CodeLanguageEditState {
     }
 
     pub fn matching_items(&self) -> Vec<CodeLanguageItem> {
-        matching_code_language_items(&self.draft, CODE_LANGUAGE_MAX_SUGGESTIONS)
+        matching_code_language_items_from(
+            self.items.as_slice(),
+            &self.draft,
+            CODE_LANGUAGE_MAX_SUGGESTIONS,
+        )
     }
 
     pub fn selected_item(&self) -> Option<CodeLanguageItem> {
@@ -358,15 +402,24 @@ pub fn code_language_items() -> Vec<CodeLanguageItem> {
 }
 
 pub fn matching_code_language_items(query: &str, max: usize) -> Vec<CodeLanguageItem> {
+    matching_code_language_items_from(&code_language_items(), query, max)
+}
+
+fn matching_code_language_items_from(
+    items: &[CodeLanguageItem],
+    query: &str,
+    max: usize,
+) -> Vec<CodeLanguageItem> {
     let query = query.trim().to_lowercase();
-    code_language_items()
-        .into_iter()
+    items
+        .iter()
         .filter(|item| {
             query.is_empty()
                 || item.value.to_lowercase().contains(&query)
                 || item.label.to_lowercase().contains(&query)
         })
         .take(max.max(1))
+        .cloned()
         .collect()
 }
 
@@ -404,6 +457,25 @@ mod tests {
         assert_eq!(state.caret_offset, 0);
         assert_eq!(state.selected_item().unwrap().value, "typescript");
         assert_eq!(state.matching_items().len(), code_language_items().len());
+    }
+
+    #[test]
+    fn language_dropdown_uses_provider_catalog() {
+        let items = vec![
+            CodeLanguageItem::labeled("plain text", "Plain Text"),
+            CodeLanguageItem::labeled("zig", "Zig"),
+        ];
+        let state = CodeLanguageEditState::new_dropdown_with_items(
+            1,
+            Some("zig"),
+            CodeLanguageDropdownOptions {
+                placement: CodeLanguagePopupPlacement::Below,
+                items,
+            },
+        );
+
+        assert_eq!(state.matching_items().len(), 2);
+        assert_eq!(state.selected_item().unwrap().value, "zig");
     }
 
     #[test]

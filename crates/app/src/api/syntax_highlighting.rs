@@ -1,5 +1,21 @@
 use std::{fmt, ops::Range};
 
+/// A language currently available from the host syntax registry.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct SyntaxHighlightLanguage {
+    pub id: String,
+    pub label: String,
+}
+
+impl SyntaxHighlightLanguage {
+    pub fn new(id: impl Into<String>, label: impl Into<String>) -> Self {
+        Self {
+            id: id.into(),
+            label: label.into(),
+        }
+    }
+}
+
 /// A paint-only syntax style for a byte range in a code block.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash)]
 pub struct SyntaxHighlightStyle {
@@ -59,6 +75,11 @@ pub trait SyntaxHighlightProvider: Send + Sync {
     fn revision(&self) -> u64;
 
     fn palette(&self) -> SyntaxHighlightPalette;
+
+    /// Returns the languages currently registered by the provider.
+    fn languages(&self) -> Vec<SyntaxHighlightLanguage> {
+        Vec::new()
+    }
 
     /// Returns style ranges into `source`. Missing ranges render with the palette foreground.
     fn highlight(

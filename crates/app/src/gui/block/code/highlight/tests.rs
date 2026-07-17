@@ -1,7 +1,7 @@
 use super::*;
 use crate::api::{
-    SyntaxHighlightError, SyntaxHighlightPalette, SyntaxHighlightProvider, SyntaxHighlightRun,
-    SyntaxHighlightStyle,
+    SyntaxHighlightError, SyntaxHighlightLanguage, SyntaxHighlightPalette, SyntaxHighlightProvider,
+    SyntaxHighlightRun, SyntaxHighlightStyle,
 };
 use cditor_core::rich_text::{InlineMark, InlineSpan, plain_text_from_spans};
 use std::sync::Arc;
@@ -22,6 +22,10 @@ impl SyntaxHighlightProvider for TestProvider {
             background: 0x101010,
             foreground: 0xf0f0f0,
         }
+    }
+
+    fn languages(&self) -> Vec<SyntaxHighlightLanguage> {
+        vec![SyntaxHighlightLanguage::new("zig", "Zig")]
     }
 
     fn highlight(
@@ -96,6 +100,18 @@ fn disabling_and_reenabling_preserves_external_provider() {
 
     assert_eq!(cache.theme_item("dracula").background, 0x101010);
     assert!(!cache.uses_builtin_themes());
+}
+
+#[test]
+fn external_provider_catalog_replaces_builtin_language_menu() {
+    let mut cache = CodeHighlightCache::default();
+    cache.configure(Some(Arc::new(TestProvider)), true);
+
+    let items = cache.language_items();
+    assert_eq!(items.len(), 2);
+    assert_eq!(items[0].value, "plain text");
+    assert_eq!(items[1].value, "zig");
+    assert!(!items.iter().any(|item| item.value == "typescript"));
 }
 
 #[test]
