@@ -11,6 +11,7 @@ pub mod handle;
 pub mod import_export;
 pub mod options;
 pub mod providers;
+pub mod syntax_highlighting;
 
 pub use builder::CditorBuilder;
 pub use cditor::Cditor;
@@ -47,4 +48,8 @@ pub use providers::{
     AiStreamEvent, AiStreamSender, AiTaskKind, AssetDescriptor, AssetError, AssetInput,
     AssetProvider, AssetRef, CditorExtension, CditorHostDelegate, FilePickerRequest, MenuContext,
     ResolvedAsset, ThemeProvider, TranslationProvider, WhiteboardId, WhiteboardProvider,
+};
+pub use syntax_highlighting::{
+    SyntaxHighlightError, SyntaxHighlightPalette, SyntaxHighlightProvider, SyntaxHighlightRun,
+    SyntaxHighlightStyle,
 };

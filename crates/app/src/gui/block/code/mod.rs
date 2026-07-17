@@ -1,5 +1,6 @@
 use crate::gui::GuiTheme;
 use crate::gui::app::CditorV2View;
+use crate::gui::block::CodeHighlightCache;
 use crate::gui::input::CodeLanguageEditState;
 use crate::gui::platform::EDITOR_MONO_FONT_FAMILY;
 use cditor_core::ids::BlockId;
@@ -11,8 +12,7 @@ use gpui::{
 pub(crate) mod highlight;
 mod toolbar;
 
-use highlight::code_theme_item;
-use toolbar::render_code_toolbar;
+use toolbar::{CodeToolbarTheme, render_code_toolbar};
 
 pub const V1_CODE_BLOCK_MIN_HEIGHT_PX: f32 = 92.0;
 pub const V1_CODE_BLOCK_RADIUS_PX: f32 = 3.0;
@@ -20,19 +20,30 @@ pub const V1_CODE_CONTENT_PADDING_TOP_PX: f32 = 34.0;
 pub const V1_CODE_CONTENT_PADDING_X_PX: f32 = 14.0;
 pub const V1_CODE_CONTENT_PADDING_BOTTOM_PX: f32 = 14.0;
 
-pub fn render_code_block(
+pub(crate) struct CodeHighlightContext<'a> {
+    pub cache: &'a CodeHighlightCache,
+    pub selected_theme: &'static str,
+}
+
+pub(crate) fn render_code_block(
     block_id: BlockId,
     content: AnyElement,
     theme: GuiTheme,
     language: Option<&str>,
     language_edit: Option<&CodeLanguageEditState>,
     code_theme_menu_open: bool,
-    code_highlight_theme: &'static str,
+    code_highlight: CodeHighlightContext<'_>,
     action_active: bool,
     view: Entity<CditorV2View>,
     code_language_focus: FocusHandle,
 ) -> AnyElement {
-    let code_theme = code_theme_item(code_highlight_theme);
+    let code_theme = code_highlight
+        .cache
+        .theme_item(code_highlight.selected_theme);
+    let toolbar_theme = CodeToolbarTheme {
+        selected: code_highlight.selected_theme,
+        show_picker: code_highlight.cache.uses_builtin_themes(),
+    };
     div()
         .relative()
         .w_full()
@@ -52,7 +63,7 @@ pub fn render_code_block(
             language,
             language_edit,
             code_theme_menu_open,
-            code_highlight_theme,
+            toolbar_theme,
             view,
             code_language_focus,
         ))

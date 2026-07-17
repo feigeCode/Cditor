@@ -6,7 +6,9 @@ pub use api::{
     AiCancellationToken, AiModelDescriptor, AiProvider, AiProviderError, AiRequest, AiStreamEvent,
     AiStreamSender, AiTaskKind, Cditor, CditorBackend, CditorBuilder, CditorCommand,
     CditorCommandAction, CditorComponent, CditorError, CditorEvent, CditorHandle, CditorKeyBinding,
-    CditorOptions, CommandDescriptor, CommandOutcome, CommandState, WorkspaceId,
+    CditorOptions, CommandDescriptor, CommandOutcome, CommandState, SyntaxHighlightError,
+    SyntaxHighlightPalette, SyntaxHighlightProvider, SyntaxHighlightRun, SyntaxHighlightStyle,
+    WorkspaceId,
 };
 #[cfg(feature = "sqlite")]
 pub use api::{SqliteDurability, SqliteStorageOptions};

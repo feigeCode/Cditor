@@ -38,13 +38,19 @@ pub const V1_CODE_COPY_ICON_OFFSET_PX: f32 = 4.0;
 pub const V1_CODE_THEME_POPUP_WIDTH_PX: f32 = 220.0;
 pub const V1_CODE_THEME_ROW_HEIGHT_PX: f32 = 34.0;
 
+#[derive(Debug, Clone, Copy)]
+pub(super) struct CodeToolbarTheme {
+    pub selected: &'static str,
+    pub show_picker: bool,
+}
+
 pub fn render_code_toolbar(
     block_id: BlockId,
     theme: GuiTheme,
     language: Option<&str>,
     language_edit: Option<&CodeLanguageEditState>,
     code_theme_menu_open: bool,
-    code_highlight_theme: &'static str,
+    code_theme: CodeToolbarTheme,
     view: Entity<CditorV2View>,
     code_language_focus: FocusHandle,
 ) -> AnyElement {
@@ -80,18 +86,20 @@ pub fn render_code_toolbar(
                     code_language_focus,
                 ))
                 .child(render_copy_button(theme, block_id, view.clone()))
-                .child(render_code_theme_button(
-                    theme,
-                    block_id,
-                    code_highlight_theme,
-                    code_theme_menu_open,
-                    view.clone(),
-                )),
+                .when(code_theme.show_picker, |this| {
+                    this.child(render_code_theme_button(
+                        theme,
+                        block_id,
+                        code_theme.selected,
+                        code_theme_menu_open,
+                        view.clone(),
+                    ))
+                }),
         )
-        .when(code_theme_menu_open, |this| {
+        .when(code_theme.show_picker && code_theme_menu_open, |this| {
             this.child(render_code_theme_popup(
                 theme,
-                code_highlight_theme,
+                code_theme.selected,
                 view.clone(),
             ))
         })

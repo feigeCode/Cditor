@@ -82,6 +82,13 @@ struct AppView {
 }
 ```
 
+宿主已有 Tree-sitter、WASM 语言扩展或统一主题系统时，可以通过
+`EditorBuilder::syntax_highlight_provider` / `syntax_highlight_provider_arc` 注入
+`SyntaxHighlightProvider`。Provider 只返回原始 source 的 UTF-8 byte range 和样式，正文、
+Undo/Redo 与持久化仍完全由 Cditor 管理。没有 Provider、语言不支持或 Provider 返回错误时，
+Cditor 会安全降级为纯文本。宿主切换主题或重新加载语言扩展时必须更新 Provider 的
+`revision()`，使当前视口缓存失效。
+
 ## 3. 设置初始 Markdown
 
 ```rust

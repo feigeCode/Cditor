@@ -14,12 +14,15 @@ use super::event::CditorEvent;
 #[cfg(feature = "sqlite")]
 use super::options::SqliteStorageOptions;
 use super::options::{CditorBackend, CditorOptions, WorkspaceId};
+use super::syntax_highlighting::SyntaxHighlightProvider;
 
 #[derive(Clone)]
 pub struct Cditor {
     options: CditorOptions,
     ai_provider: Option<Arc<dyn cditor_ai::AiProvider>>,
     ai_enabled: bool,
+    syntax_highlight_provider: Option<Arc<dyn SyntaxHighlightProvider>>,
+    syntax_highlighting_enabled: bool,
 }
 
 impl Default for Cditor {
@@ -28,6 +31,8 @@ impl Default for Cditor {
             options: CditorOptions::default(),
             ai_provider: None,
             ai_enabled: true,
+            syntax_highlight_provider: None,
+            syntax_highlighting_enabled: true,
         }
     }
 }
@@ -42,6 +47,17 @@ impl fmt::Debug for Cditor {
                 &self.ai_provider.as_ref().map(|provider| provider.id()),
             )
             .field("ai_enabled", &self.ai_enabled)
+            .field(
+                "syntax_highlight_provider",
+                &self
+                    .syntax_highlight_provider
+                    .as_ref()
+                    .map(|provider| provider.id()),
+            )
+            .field(
+                "syntax_highlighting_enabled",
+                &self.syntax_highlighting_enabled,
+            )
             .finish()
     }
 }
@@ -52,6 +68,15 @@ impl PartialEq for Cditor {
             && self.ai_enabled == other.ai_enabled
             && self.ai_provider.as_ref().map(|provider| provider.id())
                 == other.ai_provider.as_ref().map(|provider| provider.id())
+            && self.syntax_highlighting_enabled == other.syntax_highlighting_enabled
+            && self
+                .syntax_highlight_provider
+                .as_ref()
+                .map(|provider| provider.id())
+                == other
+                    .syntax_highlight_provider
+                    .as_ref()
+                    .map(|provider| provider.id())
     }
 }
 
@@ -162,6 +187,21 @@ impl Cditor {
         self
     }
 
+    pub fn with_syntax_highlight_provider(
+        mut self,
+        provider: Arc<dyn SyntaxHighlightProvider>,
+    ) -> Self {
+        self.syntax_highlight_provider = Some(provider);
+        self.syntax_highlighting_enabled = true;
+        self
+    }
+
+    pub fn without_syntax_highlighting(mut self) -> Self {
+        self.syntax_highlight_provider = None;
+        self.syntax_highlighting_enabled = false;
+        self
+    }
+
     #[cfg(feature = "postgres")]
     pub fn with_postgres_large_demo_seed(mut self, block_count: usize, force: bool) -> Self {
         self.options.seed_large_demo_to_postgres = true;
@@ -181,6 +221,8 @@ impl Cditor {
     pub fn build_view(self, cx: &mut Context<CditorV2View>) -> CditorV2View {
         let ai_provider = self.ai_provider.clone();
         let ai_enabled = self.ai_enabled;
+        let syntax_highlight_provider = self.syntax_highlight_provider.clone();
+        let syntax_highlighting_enabled = self.syntax_highlighting_enabled;
         let mut view = match CditorColdStartPlan::from_options(&self.options) {
             CditorColdStartPlan::Demo | CditorColdStartPlan::Memory => {
                 let runtime = match CditorColdStartPlan::from_options(&self.options) {
@@ -244,6 +286,10 @@ impl Cditor {
             ),
         };
         view.sdk_configure_ai(ai_provider, ai_enabled);
+        view.sdk_configure_syntax_highlighting(
+            syntax_highlight_provider,
+            syntax_highlighting_enabled,
+        );
         view
     }
 

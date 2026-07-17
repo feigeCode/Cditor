@@ -190,11 +190,15 @@ SQLite 和 PostgreSQL 后端都必须指定 `document_id`。推荐的 `.build(cx
 | `.without_autosave()` | 关闭自动保存 |
 | `.with_ai_provider(provider)` | 注入宿主管理的 AI Provider |
 | `.without_ai()` | 关闭 AI 入口和请求能力 |
+| `.with_syntax_highlight_provider(provider)` | 注入宿主管理的语法高亮 Provider |
+| `.without_syntax_highlighting()` | 关闭代码块语法高亮，保留纯文本编辑 |
 | `.with_postgres_large_demo_seed(count, force)` | 向 PostgreSQL 写入大文档测试数据 |
 
 大文档 seed 接口用于开发、性能测试和验收，不建议在普通产品启动流程中启用。
 
 AI Provider 可以暴露多个宿主模型，Cditor AI 面板会显示模型名称、提供方和说明，并把用户选择的稳定 `model_id` 放入每次 AI 请求。实现方式参见 [三方宿主 AI Provider 与模型切换集成指南](third-party-ai-integration.md)。
+
+语法高亮 Provider 返回原始代码 UTF-8 byte range 对应的 paint-only 样式。Cditor 负责后台调度、范围校验、可见窗口缓存和纯文本降级；Provider 的 `revision()` 必须在主题或语言注册表变化时递增。关闭默认 feature 的宿主可通过外部 Tree-sitter/WASM Provider 避免链接内置 Lumis grammar。
 
 ### 5.4 SQLite 配置
 

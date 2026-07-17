@@ -4,6 +4,7 @@ use gpui::{AppContext, Entity};
 
 use crate::api::{
     AiModelDescriptor, AiProvider, CditorCommand, CommandDescriptor, CommandOutcome, CommandState,
+    SyntaxHighlightProvider,
 };
 use crate::gui::CditorV2View;
 
@@ -231,6 +232,39 @@ impl EditorHandle {
     ) -> Result<(), EditorError> {
         self.entity
             .update(cx, |view, cx| view.sdk_set_ai_enabled(enabled, cx));
+        Ok(())
+    }
+
+    pub fn set_syntax_highlight_provider<C: AppContext, P>(
+        &self,
+        provider: P,
+        cx: &mut C,
+    ) -> Result<(), EditorError>
+    where
+        P: SyntaxHighlightProvider + 'static,
+    {
+        self.set_syntax_highlight_provider_arc(Arc::new(provider), cx)
+    }
+
+    pub fn set_syntax_highlight_provider_arc<C: AppContext>(
+        &self,
+        provider: Arc<dyn SyntaxHighlightProvider>,
+        cx: &mut C,
+    ) -> Result<(), EditorError> {
+        self.entity.update(cx, |view, cx| {
+            view.sdk_set_syntax_highlight_provider(provider, cx)
+        });
+        Ok(())
+    }
+
+    pub fn set_syntax_highlighting_enabled<C: AppContext>(
+        &self,
+        enabled: bool,
+        cx: &mut C,
+    ) -> Result<(), EditorError> {
+        self.entity.update(cx, |view, cx| {
+            view.sdk_set_syntax_highlighting_enabled(enabled, cx)
+        });
         Ok(())
     }
 

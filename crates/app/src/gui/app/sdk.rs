@@ -1,5 +1,6 @@
 use gpui::{AppContext, Context, EventEmitter, Task, Window};
 
+use crate::api::SyntaxHighlightProvider;
 use crate::api::{
     Affinity, BlockTransform, CditorCommand, CditorDiagnostics, CditorError, CditorEvent,
     ChangeOrigin, CloseGuard, CommandOutcome, CommandState, DocumentInfo, DocumentPosition,
@@ -11,6 +12,34 @@ use crate::gui::persistence::{EditorSaveStatus, PersistenceBarrierKind};
 impl EventEmitter<CditorEvent> for CditorV2View {}
 
 impl CditorV2View {
+    pub(crate) fn sdk_configure_syntax_highlighting(
+        &mut self,
+        provider: Option<std::sync::Arc<dyn SyntaxHighlightProvider>>,
+        enabled: bool,
+    ) {
+        self.code_highlights.configure(provider, enabled);
+        self.code_theme_menu_block_id = None;
+    }
+
+    pub(crate) fn sdk_set_syntax_highlight_provider(
+        &mut self,
+        provider: std::sync::Arc<dyn SyntaxHighlightProvider>,
+        cx: &mut Context<Self>,
+    ) {
+        self.sdk_configure_syntax_highlighting(Some(provider), true);
+        cx.notify();
+    }
+
+    pub(crate) fn sdk_set_syntax_highlighting_enabled(
+        &mut self,
+        enabled: bool,
+        cx: &mut Context<Self>,
+    ) {
+        self.code_highlights.set_enabled(enabled);
+        self.code_theme_menu_block_id = None;
+        cx.notify();
+    }
+
     pub(crate) fn sdk_configure_ai(
         &mut self,
         provider: Option<std::sync::Arc<dyn cditor_ai::AiProvider>>,

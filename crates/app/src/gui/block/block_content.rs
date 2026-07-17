@@ -3,7 +3,6 @@ use gpui::{
 };
 
 use crate::gui::app::CditorV2View;
-use crate::gui::block::code::highlight::code_theme_item;
 use crate::gui::block::media::render_image_block;
 use crate::gui::block::placeholder::{
     render_empty_ai_hint, render_error, render_loading, render_placeholder,
@@ -103,7 +102,7 @@ pub(crate) fn render_block_content(
                     cditor_core::rich_text::RichBlockKind::Code { .. }
                 ) {
                     GuiTheme {
-                        code_text: code_theme_item(code_highlight_theme).foreground,
+                        code_text: code_highlights.theme_item(code_highlight_theme).foreground,
                         ..theme
                     }
                 } else {

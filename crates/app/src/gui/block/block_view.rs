@@ -7,7 +7,7 @@ use crate::gui::GuiTheme;
 use crate::gui::app::CditorV2View;
 use crate::gui::block::block_content::render_block_content;
 use crate::gui::block::block_shell::{BlockActionState, block_shell};
-use crate::gui::block::code::render_code_block;
+use crate::gui::block::code::{CodeHighlightContext, render_code_block};
 use crate::gui::block::heading::render_heading;
 use crate::gui::block::paragraph::render_paragraph;
 use crate::gui::block::table::{
@@ -201,7 +201,10 @@ fn render_kind_content(
                 language.as_deref(),
                 language_edit,
                 code_theme_menu_open,
-                code_highlight_theme,
+                CodeHighlightContext {
+                    cache: code_highlights,
+                    selected_theme: code_highlight_theme,
+                },
                 action.action_active,
                 view.clone(),
                 code_language_focus,

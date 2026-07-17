@@ -3,7 +3,7 @@ use std::time::Duration;
 
 use gpui::AppContext;
 
-use crate::api::AiProvider;
+use crate::api::{AiProvider, SyntaxHighlightProvider};
 use crate::gui::CditorV2View;
 
 use super::handle::EditorHandle;
@@ -33,6 +33,8 @@ pub struct EditorBuilder {
     callback: Option<Arc<dyn Fn(EditorEvent) + Send + Sync>>,
     ai_provider: Option<Arc<dyn AiProvider>>,
     ai_enabled: bool,
+    syntax_highlight_provider: Option<Arc<dyn SyntaxHighlightProvider>>,
+    syntax_highlighting_enabled: bool,
 }
 
 impl Default for EditorBuilder {
@@ -47,6 +49,8 @@ impl Default for EditorBuilder {
             callback: None,
             ai_provider: None,
             ai_enabled: true,
+            syntax_highlight_provider: None,
+            syntax_highlighting_enabled: true,
         }
     }
 }
@@ -124,6 +128,30 @@ impl EditorBuilder {
         self
     }
 
+    pub fn syntax_highlight_provider<P>(mut self, provider: P) -> Self
+    where
+        P: SyntaxHighlightProvider + 'static,
+    {
+        self.syntax_highlight_provider = Some(Arc::new(provider));
+        self.syntax_highlighting_enabled = true;
+        self
+    }
+
+    pub fn syntax_highlight_provider_arc(
+        mut self,
+        provider: Arc<dyn SyntaxHighlightProvider>,
+    ) -> Self {
+        self.syntax_highlight_provider = Some(provider);
+        self.syntax_highlighting_enabled = true;
+        self
+    }
+
+    pub fn without_syntax_highlighting(mut self) -> Self {
+        self.syntax_highlight_provider = None;
+        self.syntax_highlighting_enabled = false;
+        self
+    }
+
     pub fn build<C: AppContext>(self, cx: &mut C) -> Result<EditorHandle, EditorError> {
         let initial_document = self.resolve_initial_document()?;
         let runtime = initial_document.clone().into_runtime(720.0)?;
@@ -133,6 +161,8 @@ impl EditorBuilder {
         let callback = self.callback.clone();
         let ai_provider = self.ai_provider.clone();
         let ai_enabled = self.ai_enabled;
+        let syntax_highlight_provider = self.syntax_highlight_provider.clone();
+        let syntax_highlighting_enabled = self.syntax_highlighting_enabled;
         let readonly = self.readonly;
         let debug_overlay = self.debug_overlay;
         let has_persistence = persistence.is_some();
@@ -141,6 +171,10 @@ impl EditorBuilder {
             let mut view =
                 CditorV2View::from_runtime_with_options(runtime, debug_overlay, readonly, cx);
             view.sdk_configure_ai(ai_provider, ai_enabled);
+            view.sdk_configure_syntax_highlighting(
+                syntax_highlight_provider,
+                syntax_highlighting_enabled,
+            );
             view.install_editor_integration(
                 document_id.clone(),
                 persistence,

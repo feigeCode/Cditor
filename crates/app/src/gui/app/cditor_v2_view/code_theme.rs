@@ -10,6 +10,10 @@ impl CditorV2View {
         block_id: BlockId,
         cx: &mut Context<Self>,
     ) {
+        if !self.code_highlights.uses_builtin_themes() {
+            self.code_theme_menu_block_id = None;
+            return;
+        }
         self.code_language_edit = None;
         self.code_theme_menu_block_id = if self.code_theme_menu_block_id == Some(block_id) {
             None
@@ -24,6 +28,10 @@ impl CditorV2View {
         theme_name: &'static str,
         cx: &mut Context<Self>,
     ) -> bool {
+        if !self.code_highlights.uses_builtin_themes() {
+            self.code_theme_menu_block_id = None;
+            return false;
+        }
         if !CODE_THEME_ITEMS.iter().any(|item| item.id == theme_name) {
             return false;
         }
