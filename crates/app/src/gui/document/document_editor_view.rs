@@ -121,7 +121,7 @@ impl DocumentEditorView {
         suppress_document_text_input: bool,
         table_scroll_snapshots: &HashMap<BlockId, TableScrollSnapshot>,
         code_highlights: &CodeHighlightCache,
-        mermaid_renders: &DocumentRenderCache,
+        document_renders: &DocumentRenderCache,
         document_source_blocks: &std::collections::HashSet<BlockId>,
         whiteboard_thumbnails: &WhiteboardThumbnailCache,
         cx: &mut App,
@@ -282,7 +282,7 @@ impl DocumentEditorView {
                                 .get(&block.block_id)
                                 .map(|snapshot| snapshot.handle.clone()),
                             code_highlights,
-                            mermaid_renders,
+                            document_renders,
                             document_source_blocks.contains(&block.block_id),
                             whiteboard_thumbnails,
                             cx,
