@@ -55,7 +55,7 @@ impl BlockInputCapability {
                 BlockInputCapability::Text(TextInputCapability::Plain)
             }
 
-            RichBlockKind::RawMarkdown | RichBlockKind::Mermaid => {
+            RichBlockKind::RawMarkdown | RichBlockKind::Math | RichBlockKind::Mermaid => {
                 BlockInputCapability::Text(TextInputCapability::Markdown)
             }
 
@@ -71,10 +71,9 @@ impl BlockInputCapability {
             | RichBlockKind::Divider
             | RichBlockKind::Separator => BlockInputCapability::Atomic,
 
-            RichBlockKind::Embed
-            | RichBlockKind::Database
-            | RichBlockKind::Math
-            | RichBlockKind::Custom(_) => BlockInputCapability::ComplexBlock,
+            RichBlockKind::Embed | RichBlockKind::Database | RichBlockKind::Custom(_) => {
+                BlockInputCapability::ComplexBlock
+            }
         }
     }
 
@@ -112,6 +111,19 @@ mod tests {
     #[test]
     fn mermaid_is_markdown_source_not_an_opaque_complex_payload() {
         let capability = BlockInputCapability::for_kind(&RichBlockKind::Mermaid);
+
+        assert_eq!(
+            capability,
+            BlockInputCapability::Text(TextInputCapability::Markdown)
+        );
+        assert!(capability.accepts_text_caret());
+        assert!(capability.handles_enter_internally());
+        assert!(!capability.supports_enter_split());
+    }
+
+    #[test]
+    fn math_is_editable_markdown_source_not_an_opaque_complex_payload() {
+        let capability = BlockInputCapability::for_kind(&RichBlockKind::Math);
 
         assert_eq!(
             capability,

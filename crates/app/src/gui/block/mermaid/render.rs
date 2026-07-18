@@ -177,7 +177,7 @@ pub(crate) fn render_math_block(
                 .px(px(8.0))
                 .text_size(px(11.0))
                 .text_color(rgb(theme.muted))
-                .child("数学公式")
+                .child("数学公式 · LaTeX ($$)")
                 .child(
                     div()
                         .id(("math-source-toggle", block_id))

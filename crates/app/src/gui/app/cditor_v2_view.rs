@@ -241,10 +241,13 @@ impl CditorV2View {
         if self.ready_runtime_ref().is_some_and(|runtime| {
             matches!(
                 runtime.block_kind(block_id),
-                Some(cditor_core::rich_text::RichBlockKind::Mermaid)
+                Some(
+                    cditor_core::rich_text::RichBlockKind::Mermaid
+                        | cditor_core::rich_text::RichBlockKind::Math
+                )
             )
         }) {
-            // Mermaid owns a stable preview/source box and reports its rendered
+            // Document renderer blocks own a stable preview/source box and report their rendered
             // media height separately. Source text shaping must not overwrite it.
             return false;
         }

@@ -195,7 +195,7 @@ impl CditorV2View {
         }
 
         let command = command_for_bound_action(action);
-        if self.focused_mermaid_is_preview() {
+        if self.focused_document_renderer_is_preview() {
             if matches!(command, GuiInputCommand::HandleEnter) {
                 self.apply_input_command(GuiInputCommand::InsertParagraphAfterFocused, cx);
             } else if !mermaid_preview_blocks_command(command) {
@@ -368,7 +368,7 @@ impl CditorV2View {
         true
     }
 
-    pub(in crate::gui::app) fn focused_mermaid_is_preview(&self) -> bool {
+    pub(in crate::gui::app) fn focused_document_renderer_is_preview(&self) -> bool {
         let Some(runtime) = self.ready_runtime_ref() else {
             return false;
         };
@@ -379,7 +379,11 @@ impl CditorV2View {
             && runtime
                 .block_payload_record(block_id)
                 .is_some_and(|payload| {
-                    matches!(payload.kind, cditor_core::rich_text::RichBlockKind::Mermaid)
+                    matches!(
+                        payload.kind,
+                        cditor_core::rich_text::RichBlockKind::Mermaid
+                            | cditor_core::rich_text::RichBlockKind::Math
+                    )
                 })
     }
 }
