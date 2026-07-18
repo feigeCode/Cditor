@@ -264,10 +264,23 @@ fn analyze_markdown_compatibility(markdown: &str) -> Vec<MarkdownDiagnostic> {
     detect_frontmatter(&lines, &mut diagnostics);
 
     let mut fence: Option<(char, usize, usize)> = None;
+    let mut math_fence: Option<usize> = None;
     let mut index = 0;
     while index < lines.len() {
         let (offset, line) = lines[index];
         let trimmed = line.trim_start();
+        if trimmed == "$$" {
+            math_fence = match math_fence {
+                Some(_) => None,
+                None => Some(offset),
+            };
+            index += 1;
+            continue;
+        }
+        if math_fence.is_some() {
+            index += 1;
+            continue;
+        }
         if let Some((marker, length)) = fence_marker(trimmed) {
             match fence {
                 Some((open_marker, open_length, _))
@@ -336,7 +349,7 @@ fn analyze_markdown_compatibility(markdown: &str) -> Vec<MarkdownDiagnostic> {
                 "Raw HTML is SourceOnly until its original source can be projected without fallback",
                 offset..offset + line.len(),
             ));
-        } else if trimmed == "$$" || trimmed.starts_with("$$") {
+        } else if trimmed.starts_with("$$") {
             diagnostics.push(MarkdownDiagnostic::source(
                 MarkdownDiagnosticSeverity::Error,
                 "markdown.source.math_unsupported",
@@ -386,6 +399,14 @@ fn analyze_markdown_compatibility(markdown: &str) -> Vec<MarkdownDiagnostic> {
             MarkdownDiagnosticSeverity::Error,
             "markdown.source.unclosed_fence",
             "An unclosed fenced block cannot be edited safely in WYSIWYG mode",
+            start..markdown.len(),
+        ));
+    }
+    if let Some(start) = math_fence {
+        diagnostics.push(MarkdownDiagnostic::source(
+            MarkdownDiagnosticSeverity::Error,
+            "markdown.source.unclosed_math",
+            "An unclosed block math expression cannot be edited safely in WYSIWYG mode",
             start..markdown.len(),
         ));
     }
@@ -574,6 +595,26 @@ impl MarkdownParser {
                 continue;
             }
 
+            if line.trim() == "$$" {
+                list_stack.clear();
+                let start = index;
+                index += 1;
+                let mut content = Vec::new();
+                while index < lines.len() && lines[index].trim() != "$$" {
+                    content.push(lines[index]);
+                    index += 1;
+                }
+                if index < lines.len() {
+                    index += 1;
+                    document.push_root_block(self.rich_text_block(
+                        RichBlockKind::Math,
+                        vec![InlineSpan::plain(content.join("\n"))],
+                    ));
+                    continue;
+                }
+                index = start;
+            }
+
             if is_table_candidate_line(line) {
                 let region_end = collect_table_candidate_region(&lines, index);
                 if region_end > index + 1
@@ -673,9 +714,21 @@ impl MarkdownParser {
     }
 
     fn parse_incremental_multiline_block(&mut self, markdown: &str) -> Option<RichBlockRecord> {
-        self.parse_fenced_code_block(markdown)
+        self.parse_math_block(markdown)
+            .or_else(|| self.parse_fenced_code_block(markdown))
             .or_else(|| self.parse_incremental_table_block(markdown))
             .or_else(|| self.parse_incremental_quote_or_callout_block(markdown))
+    }
+
+    fn parse_math_block(&mut self, markdown: &str) -> Option<RichBlockRecord> {
+        let lines = markdown.lines().collect::<Vec<_>>();
+        if lines.len() < 3 || lines.first()?.trim() != "$$" || lines.last()?.trim() != "$$" {
+            return None;
+        }
+        Some(self.rich_text_block(
+            RichBlockKind::Math,
+            vec![InlineSpan::plain(lines[1..lines.len() - 1].join("\n"))],
+        ))
     }
 
     fn parse_fenced_code_block(&mut self, markdown: &str) -> Option<RichBlockRecord> {

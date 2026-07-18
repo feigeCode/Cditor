@@ -39,6 +39,28 @@ fn outer_markdown_fence_is_unwrapped_before_block_parsing() {
 }
 
 #[test]
+fn block_math_imports_and_round_trips_as_an_editable_math_block() {
+    let source = "$$\n\\frac{-b \\pm \\sqrt{b^2 - 4ac}}{2a}\n$$";
+    let result = parse_markdown_document_with_report(source, MarkdownImportOptions::default());
+
+    assert_eq!(MarkdownCompatibility::Editable, result.compatibility);
+    assert_eq!(1, result.document.blocks.len());
+    assert!(matches!(
+        result.document.blocks[0].kind,
+        RichBlockKind::Math
+    ));
+    assert_eq!(
+        "\\frac{-b \\pm \\sqrt{b^2 - 4ac}}{2a}",
+        result.document.blocks[0].payload.plain_text()
+    );
+    let exported = export_document_blocks(
+        &document_from_parsed(result.document),
+        MarkdownExportMode::Strict,
+    );
+    assert_eq!(source, exported.markdown);
+}
+
+#[test]
 fn block_shortcuts_match_editor2_markers() {
     assert_eq!(
         block_kind_shortcut("#"),

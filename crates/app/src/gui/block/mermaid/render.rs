@@ -139,8 +139,17 @@ fn render_preview(
             .child(
                 div()
                     .text_size(px(11.0))
-                    .text_color(rgb(theme.danger))
-                    .child(format!("渲染失败：{}", concise_error(&message))),
+                    .text_color(rgb(if renderer_missing(&message) {
+                        theme.muted
+                    } else {
+                        theme.danger
+                    }))
+                    .child(if renderer_missing(&message) {
+                        "未安装 Mermaid 渲染扩展，请在扩展市场安装 Mermaid Renderer 后重试。"
+                            .to_owned()
+                    } else {
+                        format!("渲染失败：{}", concise_error(&message))
+                    }),
             )
             .child(source_content)
             .into_any_element(),
@@ -235,6 +244,10 @@ fn concise_error(message: &str) -> &str {
     message.lines().next().unwrap_or("未知错误")
 }
 
+fn renderer_missing(message: &str) -> bool {
+    message.contains("未安装 Mermaid") || message.contains("没有扩展支持")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -243,6 +256,13 @@ mod tests {
     fn error_summary_uses_only_the_first_line() {
         assert_eq!(concise_error("parse failed\nstack detail"), "parse failed");
         assert_eq!(concise_error(""), "未知错误");
+    }
+
+    #[test]
+    fn missing_renderer_uses_install_prompt() {
+        assert!(renderer_missing("未安装 Mermaid 文档渲染扩展"));
+        assert!(renderer_missing("没有扩展支持该文档渲染器"));
+        assert!(!renderer_missing("parse failed"));
     }
 
     fn test_render_image(width: u32, height: u32) -> RenderImage {

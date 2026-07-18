@@ -258,14 +258,24 @@ fn validate_svg(svg: &[u8]) -> Result<(), Arc<str>> {
         || lower.contains("<foreignobject")
         || lower.contains("file://")
         || lower.contains("javascript:")
-        || lower.contains("http://")
-        || lower.contains("https://")
+        || contains_external_resource_url(&lower)
         || lower.contains(" onload=")
         || lower.contains(" onclick=")
     {
         return Err("SVG 输出包含不安全或不受支持的内容".into());
     }
     Ok(())
+}
+
+fn contains_external_resource_url(svg: &str) -> bool {
+    ["href=", "src=", "url(", "xlink:href="]
+        .iter()
+        .any(|marker| {
+            svg.match_indices(marker).any(|(index, _)| {
+                let value = svg[index + marker.len()..].trim_start_matches([' ', '\'', '"']);
+                value.starts_with("http://") || value.starts_with("https://")
+            })
+        })
 }
 
 fn source_hash(source: &str) -> u64 {
@@ -307,6 +317,9 @@ mod tests {
     #[test]
     fn svg_validation_rejects_active_and_external_content() {
         assert!(validate_svg(b"<svg><path d='M0 0'/></svg>").is_ok());
+        assert!(
+            validate_svg(b"<svg xmlns='http://www.w3.org/2000/svg'><path d='M0 0'/></svg>").is_ok()
+        );
         assert!(validate_svg(b"<svg><script/></svg>").is_err());
         assert!(validate_svg(b"<svg><foreignObject/></svg>").is_err());
         assert!(validate_svg(b"<svg><image href='https://example.com/a'/></svg>").is_err());

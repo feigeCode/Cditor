@@ -216,9 +216,25 @@ fn render_kind_content(
         RichBlockKind::Table => content,
         RichBlockKind::Math => div()
             .w_full()
-            .text_center()
-            .text_size(px(20.0))
-            .child(content)
+            .rounded(px(8.0))
+            .bg(rgb(theme.code_background))
+            .p(px(12.0))
+            .flex()
+            .flex_col()
+            .gap(px(8.0))
+            .child(
+                div()
+                    .text_size(px(11.0))
+                    .text_color(rgb(theme.muted))
+                    .child("未安装数学公式渲染扩展，请在扩展市场安装 Math Renderer 后预览公式。"),
+            )
+            .child(
+                div()
+                    .w_full()
+                    .text_center()
+                    .text_size(px(20.0))
+                    .child(content),
+            )
             .into_any_element(),
         RichBlockKind::Mermaid => render_mermaid_block(
             block.block_id,
