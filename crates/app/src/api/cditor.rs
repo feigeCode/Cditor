@@ -7,6 +7,7 @@ use cditor_core::ids::DocumentId;
 use cditor_runtime::DocumentRuntime;
 use cditor_storage::{StorageError, block_on_storage};
 
+use super::ThemeProvider;
 use super::cold_start::{CditorColdStartPlan, load_runtime_from_options};
 use super::component::CditorComponent;
 use super::document_rendering::DocumentRendererProvider;
@@ -25,6 +26,7 @@ pub struct Cditor {
     syntax_highlight_provider: Option<Arc<dyn SyntaxHighlightProvider>>,
     syntax_highlighting_enabled: bool,
     document_renderer_provider: Option<Arc<dyn DocumentRendererProvider>>,
+    theme_provider: Option<Arc<dyn ThemeProvider>>,
 }
 
 impl Default for Cditor {
@@ -36,6 +38,7 @@ impl Default for Cditor {
             syntax_highlight_provider: None,
             syntax_highlighting_enabled: true,
             document_renderer_provider: None,
+            theme_provider: None,
         }
     }
 }
@@ -228,6 +231,11 @@ impl Cditor {
         self
     }
 
+    pub fn with_theme_provider(mut self, provider: Arc<dyn ThemeProvider>) -> Self {
+        self.theme_provider = Some(provider);
+        self
+    }
+
     #[cfg(feature = "postgres")]
     pub fn with_postgres_large_demo_seed(mut self, block_count: usize, force: bool) -> Self {
         self.options.seed_large_demo_to_postgres = true;
@@ -250,6 +258,7 @@ impl Cditor {
         let syntax_highlight_provider = self.syntax_highlight_provider.clone();
         let syntax_highlighting_enabled = self.syntax_highlighting_enabled;
         let document_renderer_provider = self.document_renderer_provider.clone();
+        let theme_provider = self.theme_provider.clone();
         let mut view = match CditorColdStartPlan::from_options(&self.options) {
             CditorColdStartPlan::Demo | CditorColdStartPlan::Memory => {
                 let runtime = match CditorColdStartPlan::from_options(&self.options) {
@@ -318,6 +327,7 @@ impl Cditor {
             syntax_highlighting_enabled,
         );
         view.sdk_configure_document_rendering(document_renderer_provider);
+        view.sdk_configure_theme(theme_provider);
         view
     }
 

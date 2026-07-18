@@ -89,6 +89,7 @@ pub struct CditorV2View {
     pub(in crate::gui::app) code_language_edit: Option<CodeLanguageEditState>,
     pub(in crate::gui::app) code_theme_menu_block_id: Option<BlockId>,
     pub(in crate::gui::app) code_highlight_theme: &'static str,
+    pub(in crate::gui::app) theme_provider: Option<std::sync::Arc<dyn crate::api::ThemeProvider>>,
     pub(in crate::gui::app) slash_menu: Option<SlashMenuState>,
     pub(in crate::gui::app) toast: Option<GuiToast>,
     pub(in crate::gui::app) table_interaction_mode: GuiTableInteractionMode,

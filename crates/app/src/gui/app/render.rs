@@ -37,7 +37,10 @@ use cditor_runtime::AiRequestPresentation;
 impl Render for CditorV2View {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         self.sync_integration_document_change(cx);
-        let theme = GuiTheme::light();
+        let theme = self
+            .theme_provider
+            .as_ref()
+            .map_or_else(GuiTheme::light, |provider| provider.theme());
         let focus = self.focus.clone();
         if self.integration_focus_requested {
             window.focus(&focus, cx);

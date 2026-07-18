@@ -3,7 +3,7 @@ use std::time::Duration;
 
 use gpui::AppContext;
 
-use crate::api::{AiProvider, DocumentRendererProvider, SyntaxHighlightProvider};
+use crate::api::{AiProvider, DocumentRendererProvider, SyntaxHighlightProvider, ThemeProvider};
 use crate::gui::CditorV2View;
 
 use super::handle::EditorHandle;
@@ -36,6 +36,7 @@ pub struct EditorBuilder {
     syntax_highlight_provider: Option<Arc<dyn SyntaxHighlightProvider>>,
     syntax_highlighting_enabled: bool,
     document_renderer_provider: Option<Arc<dyn DocumentRendererProvider>>,
+    theme_provider: Option<Arc<dyn ThemeProvider>>,
 }
 
 impl Default for EditorBuilder {
@@ -53,6 +54,7 @@ impl Default for EditorBuilder {
             syntax_highlight_provider: None,
             syntax_highlighting_enabled: true,
             document_renderer_provider: None,
+            theme_provider: None,
         }
     }
 }
@@ -170,6 +172,11 @@ impl EditorBuilder {
         self
     }
 
+    pub fn theme_provider_arc(mut self, provider: Arc<dyn ThemeProvider>) -> Self {
+        self.theme_provider = Some(provider);
+        self
+    }
+
     pub fn build<C: AppContext>(self, cx: &mut C) -> Result<EditorHandle, EditorError> {
         let initial_document = self.resolve_initial_document()?;
         let runtime = initial_document.clone().into_runtime(720.0)?;
@@ -182,6 +189,7 @@ impl EditorBuilder {
         let syntax_highlight_provider = self.syntax_highlight_provider.clone();
         let syntax_highlighting_enabled = self.syntax_highlighting_enabled;
         let document_renderer_provider = self.document_renderer_provider.clone();
+        let theme_provider = self.theme_provider.clone();
         let readonly = self.readonly;
         let debug_overlay = self.debug_overlay;
         let has_persistence = persistence.is_some();
@@ -195,6 +203,7 @@ impl EditorBuilder {
                 syntax_highlighting_enabled,
             );
             view.sdk_configure_document_rendering(document_renderer_provider);
+            view.sdk_configure_theme(theme_provider);
             view.install_editor_integration(
                 document_id.clone(),
                 persistence,

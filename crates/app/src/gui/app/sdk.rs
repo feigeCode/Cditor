@@ -2,6 +2,7 @@ use gpui::{AppContext, Context, EventEmitter, Task, Window};
 
 use crate::api::DocumentRendererProvider;
 use crate::api::SyntaxHighlightProvider;
+use crate::api::ThemeProvider;
 use crate::api::{
     Affinity, BlockTransform, CditorCommand, CditorDiagnostics, CditorError, CditorEvent,
     ChangeOrigin, CloseGuard, CommandOutcome, CommandState, DocumentInfo, DocumentPosition,
@@ -13,6 +14,15 @@ use crate::gui::persistence::{EditorSaveStatus, PersistenceBarrierKind};
 impl EventEmitter<CditorEvent> for CditorV2View {}
 
 impl CditorV2View {
+    pub(crate) fn sdk_configure_theme(
+        &mut self,
+        provider: Option<std::sync::Arc<dyn ThemeProvider>>,
+    ) {
+        self.theme_provider = provider;
+        self.document_renders.clear();
+        self.whiteboard_thumbnails.clear();
+    }
+
     pub(crate) fn sdk_configure_document_rendering(
         &mut self,
         provider: Option<std::sync::Arc<dyn DocumentRendererProvider>>,
