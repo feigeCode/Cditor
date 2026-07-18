@@ -28,6 +28,7 @@ pub(in crate::gui::app) fn formatting_toolbar_state(
     conflicting_overlay_open: bool,
     viewport: EditorViewport,
     gutter_toolbar_block_id: Option<BlockId>,
+    gutter_toolbar_anchor_y: Option<f32>,
     block_transform_menu_open: bool,
     color_menu_open: bool,
     last_color_action: Option<ColorMenuAction>,
@@ -63,13 +64,17 @@ pub(in crate::gui::app) fn formatting_toolbar_state(
             |bounds| (f32::from(bounds.top()), f32::from(bounds.bottom())),
         );
         let block_left = page_left + block_content_left_px(rect.indent_px);
-        let (x, y) = left_aligned_floating_toolbar_position(
+        let (x, fallback_y) = left_aligned_floating_toolbar_position(
             block_left,
             top,
             bottom,
             viewport.width,
             viewport.height,
         );
+        let max_y = (viewport.height - 362.0 - 10.0).max(10.0);
+        let y = gutter_toolbar_anchor_y
+            .map(|anchor_y| (anchor_y - 20.0).clamp(10.0, max_y))
+            .unwrap_or(fallback_y);
         let color_geometry = color_menu_geometry(x, y, viewport.width, viewport.height);
         let (bold, italic, underline, strike, code, text_color, background_color, block_transform) =
             runtime
@@ -445,6 +450,7 @@ mod tests {
             false,
             viewport,
             None,
+            None,
             false,
             false,
             None,
@@ -494,6 +500,7 @@ mod tests {
                 false,
                 EditorViewport::from_size(size(px(900.0), px(700.0))),
                 Some(2),
+                None,
                 true,
                 true,
                 None,
@@ -527,6 +534,7 @@ mod tests {
             false,
             EditorViewport::from_size(size(px(900.0), px(700.0))),
             Some(1),
+            None,
             true,
             false,
             None,

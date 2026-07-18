@@ -96,6 +96,7 @@ pub struct CditorV2View {
     pub(in crate::gui::app) hovered_block_id: Option<BlockId>,
     pub(in crate::gui::app) action_block_id: Option<BlockId>,
     pub(in crate::gui::app) gutter_toolbar_block_id: Option<BlockId>,
+    pub(in crate::gui::app) gutter_toolbar_anchor_y: Option<f32>,
     pub(in crate::gui::app) block_transform_menu_open: bool,
     pub(in crate::gui::app) color_menu_open: bool,
     pub(in crate::gui::app) color_menu_hover_generation: u64,
@@ -378,6 +379,7 @@ impl CditorV2View {
     pub(in crate::gui::app) fn clear_gutter_action(&mut self) {
         self.action_block_id = None;
         self.gutter_toolbar_block_id = None;
+        self.gutter_toolbar_anchor_y = None;
         self.block_transform_menu_open = false;
         self.color_menu_open = false;
         self.color_menu_hover_generation = self.color_menu_hover_generation.wrapping_add(1);

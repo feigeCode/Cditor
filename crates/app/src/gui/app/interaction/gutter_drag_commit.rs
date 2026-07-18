@@ -13,6 +13,7 @@ impl CditorV2View {
         if drag.exceeded_threshold {
             clear_committed_gutter_action(&mut self.action_block_id, drag.block_id);
             self.gutter_toolbar_block_id = None;
+            self.gutter_toolbar_anchor_y = None;
             self.block_transform_menu_open = false;
             self.color_menu_open = false;
         }

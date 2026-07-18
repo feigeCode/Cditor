@@ -47,6 +47,13 @@ impl CditorV2View {
         self.hovered_block_id = Some(block_id);
         self.action_block_id = Some(block_id);
         self.gutter_toolbar_block_id = Some(block_id);
+        self.gutter_toolbar_anchor_y = Some(
+            f32::from(position.y)
+                - self
+                    .infer_document_viewport_origin()
+                    .map(|origin| origin.y as f32)
+                    .unwrap_or(0.0),
+        );
         self.block_transform_menu_open = false;
         self.color_menu_open = false;
         self.text_drag_selection = None;
@@ -73,6 +80,7 @@ impl CditorV2View {
         let threshold_changed = drag.update_position(point);
         if drag.exceeded_threshold {
             self.gutter_toolbar_block_id = None;
+            self.gutter_toolbar_anchor_y = None;
             self.block_transform_menu_open = false;
             self.color_menu_open = false;
         }

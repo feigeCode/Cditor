@@ -89,6 +89,7 @@ impl Render for CditorV2View {
                 self.gutter_block_drag
                     .is_none_or(|drag| !drag.exceeded_threshold)
             }),
+            self.gutter_toolbar_anchor_y,
             self.block_transform_menu_open,
             self.color_menu_open,
             self.last_color_action,

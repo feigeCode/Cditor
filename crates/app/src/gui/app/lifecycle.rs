@@ -108,6 +108,7 @@ impl CditorV2View {
             hovered_block_id: None,
             action_block_id: None,
             gutter_toolbar_block_id: None,
+            gutter_toolbar_anchor_y: None,
             block_transform_menu_open: false,
             color_menu_open: false,
             color_menu_hover_generation: 0,
@@ -189,6 +190,7 @@ impl CditorV2View {
             hovered_block_id: None,
             action_block_id: None,
             gutter_toolbar_block_id: None,
+            gutter_toolbar_anchor_y: None,
             block_transform_menu_open: false,
             color_menu_open: false,
             color_menu_hover_generation: 0,
@@ -271,6 +273,7 @@ impl CditorV2View {
             hovered_block_id: None,
             action_block_id: None,
             gutter_toolbar_block_id: None,
+            gutter_toolbar_anchor_y: None,
             block_transform_menu_open: false,
             color_menu_open: false,
             color_menu_hover_generation: 0,
@@ -324,6 +327,7 @@ impl CditorV2View {
         self.hovered_block_id = None;
         self.action_block_id = None;
         self.gutter_toolbar_block_id = None;
+        self.gutter_toolbar_anchor_y = None;
         self.block_transform_menu_open = false;
         self.color_menu_open = false;
         self.gutter_block_drag = None;
@@ -364,6 +368,7 @@ impl CditorV2View {
         self.hovered_block_id = None;
         self.action_block_id = None;
         self.gutter_toolbar_block_id = None;
+        self.gutter_toolbar_anchor_y = None;
         self.block_transform_menu_open = false;
         self.color_menu_open = false;
         self.gutter_block_drag = None;
