@@ -49,8 +49,19 @@ pub(in crate::gui::app) fn formatting_toolbar_state(
             .iter()
             .find(|rect| rect.block_id == block_id)?;
         let page_left = DEFAULT_DOCUMENT_LEFT_INSET_PX;
-        let top = (rect.document_top - scroll_top) as f32 + DEFAULT_DOCUMENT_TOP_INSET_PX;
-        let bottom = (rect.document_bottom - scroll_top) as f32 + DEFAULT_DOCUMENT_TOP_INSET_PX;
+        let platform_bounds = text_layouts.get(&block_id).and_then(|layout| {
+            (runtime.block_content_version(block_id) == Some(layout.content_version))
+                .then(|| viewport.window_bounds_to_local(layout.bounds))
+        });
+        let (top, bottom) = platform_bounds.map_or_else(
+            || {
+                (
+                    (rect.document_top - scroll_top) as f32 + DEFAULT_DOCUMENT_TOP_INSET_PX,
+                    (rect.document_bottom - scroll_top) as f32 + DEFAULT_DOCUMENT_TOP_INSET_PX,
+                )
+            },
+            |bounds| (f32::from(bounds.top()), f32::from(bounds.bottom())),
+        );
         let block_left = page_left + block_content_left_px(rect.indent_px);
         let (x, y) = left_aligned_floating_toolbar_position(
             block_left,
