@@ -103,14 +103,16 @@ fn disabling_and_reenabling_preserves_external_provider() {
 }
 
 #[test]
-fn external_provider_catalog_replaces_builtin_language_menu() {
+fn external_provider_catalog_keeps_host_math_renderer_entry() {
     let mut cache = CodeHighlightCache::default();
     cache.configure(Some(Arc::new(TestProvider)), true);
 
     let items = cache.language_items();
-    assert_eq!(items.len(), 2);
+    assert_eq!(items.len(), 3);
     assert_eq!(items[0].value, "plain text");
-    assert_eq!(items[1].value, "zig");
+    assert_eq!(items[1].value, "math");
+    assert_eq!(items[1].label, "数学公式");
+    assert_eq!(items[2].value, "zig");
     assert!(!items.iter().any(|item| item.value == "typescript"));
 }
 

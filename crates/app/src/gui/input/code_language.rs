@@ -370,6 +370,7 @@ pub fn normalize_code_language(language: &str) -> Option<String> {
 pub fn code_language_items() -> Vec<CodeLanguageItem> {
     [
         CodeLanguageItem::labeled("plain text", "Plain Text"),
+        CodeLanguageItem::labeled("math", "数学公式"),
         CodeLanguageItem::labeled("rust", "Rust"),
         CodeLanguageItem::labeled("typescript", "TypeScript"),
         CodeLanguageItem::labeled("javascript", "JavaScript"),
@@ -457,6 +458,14 @@ mod tests {
         assert_eq!(state.caret_offset, 0);
         assert_eq!(state.selected_item().unwrap().value, "typescript");
         assert_eq!(state.matching_items().len(), code_language_items().len());
+    }
+
+    #[test]
+    fn language_dropdown_contains_math_formula_entry() {
+        let items = code_language_items();
+        let math = items.iter().find(|item| item.value == "math").unwrap();
+
+        assert_eq!(math.label, "数学公式");
     }
 
     #[test]

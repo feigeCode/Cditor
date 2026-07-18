@@ -14,7 +14,11 @@ pub(super) fn provider_language_items(
     let mut seen = HashSet::new();
     seen.insert("plain text".to_owned());
     seen.insert("text".to_owned());
-    let mut items = vec![CodeLanguageItem::labeled("plain text", "Plain Text")];
+    seen.insert("math".to_owned());
+    let mut items = vec![
+        CodeLanguageItem::labeled("plain text", "Plain Text"),
+        CodeLanguageItem::labeled("math", "数学公式"),
+    ];
     for language in languages {
         let id = language.id.trim().to_ascii_lowercase();
         if id.is_empty() || !seen.insert(id.clone()) {
