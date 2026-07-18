@@ -147,7 +147,7 @@ mod tests {
         assert_eq!(surface.content_width_px, 860.0);
         assert_eq!(surface.min_height_px, 640.0);
         assert_eq!(surface.top_inset_px, 32.0);
-        assert_eq!(surface.left_inset_px, 48.0);
+        assert_eq!(surface.left_inset_px, 24.0);
         assert_eq!(surface.before_window_height, 10.0);
         assert_eq!(surface.placeholder_window_height, None);
         assert_eq!(surface.after_window_height, 20.0);

@@ -2,7 +2,7 @@ pub const DEFAULT_DOCUMENT_PAGE_WIDTH_PX: f32 = 860.0;
 pub const DEFAULT_DOCUMENT_CONTENT_WIDTH_PX: f32 = DEFAULT_DOCUMENT_PAGE_WIDTH_PX;
 pub const DEFAULT_DOCUMENT_MIN_HEIGHT_PX: f32 = 640.0;
 pub const DEFAULT_DOCUMENT_TOP_INSET_PX: f32 = 32.0;
-pub const DEFAULT_DOCUMENT_LEFT_INSET_PX: f32 = 48.0;
+pub const DEFAULT_DOCUMENT_LEFT_INSET_PX: f32 = 24.0;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct DocumentLayoutMetrics {
@@ -46,6 +46,6 @@ mod tests {
         assert_eq!(metrics.content_inset_x_px(), 0.0);
         assert_eq!(metrics.min_height_px, 640.0);
         assert_eq!(metrics.top_inset_px, 32.0);
-        assert_eq!(metrics.left_inset_px, 48.0);
+        assert_eq!(metrics.left_inset_px, 24.0);
     }
 }
