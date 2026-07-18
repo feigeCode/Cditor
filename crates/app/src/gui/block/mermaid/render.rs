@@ -107,7 +107,7 @@ pub(crate) fn render_mermaid_block(
                         .child(if show_source { "预览" } else { "源码" })
                         .on_mouse_down(gpui::MouseButton::Left, move |_event, _window, cx| {
                             let _ = toggle_view.update(cx, |view, cx| {
-                                view.toggle_mermaid_source_from_gui(block_id, cx);
+                                view.toggle_document_source_from_gui(block_id, cx);
                             });
                             cx.stop_propagation();
                         }),
@@ -128,15 +128,18 @@ pub(crate) fn render_math_block(
     block_id: BlockId,
     content_version: u64,
     source_content: AnyElement,
+    show_source: bool,
     cache: &DocumentRenderCache,
     theme: GuiTheme,
     view: Entity<CditorV2View>,
     cx: &mut App,
 ) -> AnyElement {
     let status = cache.status(block_id);
-    let geometry = status.as_ref().and_then(preview_geometry_for_status);
+    let geometry = (!show_source)
+        .then(|| status.as_ref().and_then(preview_geometry_for_status))
+        .flatten();
     schedule_rendered_media_height_report(
-        view,
+        view.clone(),
         block_id,
         content_version,
         geometry
@@ -147,6 +150,19 @@ pub(crate) fn render_math_block(
     let height = geometry
         .map(|value| value.body_height_px)
         .unwrap_or(MERMAID_LOADING_BODY_HEIGHT_PX);
+    let toggle_view = view;
+    let body = if show_source {
+        source_content
+    } else {
+        render_preview(
+            status,
+            source_content,
+            theme,
+            geometry,
+            "数学公式",
+            "Math Renderer",
+        )
+    };
     div()
         .id(("math-block", block_id))
         .w_full()
@@ -157,10 +173,27 @@ pub(crate) fn render_math_block(
                 .h(px(MERMAID_TOOLBAR_HEIGHT_PX))
                 .flex()
                 .items_center()
+                .justify_between()
                 .px(px(8.0))
                 .text_size(px(11.0))
                 .text_color(rgb(theme.muted))
-                .child("数学公式"),
+                .child("数学公式")
+                .child(
+                    div()
+                        .id(("math-source-toggle", block_id))
+                        .cursor_pointer()
+                        .px(px(6.0))
+                        .py(px(2.0))
+                        .rounded(px(3.0))
+                        .hover(|style| style.bg(rgb(theme.hover_surface)))
+                        .child(if show_source { "预览" } else { "源码" })
+                        .on_mouse_down(gpui::MouseButton::Left, move |_event, _window, cx| {
+                            let _ = toggle_view.update(cx, |view, cx| {
+                                view.toggle_document_source_from_gui(block_id, cx);
+                            });
+                            cx.stop_propagation();
+                        }),
+                ),
         )
         .child(
             div()
@@ -168,14 +201,7 @@ pub(crate) fn render_math_block(
                 .h(px(height))
                 .p(px(MERMAID_BODY_PADDING_PX))
                 .overflow_hidden()
-                .child(render_preview(
-                    status,
-                    source_content,
-                    theme,
-                    geometry,
-                    "数学公式",
-                    "Math Renderer",
-                )),
+                .child(body),
         )
         .into_any_element()
 }

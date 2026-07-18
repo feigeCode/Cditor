@@ -68,7 +68,7 @@ impl Render for CditorV2View {
         let code_language_edit = self.code_language_edit.clone();
         let code_theme_menu_block_id = self.code_theme_menu_block_id;
         let code_highlight_theme = self.code_highlight_theme;
-        let mermaid_source_blocks = self.mermaid_source_blocks.clone();
+        let document_source_blocks = self.document_source_blocks.clone();
         let embedded_ai_prompt = self.ai_prompt.as_ref().is_some_and(|prompt| {
             self.gutter_toolbar_block_id == Some(prompt.block_id)
                 || (prompt.presentation == AiRequestPresentation::Automatic
@@ -437,7 +437,7 @@ impl Render for CditorV2View {
                         &table_scroll_snapshots,
                         &self.code_highlights,
                         &self.document_renders,
-                        &mermaid_source_blocks,
+                        &document_source_blocks,
                         &self.whiteboard_thumbnails,
                         cx,
                     ))

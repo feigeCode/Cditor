@@ -92,7 +92,7 @@ impl CditorV2View {
             table_scroll_state: Default::default(),
             code_highlights: Default::default(),
             document_renders: Default::default(),
-            mermaid_source_blocks: Default::default(),
+            document_source_blocks: Default::default(),
             whiteboard_thumbnails: Default::default(),
             whiteboard_editor: None,
             scrollbar_drag: None,
@@ -173,7 +173,7 @@ impl CditorV2View {
             table_scroll_state: Default::default(),
             code_highlights: Default::default(),
             document_renders: Default::default(),
-            mermaid_source_blocks: Default::default(),
+            document_source_blocks: Default::default(),
             whiteboard_thumbnails: Default::default(),
             whiteboard_editor: None,
             scrollbar_drag: None,
@@ -255,7 +255,7 @@ impl CditorV2View {
             table_scroll_state: Default::default(),
             code_highlights: Default::default(),
             document_renders: Default::default(),
-            mermaid_source_blocks: Default::default(),
+            document_source_blocks: Default::default(),
             whiteboard_thumbnails: Default::default(),
             whiteboard_editor: None,
             scrollbar_drag: None,
@@ -309,7 +309,7 @@ impl CditorV2View {
         self.table_scroll_state.clear();
         self.code_highlights.clear();
         self.document_renders.clear();
-        self.mermaid_source_blocks.clear();
+        self.document_source_blocks.clear();
         self.whiteboard_thumbnails.clear();
         self.whiteboard_editor = None;
         self.payload_window_load_scheduler.reset();
@@ -352,7 +352,7 @@ impl CditorV2View {
         self.table_scroll_state.clear();
         self.code_highlights.clear();
         self.document_renders.clear();
-        self.mermaid_source_blocks.clear();
+        self.document_source_blocks.clear();
         self.text_drag_selection = None;
         self.block_drag_selection = BlockDragSelectionController::default();
         self.code_language_edit = None;

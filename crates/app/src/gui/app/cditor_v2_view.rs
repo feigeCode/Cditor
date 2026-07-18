@@ -80,7 +80,7 @@ pub struct CditorV2View {
     pub(in crate::gui::app) table_scroll_state: GuiTableScrollState,
     pub(in crate::gui::app) code_highlights: CodeHighlightCache,
     pub(in crate::gui::app) document_renders: DocumentRenderCache,
-    pub(in crate::gui::app) mermaid_source_blocks: std::collections::HashSet<BlockId>,
+    pub(in crate::gui::app) document_source_blocks: std::collections::HashSet<BlockId>,
     pub(in crate::gui::app) whiteboard_thumbnails: WhiteboardThumbnailCache,
     pub(in crate::gui::app) whiteboard_editor: Option<WhiteboardEditorSession>,
     pub(in crate::gui::app) scrollbar_drag: Option<GuiScrollbarDrag>,
@@ -139,14 +139,14 @@ fn trace_table(event: &str, details: impl std::fmt::Display) {
 }
 
 impl CditorV2View {
-    pub(crate) fn toggle_mermaid_source_from_gui(
+    pub(crate) fn toggle_document_source_from_gui(
         &mut self,
         block_id: BlockId,
         cx: &mut Context<Self>,
     ) {
         crate::gui::block::media::invalidate_rendered_media_height_report(block_id);
-        if !self.mermaid_source_blocks.remove(&block_id) {
-            self.mermaid_source_blocks.insert(block_id);
+        if !self.document_source_blocks.remove(&block_id) {
+            self.document_source_blocks.insert(block_id);
         }
         cx.notify();
     }

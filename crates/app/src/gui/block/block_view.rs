@@ -182,7 +182,8 @@ fn render_kind_content(
         table_range_selection,
         suppress_document_text_input
             || code_language_edit.is_some()
-            || (matches!(block.kind, RichBlockKind::Mermaid) && !mermaid_show_source),
+            || (matches!(block.kind, RichBlockKind::Mermaid | RichBlockKind::Math)
+                && !mermaid_show_source),
         table_axis_selection,
         table_scroll_handle,
         code_highlights,
@@ -224,6 +225,7 @@ fn render_kind_content(
                 _ => 0,
             },
             content,
+            mermaid_show_source,
             mermaid_renders,
             theme,
             view,

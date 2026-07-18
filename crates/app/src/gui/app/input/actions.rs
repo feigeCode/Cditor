@@ -375,7 +375,7 @@ impl CditorV2View {
         let Some(block_id) = runtime.focused_block_id() else {
             return false;
         };
-        !self.mermaid_source_blocks.contains(&block_id)
+        !self.document_source_blocks.contains(&block_id)
             && runtime
                 .block_payload_record(block_id)
                 .is_some_and(|payload| {

@@ -122,7 +122,7 @@ impl DocumentEditorView {
         table_scroll_snapshots: &HashMap<BlockId, TableScrollSnapshot>,
         code_highlights: &CodeHighlightCache,
         mermaid_renders: &DocumentRenderCache,
-        mermaid_source_blocks: &std::collections::HashSet<BlockId>,
+        document_source_blocks: &std::collections::HashSet<BlockId>,
         whiteboard_thumbnails: &WhiteboardThumbnailCache,
         cx: &mut App,
     ) -> AnyElement {
@@ -283,7 +283,7 @@ impl DocumentEditorView {
                                 .map(|snapshot| snapshot.handle.clone()),
                             code_highlights,
                             mermaid_renders,
-                            mermaid_source_blocks.contains(&block.block_id),
+                            document_source_blocks.contains(&block.block_id),
                             whiteboard_thumbnails,
                             cx,
                         )
