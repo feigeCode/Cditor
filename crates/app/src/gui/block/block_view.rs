@@ -14,7 +14,8 @@ use crate::gui::block::table::{
     TableAxisSelection, TableCellRangeSelection, TableReorderPreview, TableResizePreview,
 };
 use crate::gui::block::{
-    CodeHighlightCache, MermaidRenderCache, WhiteboardThumbnailCache, render_mermaid_block,
+    CodeHighlightCache, DocumentRenderCache, WhiteboardThumbnailCache, render_math_block,
+    render_mermaid_block,
 };
 use crate::gui::input::{
     CodeLanguageEditState, focus_block_from_mouse, gutter_mouse_down_from_mouse,
@@ -53,7 +54,7 @@ impl BlockView {
         suppress_document_text_input: bool,
         table_scroll_handle: Option<ScrollHandle>,
         code_highlights: &CodeHighlightCache,
-        mermaid_renders: &MermaidRenderCache,
+        mermaid_renders: &DocumentRenderCache,
         mermaid_show_source: bool,
         whiteboard_thumbnails: &WhiteboardThumbnailCache,
         cx: &mut App,
@@ -165,7 +166,7 @@ fn render_kind_content(
     suppress_document_text_input: bool,
     table_scroll_handle: Option<ScrollHandle>,
     code_highlights: &CodeHighlightCache,
-    mermaid_renders: &MermaidRenderCache,
+    mermaid_renders: &DocumentRenderCache,
     mermaid_show_source: bool,
     whiteboard_thumbnails: &WhiteboardThumbnailCache,
     cx: &mut App,
@@ -214,28 +215,20 @@ fn render_kind_content(
             render_paragraph(content)
         }
         RichBlockKind::Table => content,
-        RichBlockKind::Math => div()
-            .w_full()
-            .rounded(px(8.0))
-            .bg(rgb(theme.code_background))
-            .p(px(12.0))
-            .flex()
-            .flex_col()
-            .gap(px(8.0))
-            .child(
-                div()
-                    .text_size(px(11.0))
-                    .text_color(rgb(theme.muted))
-                    .child("未安装数学公式渲染扩展，请在扩展市场安装 Math Renderer 后预览公式。"),
-            )
-            .child(
-                div()
-                    .w_full()
-                    .text_center()
-                    .text_size(px(20.0))
-                    .child(content),
-            )
-            .into_any_element(),
+        RichBlockKind::Math => render_math_block(
+            block.block_id,
+            match &block.payload {
+                cditor_core::rich_text::BlockPayloadView::Loaded(payload) => {
+                    payload.content_version
+                }
+                _ => 0,
+            },
+            content,
+            mermaid_renders,
+            theme,
+            view,
+            cx,
+        ),
         RichBlockKind::Mermaid => render_mermaid_block(
             block.block_id,
             match &block.payload {

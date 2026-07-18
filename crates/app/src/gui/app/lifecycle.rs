@@ -91,7 +91,7 @@ impl CditorV2View {
             table_cell_layouts: HashMap::new(),
             table_scroll_state: Default::default(),
             code_highlights: Default::default(),
-            mermaid_renders: Default::default(),
+            document_renders: Default::default(),
             mermaid_source_blocks: Default::default(),
             whiteboard_thumbnails: Default::default(),
             whiteboard_editor: None,
@@ -172,7 +172,7 @@ impl CditorV2View {
             table_cell_layouts: HashMap::new(),
             table_scroll_state: Default::default(),
             code_highlights: Default::default(),
-            mermaid_renders: Default::default(),
+            document_renders: Default::default(),
             mermaid_source_blocks: Default::default(),
             whiteboard_thumbnails: Default::default(),
             whiteboard_editor: None,
@@ -254,7 +254,7 @@ impl CditorV2View {
             table_cell_layouts: HashMap::new(),
             table_scroll_state: Default::default(),
             code_highlights: Default::default(),
-            mermaid_renders: Default::default(),
+            document_renders: Default::default(),
             mermaid_source_blocks: Default::default(),
             whiteboard_thumbnails: Default::default(),
             whiteboard_editor: None,
@@ -308,7 +308,7 @@ impl CditorV2View {
         self.table_cell_layouts.clear();
         self.table_scroll_state.clear();
         self.code_highlights.clear();
-        self.mermaid_renders.clear();
+        self.document_renders.clear();
         self.mermaid_source_blocks.clear();
         self.whiteboard_thumbnails.clear();
         self.whiteboard_editor = None;
@@ -351,7 +351,7 @@ impl CditorV2View {
         self.table_cell_layouts.clear();
         self.table_scroll_state.clear();
         self.code_highlights.clear();
-        self.mermaid_renders.clear();
+        self.document_renders.clear();
         self.mermaid_source_blocks.clear();
         self.text_drag_selection = None;
         self.block_drag_selection = BlockDragSelectionController::default();

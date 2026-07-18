@@ -10,7 +10,7 @@ use crate::gui::app::CditorV2View;
 use crate::gui::app::cditor_v2_view::TableScrollSnapshot;
 use crate::gui::block::table::menu::TableMenuUiState;
 use crate::gui::block::{
-    BlockActionState, BlockDragOverlaySnapshot, BlockView, CodeHighlightCache, MermaidRenderCache,
+    BlockActionState, BlockDragOverlaySnapshot, BlockView, CodeHighlightCache, DocumentRenderCache,
     TableAxis, TableAxisSelection, TableCellRangeSelection, TableCellSelection,
     TableChromeOverlays, TableReorderPreview, TableResizePreview, WhiteboardThumbnailCache,
     render_block_drag_overlay, render_table_axis_overlays, render_table_axis_toolbar,
@@ -121,7 +121,7 @@ impl DocumentEditorView {
         suppress_document_text_input: bool,
         table_scroll_snapshots: &HashMap<BlockId, TableScrollSnapshot>,
         code_highlights: &CodeHighlightCache,
-        mermaid_renders: &MermaidRenderCache,
+        mermaid_renders: &DocumentRenderCache,
         mermaid_source_blocks: &std::collections::HashSet<BlockId>,
         whiteboard_thumbnails: &WhiteboardThumbnailCache,
         cx: &mut App,

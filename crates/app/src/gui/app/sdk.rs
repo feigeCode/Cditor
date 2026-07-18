@@ -17,7 +17,7 @@ impl CditorV2View {
         &mut self,
         provider: Option<std::sync::Arc<dyn DocumentRendererProvider>>,
     ) {
-        self.mermaid_renders.configure(provider);
+        self.document_renders.configure(provider);
     }
 
     pub(crate) fn sdk_set_document_renderer_provider(

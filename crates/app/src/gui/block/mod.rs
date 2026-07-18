@@ -22,7 +22,7 @@ pub use block_view::BlockView;
 pub use chrome::BlockChromeStyle;
 pub(crate) use code::highlight::CodeHighlightCache;
 pub use drag_overlay::{BlockDragOverlaySnapshot, render_block_drag_overlay};
-pub(crate) use mermaid::{MermaidRenderCache, render_mermaid_block};
+pub(crate) use mermaid::{DocumentRenderCache, render_math_block, render_mermaid_block};
 pub(crate) use table::{
     TableAxis, TableAxisSelection, TableCellRangeSelection, TableCellSelection,
     TableChromeOverlays, TableReorderPreview, TableResizePreview, render_table_axis_overlays,

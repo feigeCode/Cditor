@@ -16,17 +16,19 @@ use super::theme::build_mermaid_theme;
 
 const MAX_MERMAID_SOURCE_BYTES: usize = 256 * 1024;
 const MAX_SVG_BYTES: usize = 4 * 1024 * 1024;
+const DEFAULT_RENDER_WIDTH_PX: f32 = 720.0;
 
 type RenderResult = Result<Arc<RenderImage>, Arc<str>>;
 
 #[derive(Clone)]
-pub(crate) enum MermaidRenderStatus {
+pub(crate) enum DocumentRenderStatus {
     Ready(Arc<RenderImage>),
     Rendering { fallback: Option<Arc<RenderImage>> },
     Failed { message: Arc<str> },
 }
 
-struct MermaidRenderEntry {
+struct DocumentRenderEntry {
+    renderer_id: &'static str,
     content_version: u64,
     source_hash: u64,
     theme: GuiTheme,
@@ -36,8 +38,9 @@ struct MermaidRenderEntry {
     _task: Option<Task<()>>,
 }
 
-impl MermaidRenderEntry {
+impl DocumentRenderEntry {
     fn new(
+        renderer_id: &'static str,
         content_version: u64,
         source_hash: u64,
         source: String,
@@ -51,6 +54,7 @@ impl MermaidRenderEntry {
             let provider_revision = provider.as_ref().map_or(0, |provider| provider.revision());
             let _ = result.set(Err(message.into()));
             return Self {
+                renderer_id,
                 content_version,
                 source_hash,
                 theme,
@@ -67,7 +71,7 @@ impl MermaidRenderEntry {
         let task = cx.spawn(async move |view, cx| {
             let rendered = cx
                 .background_spawn(async move {
-                    let svg = render_svg(provider, source, theme).await?;
+                    let svg = render_svg(provider, renderer_id, source, theme).await?;
                     validate_svg(&svg)?;
                     renderer
                         .render_single_frame(&svg, 1.0)
@@ -79,6 +83,7 @@ impl MermaidRenderEntry {
         });
 
         Self {
+            renderer_id,
             content_version,
             source_hash,
             theme,
@@ -89,13 +94,13 @@ impl MermaidRenderEntry {
         }
     }
 
-    fn status(&self) -> MermaidRenderStatus {
+    fn status(&self) -> DocumentRenderStatus {
         match self.result.get() {
-            Some(Ok(image)) => MermaidRenderStatus::Ready(image.clone()),
-            Some(Err(message)) => MermaidRenderStatus::Failed {
+            Some(Ok(image)) => DocumentRenderStatus::Ready(image.clone()),
+            Some(Err(message)) => DocumentRenderStatus::Failed {
                 message: message.clone(),
             },
-            None => MermaidRenderStatus::Rendering {
+            None => DocumentRenderStatus::Rendering {
                 fallback: self.fallback.clone(),
             },
         }
@@ -114,21 +119,23 @@ impl MermaidRenderEntry {
         source_hash: u64,
         theme: GuiTheme,
         provider_revision: u64,
+        renderer_id: &str,
     ) -> bool {
         self.content_version == content_version
             && self.source_hash == source_hash
             && self.theme == theme
             && self.provider_revision == provider_revision
+            && self.renderer_id == renderer_id
     }
 }
 
 #[derive(Default)]
-pub(crate) struct MermaidRenderCache {
-    entries: HashMap<BlockId, MermaidRenderEntry>,
+pub(crate) struct DocumentRenderCache {
+    entries: HashMap<BlockId, DocumentRenderEntry>,
     provider: Option<Arc<dyn DocumentRendererProvider>>,
 }
 
-impl MermaidRenderCache {
+impl DocumentRenderCache {
     pub(crate) fn sync_visible_window(
         &mut self,
         projection: &EditorViewProjection,
@@ -138,7 +145,7 @@ impl MermaidRenderCache {
         let visible = projection
             .blocks
             .iter()
-            .filter(|block| matches!(block.kind, RichBlockKind::Mermaid))
+            .filter(|block| matches!(block.kind, RichBlockKind::Mermaid | RichBlockKind::Math))
             .filter_map(|block| {
                 let BlockPayloadView::Loaded(payload) = &block.payload else {
                     return None;
@@ -149,17 +156,22 @@ impl MermaidRenderCache {
                     payload.content_version,
                     source_hash(&source),
                     source,
+                    if matches!(block.kind, RichBlockKind::Math) {
+                        "math"
+                    } else {
+                        "mermaid"
+                    },
                 ))
             })
             .collect::<Vec<_>>();
         let visible_ids = visible
             .iter()
-            .map(|(block_id, _, _, _)| *block_id)
+            .map(|(block_id, _, _, _, _)| *block_id)
             .collect::<HashSet<_>>();
         self.entries
             .retain(|block_id, _| visible_ids.contains(block_id));
 
-        for (block_id, content_version, hash, source) in visible {
+        for (block_id, content_version, hash, source, renderer_id) in visible {
             if self.entries.get(&block_id).is_some_and(|entry| {
                 entry.matches(
                     content_version,
@@ -168,6 +180,7 @@ impl MermaidRenderCache {
                     self.provider
                         .as_ref()
                         .map_or(0, |provider| provider.revision()),
+                    renderer_id,
                 )
             }) {
                 continue;
@@ -178,7 +191,8 @@ impl MermaidRenderCache {
                 .and_then(|entry| entry.best_image());
             self.entries.insert(
                 block_id,
-                MermaidRenderEntry::new(
+                DocumentRenderEntry::new(
+                    renderer_id,
                     content_version,
                     hash,
                     source,
@@ -191,8 +205,8 @@ impl MermaidRenderCache {
         }
     }
 
-    pub(crate) fn status(&self, block_id: BlockId) -> Option<MermaidRenderStatus> {
-        self.entries.get(&block_id).map(MermaidRenderEntry::status)
+    pub(crate) fn status(&self, block_id: BlockId) -> Option<DocumentRenderStatus> {
+        self.entries.get(&block_id).map(DocumentRenderEntry::status)
     }
 
     pub(crate) fn clear(&mut self) {
@@ -207,15 +221,16 @@ impl MermaidRenderCache {
 
 async fn render_svg(
     provider: Option<Arc<dyn DocumentRendererProvider>>,
+    renderer_id: &'static str,
     source: String,
     theme: GuiTheme,
 ) -> Result<Vec<u8>, Arc<str>> {
-    if let Some(provider) = provider.filter(|provider| provider.supports("mermaid")) {
+    if let Some(provider) = provider.filter(|provider| provider.supports(renderer_id)) {
         let artifact = provider
             .render(DocumentRenderRequest {
-                renderer: "mermaid".to_owned(),
+                renderer: renderer_id.to_owned(),
                 source,
-                available_width: 0.0,
+                available_width: DEFAULT_RENDER_WIDTH_PX,
                 scale_factor: 1.0,
                 theme: DocumentRenderTheme {
                     dark: false,
@@ -238,13 +253,20 @@ async fn render_svg(
     }
     #[cfg(feature = "builtin-mermaid-rendering")]
     {
+        if renderer_id != "mermaid" {
+            return Err("未安装数学公式渲染扩展".into());
+        }
         let render_theme = build_mermaid_theme(theme);
         return mermaid_render::render_to_svg(&source, &render_theme)
             .map(|svg| svg.into_bytes())
             .map_err(|error| Arc::<str>::from(format!("{error:#}")));
     }
     #[cfg(not(feature = "builtin-mermaid-rendering"))]
-    Err("未安装 Mermaid 文档渲染扩展".into())
+    Err(if renderer_id == "math" {
+        "未安装数学公式渲染扩展".into()
+    } else {
+        "未安装 Mermaid 文档渲染扩展".into()
+    })
 }
 
 fn validate_svg(svg: &[u8]) -> Result<(), Arc<str>> {
@@ -259,12 +281,21 @@ fn validate_svg(svg: &[u8]) -> Result<(), Arc<str>> {
         || lower.contains("file://")
         || lower.contains("javascript:")
         || contains_external_resource_url(&lower)
-        || lower.contains(" onload=")
-        || lower.contains(" onclick=")
+        || contains_event_attribute(&lower)
     {
         return Err("SVG 输出包含不安全或不受支持的内容".into());
     }
     Ok(())
+}
+
+fn contains_event_attribute(svg: &str) -> bool {
+    svg.split_ascii_whitespace().any(|token| {
+        let token = token.trim_start_matches('<');
+        token.starts_with("on")
+            && token.split_once('=').is_some_and(|(name, _)| {
+                name.len() > 2 && name[2..].chars().all(|ch| ch.is_ascii_alphabetic())
+            })
+    })
 }
 
 fn contains_external_resource_url(svg: &str) -> bool {
@@ -286,11 +317,11 @@ fn source_hash(source: &str) -> u64 {
 
 fn validate_source(source: &str) -> Result<(), String> {
     if source.trim().is_empty() {
-        return Err("Mermaid 源码为空".to_owned());
+        return Err("渲染源码为空".to_owned());
     }
     if source.len() > MAX_MERMAID_SOURCE_BYTES {
         return Err(format!(
-            "Mermaid 源码超过 {} KiB 安全上限",
+            "渲染源码超过 {} KiB 安全上限",
             MAX_MERMAID_SOURCE_BYTES / 1024
         ));
     }
@@ -323,5 +354,6 @@ mod tests {
         assert!(validate_svg(b"<svg><script/></svg>").is_err());
         assert!(validate_svg(b"<svg><foreignObject/></svg>").is_err());
         assert!(validate_svg(b"<svg><image href='https://example.com/a'/></svg>").is_err());
+        assert!(validate_svg(b"<svg onmouseover='alert(1)'></svg>").is_err());
     }
 }

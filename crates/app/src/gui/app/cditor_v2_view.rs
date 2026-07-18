@@ -18,7 +18,7 @@ use crate::gui::app::interaction::table_mode::GuiTableInteractionMode;
 use crate::gui::app::interaction::table_reorder::GuiTableReorderDrag;
 use crate::gui::app::interaction::table_resize::GuiTableResizeDrag;
 use crate::gui::app::interaction::table_scroll::{GuiTableHScrollDrag, GuiTableScrollState};
-use crate::gui::block::{CodeHighlightCache, MermaidRenderCache, WhiteboardThumbnailCache};
+use crate::gui::block::{CodeHighlightCache, DocumentRenderCache, WhiteboardThumbnailCache};
 use cditor_editor::scroll::ScrollAccumulator;
 
 use crate::gui::input::{AiPromptState, BlockDragSelectionController, CodeLanguageEditState};
@@ -79,7 +79,7 @@ pub struct CditorV2View {
     pub(in crate::gui::app) table_cell_layouts: HashMap<TableCellLayoutKey, RichTextPlatformLayout>,
     pub(in crate::gui::app) table_scroll_state: GuiTableScrollState,
     pub(in crate::gui::app) code_highlights: CodeHighlightCache,
-    pub(in crate::gui::app) mermaid_renders: MermaidRenderCache,
+    pub(in crate::gui::app) document_renders: DocumentRenderCache,
     pub(in crate::gui::app) mermaid_source_blocks: std::collections::HashSet<BlockId>,
     pub(in crate::gui::app) whiteboard_thumbnails: WhiteboardThumbnailCache,
     pub(in crate::gui::app) whiteboard_editor: Option<WhiteboardEditorSession>,

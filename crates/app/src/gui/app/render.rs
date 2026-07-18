@@ -340,7 +340,7 @@ impl Render for CditorV2View {
                     self.code_highlight_theme,
                     cx,
                 );
-                self.mermaid_renders
+                self.document_renders
                     .sync_visible_window(&projection, theme, cx);
                 self.whiteboard_thumbnails
                     .sync_visible_window(&projection, theme, cx);
@@ -436,7 +436,7 @@ impl Render for CditorV2View {
                         self.ai_prompt.is_some(),
                         &table_scroll_snapshots,
                         &self.code_highlights,
-                        &self.mermaid_renders,
+                        &self.document_renders,
                         &mermaid_source_blocks,
                         &self.whiteboard_thumbnails,
                         cx,

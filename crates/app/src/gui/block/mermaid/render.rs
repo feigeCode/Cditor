@@ -14,7 +14,7 @@ use crate::gui::block::media::schedule_rendered_media_height_report;
 use crate::gui::document::DEFAULT_DOCUMENT_CONTENT_WIDTH_PX;
 use crate::gui::image_preview::open_image_preview;
 
-use super::{MermaidRenderCache, MermaidRenderStatus};
+use super::{DocumentRenderCache, DocumentRenderStatus};
 
 const MERMAID_TOOLBAR_HEIGHT_PX: f32 = 28.0;
 const MERMAID_BODY_PADDING_PX: f32 = 8.0;
@@ -40,7 +40,7 @@ pub(crate) fn render_mermaid_block(
     content_version: u64,
     source_content: AnyElement,
     show_source: bool,
-    cache: &MermaidRenderCache,
+    cache: &DocumentRenderCache,
     theme: GuiTheme,
     view: Entity<CditorV2View>,
     cx: &mut App,
@@ -63,7 +63,14 @@ pub(crate) fn render_mermaid_block(
         (source_content, MERMAID_LOADING_BODY_HEIGHT_PX)
     } else {
         (
-            render_preview(status, source_content, theme, geometry),
+            render_preview(
+                status,
+                source_content,
+                theme,
+                geometry,
+                "Mermaid",
+                "Mermaid Renderer",
+            ),
             geometry
                 .map(|geometry| geometry.body_height_px)
                 .unwrap_or(MERMAID_LOADING_BODY_HEIGHT_PX),
@@ -117,20 +124,78 @@ pub(crate) fn render_mermaid_block(
         .into_any_element()
 }
 
+pub(crate) fn render_math_block(
+    block_id: BlockId,
+    content_version: u64,
+    source_content: AnyElement,
+    cache: &DocumentRenderCache,
+    theme: GuiTheme,
+    view: Entity<CditorV2View>,
+    cx: &mut App,
+) -> AnyElement {
+    let status = cache.status(block_id);
+    let geometry = status.as_ref().and_then(preview_geometry_for_status);
+    schedule_rendered_media_height_report(
+        view,
+        block_id,
+        content_version,
+        geometry
+            .map(|value| value.block_height_px)
+            .unwrap_or_else(default_mermaid_block_height_px),
+        cx,
+    );
+    let height = geometry
+        .map(|value| value.body_height_px)
+        .unwrap_or(MERMAID_LOADING_BODY_HEIGHT_PX);
+    div()
+        .id(("math-block", block_id))
+        .w_full()
+        .rounded(px(8.0))
+        .bg(rgb(theme.code_background))
+        .child(
+            div()
+                .h(px(MERMAID_TOOLBAR_HEIGHT_PX))
+                .flex()
+                .items_center()
+                .px(px(8.0))
+                .text_size(px(11.0))
+                .text_color(rgb(theme.muted))
+                .child("数学公式"),
+        )
+        .child(
+            div()
+                .w_full()
+                .h(px(height))
+                .p(px(MERMAID_BODY_PADDING_PX))
+                .overflow_hidden()
+                .child(render_preview(
+                    status,
+                    source_content,
+                    theme,
+                    geometry,
+                    "数学公式",
+                    "Math Renderer",
+                )),
+        )
+        .into_any_element()
+}
+
 fn render_preview(
-    status: Option<MermaidRenderStatus>,
+    status: Option<DocumentRenderStatus>,
     source_content: AnyElement,
     theme: GuiTheme,
     geometry: Option<MermaidPreviewGeometry>,
+    display_name: &'static str,
+    extension_name: &'static str,
 ) -> AnyElement {
     match status {
-        Some(MermaidRenderStatus::Ready(image)) => {
+        Some(DocumentRenderStatus::Ready(image)) => {
             clickable_preview(image, geometry.expect("ready image has geometry"), 1.0)
         }
-        Some(MermaidRenderStatus::Rendering {
+        Some(DocumentRenderStatus::Rendering {
             fallback: Some(image),
         }) => clickable_preview(image, geometry.expect("fallback image has geometry"), 0.65),
-        Some(MermaidRenderStatus::Failed { message }) => div()
+        Some(DocumentRenderStatus::Failed { message }) => div()
             .w_full()
             .h_full()
             .flex()
@@ -145,15 +210,14 @@ fn render_preview(
                         theme.danger
                     }))
                     .child(if renderer_missing(&message) {
-                        "未安装 Mermaid 渲染扩展，请在扩展市场安装 Mermaid Renderer 后重试。"
-                            .to_owned()
+                        format!("未安装{display_name}渲染扩展，请在扩展市场安装 {extension_name} 后重试。")
                     } else {
                         format!("渲染失败：{}", concise_error(&message))
                     }),
             )
             .child(source_content)
             .into_any_element(),
-        Some(MermaidRenderStatus::Rendering { fallback: None }) | None => div()
+        Some(DocumentRenderStatus::Rendering { fallback: None }) | None => div()
             .w_full()
             .h_full()
             .flex()
@@ -163,7 +227,7 @@ fn render_preview(
                 div()
                     .text_size(px(11.0))
                     .text_color(rgb(theme.muted))
-                    .child("正在渲染 Mermaid…"),
+                    .child(format!("正在渲染{display_name}…")),
             )
             .child(source_content)
             .into_any_element(),
@@ -199,15 +263,14 @@ fn clickable_preview(
         .into_any_element()
 }
 
-fn preview_geometry_for_status(status: &MermaidRenderStatus) -> Option<MermaidPreviewGeometry> {
+fn preview_geometry_for_status(status: &DocumentRenderStatus) -> Option<MermaidPreviewGeometry> {
     match status {
-        MermaidRenderStatus::Ready(image)
-        | MermaidRenderStatus::Rendering {
+        DocumentRenderStatus::Ready(image)
+        | DocumentRenderStatus::Rendering {
             fallback: Some(image),
         } => Some(mermaid_preview_geometry(image)),
-        MermaidRenderStatus::Rendering { fallback: None } | MermaidRenderStatus::Failed { .. } => {
-            None
-        }
+        DocumentRenderStatus::Rendering { fallback: None }
+        | DocumentRenderStatus::Failed { .. } => None,
     }
 }
 
@@ -245,7 +308,9 @@ fn concise_error(message: &str) -> &str {
 }
 
 fn renderer_missing(message: &str) -> bool {
-    message.contains("未安装 Mermaid") || message.contains("没有扩展支持")
+    message.contains("未安装 Mermaid")
+        || message.contains("未安装数学公式")
+        || message.contains("没有扩展支持")
 }
 
 #[cfg(test)]
@@ -262,6 +327,7 @@ mod tests {
     fn missing_renderer_uses_install_prompt() {
         assert!(renderer_missing("未安装 Mermaid 文档渲染扩展"));
         assert!(renderer_missing("没有扩展支持该文档渲染器"));
+        assert!(renderer_missing("未安装数学公式渲染扩展"));
         assert!(!renderer_missing("parse failed"));
     }
 
