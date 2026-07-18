@@ -10,7 +10,7 @@ pub use api::{
     DocumentRenderError, DocumentRenderFuture, DocumentRenderRequest, DocumentRenderTheme,
     DocumentRendererProvider, SyntaxHighlightError, SyntaxHighlightLanguage,
     SyntaxHighlightPalette, SyntaxHighlightProvider, SyntaxHighlightRun, SyntaxHighlightStyle,
-    WorkspaceId,
+    ThemeProvider, WorkspaceId,
 };
 #[cfg(feature = "sqlite")]
 pub use api::{SqliteDurability, SqliteStorageOptions};
