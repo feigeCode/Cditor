@@ -61,6 +61,16 @@ fn block_math_imports_and_round_trips_as_an_editable_math_block() {
 }
 
 #[test]
+fn standalone_math_delimiters_import_as_math_blocks() {
+    for source in ["$$E = mc^2$$", "$E = mc^2$", r"\[E = mc^2\]"] {
+        let document = parse_markdown_document(source, MarkdownImportOptions::default());
+        assert_eq!(1, document.blocks.len(), "source={source}");
+        assert_eq!(RichBlockKind::Math, document.blocks[0].kind);
+        assert_eq!("E = mc^2", document.blocks[0].payload.plain_text());
+    }
+}
+
+#[test]
 fn block_shortcuts_match_editor2_markers() {
     assert_eq!(
         block_kind_shortcut("#"),

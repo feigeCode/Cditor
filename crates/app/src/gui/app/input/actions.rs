@@ -6,6 +6,7 @@ use crate::gui::app::input_trace::trace_input;
 use crate::gui::image_preview::close_active_preview_if_escape_enabled;
 use crate::gui::input::{AiPromptEditAction, CodeLanguageEditAction, GuiInputCommand};
 use crate::gui::platform::normalize_external_line_endings;
+use cditor_core::ids::BlockId;
 use cditor_runtime::DocumentRuntime;
 
 use super::keyboard::mermaid_preview_blocks_command;
@@ -375,16 +376,27 @@ impl CditorV2View {
         let Some(block_id) = runtime.focused_block_id() else {
             return false;
         };
-        !self.document_source_blocks.contains(&block_id)
-            && runtime
-                .block_payload_record(block_id)
-                .is_some_and(|payload| {
-                    matches!(
-                        payload.kind,
-                        cditor_core::rich_text::RichBlockKind::Mermaid
-                            | cditor_core::rich_text::RichBlockKind::Math
-                    )
-                })
+        self.document_renderer_is_preview(block_id)
+    }
+
+    pub(in crate::gui::app) fn document_renderer_is_preview(&self, block_id: BlockId) -> bool {
+        let Some(runtime) = self.ready_runtime_ref() else {
+            return false;
+        };
+        runtime
+            .block_payload_record(block_id)
+            .is_some_and(|payload| match &payload.kind {
+                cditor_core::rich_text::RichBlockKind::Mermaid
+                | cditor_core::rich_text::RichBlockKind::Math => {
+                    !self.document_source_blocks.contains(&block_id)
+                }
+                cditor_core::rich_text::RichBlockKind::Code { language }
+                    if crate::gui::block::mermaid::is_math_code_language(language.as_deref()) =>
+                {
+                    self.document_source_blocks.contains(&block_id)
+                }
+                _ => false,
+            })
     }
 }
 

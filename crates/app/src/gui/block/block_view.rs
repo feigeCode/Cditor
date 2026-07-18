@@ -171,6 +171,19 @@ fn render_kind_content(
     whiteboard_thumbnails: &WhiteboardThumbnailCache,
     cx: &mut App,
 ) -> AnyElement {
+    let math_code_language = match &block.kind {
+        RichBlockKind::Code { language }
+            if crate::gui::block::mermaid::is_math_code_language(language.as_deref()) =>
+        {
+            language.as_deref()
+        }
+        _ => None,
+    };
+    let show_document_source = if math_code_language.is_some() {
+        !mermaid_show_source
+    } else {
+        mermaid_show_source
+    };
     let content = render_block_content(
         block,
         theme,
@@ -182,8 +195,9 @@ fn render_kind_content(
         table_range_selection,
         suppress_document_text_input
             || code_language_edit.is_some()
-            || (matches!(block.kind, RichBlockKind::Mermaid | RichBlockKind::Math)
-                && !mermaid_show_source),
+            || ((matches!(block.kind, RichBlockKind::Mermaid | RichBlockKind::Math)
+                || math_code_language.is_some())
+                && !show_document_source),
         table_axis_selection,
         table_scroll_handle,
         code_highlights,
@@ -195,6 +209,24 @@ fn render_kind_content(
         RichBlockKind::Heading { level } => render_heading(level, content),
         RichBlockKind::Quote => content,
         RichBlockKind::Code { ref language } => {
+            if let Some(language) = math_code_language {
+                return render_math_block(
+                    block.block_id,
+                    match &block.payload {
+                        cditor_core::rich_text::BlockPayloadView::Loaded(payload) => {
+                            payload.content_version
+                        }
+                        _ => 0,
+                    },
+                    content,
+                    show_document_source,
+                    Some(language),
+                    document_renders,
+                    theme,
+                    view,
+                    cx,
+                );
+            }
             let language_edit = code_language_edit.filter(|edit| edit.block_id == block.block_id);
             render_code_block(
                 block.block_id,
@@ -225,7 +257,8 @@ fn render_kind_content(
                 _ => 0,
             },
             content,
-            mermaid_show_source,
+            show_document_source,
+            None,
             document_renders,
             theme,
             view,

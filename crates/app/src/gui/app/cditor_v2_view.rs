@@ -238,15 +238,7 @@ impl CditorV2View {
         let content_version = cache.content_version;
         let measured_height = cache.measured_height;
         self.text_layouts.insert(block_id, cache);
-        if self.ready_runtime_ref().is_some_and(|runtime| {
-            matches!(
-                runtime.block_kind(block_id),
-                Some(
-                    cditor_core::rich_text::RichBlockKind::Mermaid
-                        | cditor_core::rich_text::RichBlockKind::Math
-                )
-            )
-        }) {
+        if self.document_renderer_is_preview(block_id) {
             // Document renderer blocks own a stable preview/source box and report their rendered
             // media height separately. Source text shaping must not overwrite it.
             return false;

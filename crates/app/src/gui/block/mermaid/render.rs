@@ -129,11 +129,15 @@ pub(crate) fn render_math_block(
     content_version: u64,
     source_content: AnyElement,
     show_source: bool,
+    source_language: Option<&str>,
     cache: &DocumentRenderCache,
     theme: GuiTheme,
     view: Entity<CditorV2View>,
     cx: &mut App,
 ) -> AnyElement {
+    let title = source_language
+        .map(|language| format!("数学公式 · {}", language))
+        .unwrap_or_else(|| "数学公式 · LaTeX ($$)".to_owned());
     let status = cache.status(block_id);
     let geometry = (!show_source)
         .then(|| status.as_ref().and_then(preview_geometry_for_status))
@@ -177,7 +181,7 @@ pub(crate) fn render_math_block(
                 .px(px(8.0))
                 .text_size(px(11.0))
                 .text_color(rgb(theme.muted))
-                .child("数学公式 · LaTeX ($$)")
+                .child(title)
                 .child(
                     div()
                         .id(("math-source-toggle", block_id))

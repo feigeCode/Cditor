@@ -145,7 +145,14 @@ impl DocumentRenderCache {
         let visible = projection
             .blocks
             .iter()
-            .filter(|block| matches!(block.kind, RichBlockKind::Mermaid | RichBlockKind::Math))
+            .filter(|block| {
+                matches!(block.kind, RichBlockKind::Mermaid | RichBlockKind::Math)
+                    || matches!(
+                        &block.kind,
+                        RichBlockKind::Code { language }
+                            if super::is_math_code_language(language.as_deref())
+                    )
+            })
             .filter_map(|block| {
                 let BlockPayloadView::Loaded(payload) = &block.payload else {
                     return None;
@@ -156,7 +163,13 @@ impl DocumentRenderCache {
                     payload.content_version,
                     source_hash(&source),
                     source,
-                    if matches!(block.kind, RichBlockKind::Math) {
+                    if matches!(block.kind, RichBlockKind::Math)
+                        || matches!(
+                            &block.kind,
+                            RichBlockKind::Code { language }
+                                if super::is_math_code_language(language.as_deref())
+                        )
+                    {
                         "math"
                     } else {
                         "mermaid"

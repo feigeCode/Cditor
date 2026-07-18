@@ -615,6 +615,15 @@ impl MarkdownParser {
                 index = start;
             }
 
+            if let Some(source) = standalone_math_source(line) {
+                list_stack.clear();
+                document.push_root_block(
+                    self.rich_text_block(RichBlockKind::Math, vec![InlineSpan::plain(source)]),
+                );
+                index += 1;
+                continue;
+            }
+
             if is_table_candidate_line(line) {
                 let region_end = collect_table_candidate_region(&lines, index);
                 if region_end > index + 1
@@ -722,6 +731,11 @@ impl MarkdownParser {
 
     fn parse_math_block(&mut self, markdown: &str) -> Option<RichBlockRecord> {
         let lines = markdown.lines().collect::<Vec<_>>();
+        if lines.len() == 1 {
+            return standalone_math_source(lines[0]).map(|source| {
+                self.rich_text_block(RichBlockKind::Math, vec![InlineSpan::plain(source)])
+            });
+        }
         if lines.len() < 3 || lines.first()?.trim() != "$$" || lines.last()?.trim() != "$$" {
             return None;
         }
@@ -883,6 +897,25 @@ impl MarkdownParser {
 
         self.rich_text_block(RichBlockKind::Paragraph, parse_inline_markdown(trimmed))
     }
+}
+
+fn standalone_math_source(line: &str) -> Option<String> {
+    let trimmed = line.trim();
+    let source = trimmed
+        .strip_prefix("$$")
+        .and_then(|value| value.strip_suffix("$$"))
+        .or_else(|| {
+            trimmed
+                .strip_prefix("\\[")
+                .and_then(|value| value.strip_suffix("\\]"))
+        })
+        .or_else(|| {
+            trimmed
+                .strip_prefix('$')
+                .and_then(|value| value.strip_suffix('$'))
+        })?
+        .trim();
+    (!source.is_empty()).then(|| source.to_owned())
 }
 
 fn is_plain_paragraph_line(line: &str) -> bool {
