@@ -8,4 +8,4 @@ pub(super) const WHITEBOARD_THUMBNAIL_HEIGHT_PX: f32 = 472.0;
 
 pub(crate) use cache::WhiteboardThumbnailCache;
 pub(crate) use render::render_whiteboard_thumbnail;
-pub(crate) use style::whiteboard_style_fn;
+pub(crate) use style::{whiteboard_style_fn, whiteboard_style_provider_fn};

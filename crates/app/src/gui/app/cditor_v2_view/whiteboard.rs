@@ -3,9 +3,8 @@ use std::rc::Rc;
 use ding_board::{Scene, WhiteboardView};
 use gpui::{AppContext, Context};
 
-use crate::gui::GuiTheme;
 use crate::gui::app::cditor_v2_view::{CditorV2View, CditorViewState};
-use crate::gui::block::whiteboard_style_fn;
+use crate::gui::block::whiteboard_style_provider_fn;
 use crate::gui::overlay::WhiteboardEditorSession;
 use cditor_core::ids::BlockId;
 use cditor_core::rich_text::BlockPayload;
@@ -27,7 +26,7 @@ impl CditorV2View {
             return false;
         };
         let readonly = self.readonly;
-        let style = whiteboard_style_fn(GuiTheme::light());
+        let style = whiteboard_style_provider_fn(self.theme_provider.clone());
         let host = cx.entity().downgrade();
         let board = cx.new(|board_cx| {
             let scene = Scene::from_json(&scene_json);

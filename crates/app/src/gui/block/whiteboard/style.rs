@@ -3,10 +3,23 @@ use std::rc::Rc;
 use ding_board::{WhiteboardStyle, WhiteboardStyleFn};
 use gpui::{Hsla, rgb};
 
+use crate::api::ThemeProvider;
 use crate::gui::GuiTheme;
 
 pub(crate) fn whiteboard_style_fn(theme: GuiTheme) -> WhiteboardStyleFn {
     Rc::new(move || whiteboard_style(theme))
+}
+
+pub(crate) fn whiteboard_style_provider_fn(
+    provider: Option<std::sync::Arc<dyn ThemeProvider>>,
+) -> WhiteboardStyleFn {
+    Rc::new(move || {
+        whiteboard_style(
+            provider
+                .as_ref()
+                .map_or_else(GuiTheme::light, |provider| provider.theme()),
+        )
+    })
 }
 
 fn whiteboard_style(theme: GuiTheme) -> WhiteboardStyle {

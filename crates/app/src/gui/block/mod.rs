@@ -31,5 +31,5 @@ pub(crate) use table::{
     table_content_editor_origin, table_toolbar_editor_origin,
 };
 pub(crate) use whiteboard::{
-    WhiteboardThumbnailCache, render_whiteboard_thumbnail, whiteboard_style_fn,
+    WhiteboardThumbnailCache, render_whiteboard_thumbnail, whiteboard_style_provider_fn,
 };
