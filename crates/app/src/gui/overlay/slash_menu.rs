@@ -241,9 +241,9 @@ pub fn slash_menu_items() -> Vec<SlashMenuItem> {
         ),
         item(
             "<>",
-            "HTML",
-            "Embed an HTML snippet.",
-            &["html"],
+            "HTML 渲染块",
+            "编辑 HTML 源码并实时预览渲染结果。",
+            &["html", "渲染", "html block"],
             RichBlockKind::Html,
         ),
         item(
@@ -648,6 +648,11 @@ mod tests {
             items
                 .iter()
                 .any(|item| item.kind == RichBlockKind::Whiteboard)
+        );
+        assert!(
+            items
+                .iter()
+                .any(|item| { item.kind == RichBlockKind::Html && item.label == "HTML 渲染块" })
         );
         assert!(
             items

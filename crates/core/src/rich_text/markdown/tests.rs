@@ -46,11 +46,15 @@ fn raw_html_is_kept_as_a_renderable_html_block() {
 
     assert!(matches!(
         result.compatibility,
-        MarkdownCompatibility::SourceOnly(_)
+        MarkdownCompatibility::Editable
     ));
     assert_eq!(1, result.document.blocks.len());
     assert_eq!(RichBlockKind::Html, result.document.blocks[0].kind);
     assert_eq!(source, result.document.blocks[0].payload.plain_text());
+
+    let document = document_from_parsed(result.document);
+    let exported = export_document_blocks(&document, MarkdownExportMode::Strict);
+    assert_eq!(source, exported.markdown);
 }
 
 #[test]
@@ -80,6 +84,43 @@ fn markdown_table_cells_preserve_images_as_media() {
         panic!("expected reparsed table payload");
     };
     assert_eq!(reparsed_table.rows[1].cells[0].images, images);
+}
+
+#[test]
+fn markdown_table_cells_render_self_linked_relative_images() {
+    let source = "| Database |\n| --- |\n| [![Database](database.png)](database.png) |";
+    let result = parse_markdown_document_with_report(source, MarkdownImportOptions::default());
+    assert!(matches!(
+        result.compatibility,
+        MarkdownCompatibility::Editable
+    ));
+    let BlockPayload::Table(table) = &result.document.blocks[0].payload else {
+        panic!("expected table payload");
+    };
+    let cell = &table.rows[1].cells[0];
+    assert_eq!(1, cell.images.len());
+    assert_eq!("Database", cell.images[0].alt);
+    assert_eq!("database.png", cell.images[0].source);
+    assert!(cell.spans.iter().all(|span| span.text.trim().is_empty()));
+
+    let document = document_from_parsed(result.document);
+    let exported = export_document_blocks(&document, MarkdownExportMode::Strict);
+    assert!(exported.markdown.contains("![Database](<database.png>)"));
+    assert!(!exported.markdown.contains("[![Database]"));
+}
+
+#[test]
+fn linked_images_with_different_targets_remain_source_only() {
+    let source = "| Docs |\n| --- |\n| [![Docs](preview.png)](https://example.com/docs) |";
+    let result = parse_markdown_document_with_report(source, MarkdownImportOptions::default());
+    assert!(matches!(
+        result.compatibility,
+        MarkdownCompatibility::SourceOnly(_)
+    ));
+    let BlockPayload::Table(table) = &result.document.blocks[0].payload else {
+        panic!("expected table payload");
+    };
+    assert_eq!("preview.png", table.rows[1].cells[0].images[0].source);
 }
 
 #[test]
@@ -475,14 +516,13 @@ fn compatibility_report_distinguishes_normalization_and_source_only() {
     );
     assert!(matches!(
         normalized.compatibility,
-        MarkdownCompatibility::EditableWithNormalization(_)
+        MarkdownCompatibility::Editable
     ));
 
     for source in [
         "---\ntitle: Notes\n---\nbody",
         "[^1]: unsupported footnote",
         "[label]: https://example.com",
-        "<custom-tag>body</custom-tag>",
         "::: custom",
         "++underline++",
         "**`code`**",
@@ -495,4 +535,49 @@ fn compatibility_report_distinguishes_normalization_and_source_only() {
             "expected SourceOnly for {source:?}"
         );
     }
+
+    let html = parse_markdown_document_with_report(
+        "<custom-tag>body</custom-tag>",
+        MarkdownImportOptions::default(),
+    );
+    assert!(matches!(
+        html.compatibility,
+        MarkdownCompatibility::Editable
+    ));
+}
+
+#[test]
+fn compatibility_only_silences_informational_normalization() {
+    let info = MarkdownDiagnostic::source(
+        MarkdownDiagnosticSeverity::Info,
+        "markdown.source.bullet_normalized",
+        "Bullet markers are normalized to -",
+        0..1,
+    );
+    assert!(matches!(
+        MarkdownCompatibility::from_diagnostics(&[info]),
+        MarkdownCompatibility::Editable
+    ));
+
+    let warning = MarkdownDiagnostic::source(
+        MarkdownDiagnosticSeverity::Warning,
+        "markdown.bundle.preview_regenerated",
+        "A generated preview will be rewritten",
+        0..1,
+    );
+    assert!(matches!(
+        MarkdownCompatibility::from_diagnostics(&[warning]),
+        MarkdownCompatibility::EditableWithNormalization(_)
+    ));
+
+    let error = MarkdownDiagnostic::source(
+        MarkdownDiagnosticSeverity::Error,
+        "markdown.source.unsupported",
+        "The source cannot be round-tripped safely",
+        0..1,
+    );
+    assert!(matches!(
+        MarkdownCompatibility::from_diagnostics(&[error]),
+        MarkdownCompatibility::SourceOnly(_)
+    ));
 }

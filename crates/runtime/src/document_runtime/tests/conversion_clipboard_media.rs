@@ -21,6 +21,39 @@ fn convert_focused_block_kind_preserves_text_for_slash_menu() {
 }
 
 #[test]
+fn slash_menu_html_conversion_creates_an_editable_html_source_payload() {
+    let source = "<p>hello</p>";
+    let mut runtime =
+        runtime_with_kind_depths_and_text(vec![(RichBlockKind::Paragraph, 0, None, source)]);
+    runtime.focus_block_at_offset(1, source.len()).unwrap();
+
+    assert!(
+        runtime
+            .convert_focused_block_kind(RichBlockKind::Html)
+            .unwrap()
+    );
+    assert!(
+        runtime
+            .replace_text_in_focused_range(None, "\n<strong>world</strong>")
+            .unwrap()
+    );
+
+    let payload = runtime.block_payload_record(1).expect("html payload");
+    assert_eq!(payload.kind, RichBlockKind::Html);
+    assert!(matches!(
+        payload.payload,
+        BlockPayload::Html {
+            ref html,
+            sanitized: false,
+        } if html == "<p>hello</p>\n<strong>world</strong>"
+    ));
+    assert_eq!(
+        runtime.focused_text(),
+        Some("<p>hello</p>\n<strong>world</strong>")
+    );
+}
+
+#[test]
 fn convert_focused_block_kind_to_table_creates_default_3_by_3_grid() {
     let mut runtime =
         runtime_with_kind_depths_and_text(vec![(RichBlockKind::Paragraph, 0, None, "hello")]);

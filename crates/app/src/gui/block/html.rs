@@ -12,8 +12,69 @@ use markup5ever_rcdom::{Node, NodeData, RcDom};
 
 use crate::gui::GuiTheme;
 use crate::gui::image_loader::gpui_image_source;
+use crate::gui::platform::EDITOR_MONO_FONT_FAMILY;
 
 pub(crate) const HTML_PREVIEW_TEXT_SIZE_PX: f32 = 16.0;
+
+pub(crate) fn html_source_editor_visible(
+    focused: bool,
+    readonly: bool,
+    suppress_text_input: bool,
+) -> bool {
+    focused && !readonly && !suppress_text_input
+}
+
+/// Render the focused HTML block as a source editor followed by its live preview.
+///
+/// The source editor is supplied by the normal rich-text input path so caret,
+/// selection, IME, undo, and persistence remain identical to other plain-text
+/// blocks. This wrapper only owns the visual split between source and preview.
+pub(crate) fn render_html_source_and_preview(
+    block_id: u64,
+    source_editor: AnyElement,
+    html: &str,
+    theme: GuiTheme,
+    media_base_path: Option<&Path>,
+    cx: &mut App,
+) -> AnyElement {
+    div()
+        .id(("html-render-block", block_id))
+        .w_full()
+        .flex()
+        .flex_col()
+        .rounded(px(5.0))
+        .border_1()
+        .border_color(rgb(theme.border))
+        .overflow_hidden()
+        .child(
+            div()
+                .w_full()
+                .bg(rgb(theme.code_background))
+                .font_family(EDITOR_MONO_FONT_FAMILY)
+                .text_size(px(13.0))
+                .text_color(rgb(theme.code_text))
+                .px(px(10.0))
+                .py(px(8.0))
+                .child(source_editor),
+        )
+        .child(
+            div()
+                .w_full()
+                .border_t_1()
+                .border_color(rgb(theme.border))
+                .bg(rgb(theme.surface))
+                .px(px(10.0))
+                .py(px(10.0))
+                .child(render_html_block(
+                    block_id,
+                    html,
+                    theme,
+                    media_base_path,
+                    cx,
+                )),
+        )
+        .into_any_element()
+}
 
 pub(crate) fn render_html_block(
     block_id: u64,
@@ -242,5 +303,13 @@ mod tests {
         assert_eq!(html_image_requested_width("120"), Some(120.0));
         assert_eq!(html_image_requested_width("8"), Some(16.0));
         assert_eq!(html_image_requested_width("auto"), None);
+    }
+
+    #[test]
+    fn html_source_editor_only_appears_for_an_editable_focused_block() {
+        assert!(html_source_editor_visible(true, false, false));
+        assert!(!html_source_editor_visible(false, false, false));
+        assert!(!html_source_editor_visible(true, true, false));
+        assert!(!html_source_editor_visible(true, false, true));
     }
 }

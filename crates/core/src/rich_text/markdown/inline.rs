@@ -173,6 +173,22 @@ fn find_atomic_spans(text: &str) -> Vec<AtomicSpan> {
             }
         }
 
+        // Linked image: [![alt](src)](href). Treat the whole construct as one
+        // image atom so table cells render media instead of a truncated link.
+        if rest.starts_with("[![") {
+            if let Some((alt, source, _link, consumed)) = parse_linked_markdown_image(rest) {
+                atomics.push(AtomicSpan {
+                    start: cursor,
+                    end: cursor + consumed,
+                    kind: AtomicKind::Image,
+                    label: alt,
+                    href: source,
+                });
+                cursor += consumed;
+                continue;
+            }
+        }
+
         // Image: ![alt](src) — retained as source in normal rich text and
         // projected as media by table cells.
         if rest.starts_with("![") {
@@ -572,21 +588,28 @@ pub(super) fn parse_block_image(text: &str) -> Option<(String, String)> {
     (consumed == text.len()).then(|| (unescape_markdown_text(alt), unescape_markdown_text(source)))
 }
 
+pub(super) fn parse_linked_markdown_image(text: &str) -> Option<(String, String, String, usize)> {
+    let inner = text.strip_prefix('[')?;
+    let (alt, source, image_consumed) = parse_markdown_image_parts(inner)?;
+    let after_image = inner.get(image_consumed..)?.strip_prefix("](")?;
+    let (link, link_consumed) = parse_markdown_destination(after_image)?;
+    Some((
+        unescape_markdown_text(alt),
+        unescape_markdown_text(source),
+        unescape_markdown_text(link),
+        1 + image_consumed + 2 + link_consumed,
+    ))
+}
+
 fn parse_markdown_image_parts(text: &str) -> Option<(&str, &str, usize)> {
     let inner = text.strip_prefix("![")?;
     let label_end = inner.find("](")?;
     let after_label = &inner[label_end + 2..];
-    let (source, href_end) = if let Some(angle) = after_label.strip_prefix('<') {
-        let end = angle.find(">)")?;
-        (&angle[..end], end + 2)
-    } else {
-        let end = after_label.find(')')?;
-        (&after_label[..end], end)
-    };
+    let (source, destination_consumed) = parse_markdown_destination(after_label)?;
     Some((
         &inner[..label_end],
         source,
-        2 + label_end + 2 + href_end + 1,
+        2 + label_end + 2 + destination_consumed,
     ))
 }
 
@@ -597,18 +620,22 @@ fn parse_markdown_link(text: &str) -> Option<(&str, &str, usize)> {
         return None;
     }
     let after_label = &inner[label_end + 2..];
-    let (href, href_end) = if let Some(angle) = after_label.strip_prefix('<') {
-        let end = angle.find(">)")?;
-        (&angle[..end], end + 2)
-    } else {
-        let end = after_label.find(')')?;
-        (&after_label[..end], end)
-    };
-    if href_end == 0 {
+    let (href, destination_consumed) = parse_markdown_destination(after_label)?;
+    if destination_consumed <= 1 {
         return None;
     }
     let label = &inner[..label_end];
-    Some((label, href, 1 + label_end + 2 + href_end + 1))
+    Some((label, href, 1 + label_end + 2 + destination_consumed))
+}
+
+fn parse_markdown_destination(text: &str) -> Option<(&str, usize)> {
+    if let Some(angle) = text.strip_prefix('<') {
+        let end = angle.find(">)")?;
+        Some((&angle[..end], end + 3))
+    } else {
+        let end = text.find(')')?;
+        Some((&text[..end], end + 1))
+    }
 }
 
 fn normalize_code_span_content(content: &str) -> String {

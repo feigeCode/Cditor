@@ -71,6 +71,14 @@ impl MarkdownCompatibility {
             .any(|diagnostic| diagnostic.severity == MarkdownDiagnosticSeverity::Error)
         {
             Self::SourceOnly(diagnostics.to_vec())
+        } else if diagnostics
+            .iter()
+            .all(|diagnostic| diagnostic.severity == MarkdownDiagnosticSeverity::Info)
+        {
+            // Informational diagnostics describe syntax spelling changes such as
+            // `2.` -> `1.` or `_emphasis_` -> `*emphasis*`. These are semantic
+            // round-trips and should not interrupt normal WYSIWYG editing.
+            Self::Editable
         } else {
             Self::EditableWithNormalization(diagnostics.to_vec())
         }

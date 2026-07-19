@@ -4,7 +4,7 @@ use gpui::{
 };
 
 use crate::gui::app::CditorV2View;
-use crate::gui::block::html::render_html_block;
+use crate::gui::block::html::{html_source_editor_visible, render_html_block};
 use crate::gui::block::media::render_image_block;
 use crate::gui::block::placeholder::{
     render_empty_ai_hint, render_error, render_loading, render_placeholder,
@@ -83,7 +83,9 @@ pub(crate) fn render_block_content(
                     cx,
                 );
             }
-            if let BlockPayload::Html { html, .. } = &payload.payload {
+            if let BlockPayload::Html { html, .. } = &payload.payload
+                && !html_source_editor_visible(block.focused, readonly, suppress_text_input)
+            {
                 return render_html_block(block.block_id, html, theme, media_base_path, cx);
             }
             if matches!(payload.payload, BlockPayload::Whiteboard(_)) {

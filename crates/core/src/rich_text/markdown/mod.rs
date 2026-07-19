@@ -30,7 +30,7 @@ use block::{
 use export::block_to_plain_markdown;
 use inline::{
     parse_block_image, parse_inline_markdown, parse_inline_markdown_extended,
-    parse_inline_markdown_with_images,
+    parse_inline_markdown_with_images, parse_linked_markdown_image,
 };
 use table::{collect_table_candidate_region, is_table_candidate_line, parse_table_region};
 
@@ -314,6 +314,9 @@ fn analyze_markdown_compatibility(markdown: &str) -> Vec<MarkdownDiagnostic> {
             while index < lines.len() && lines[index].1.trim_start().starts_with('|') {
                 index += 1;
             }
+            for (table_offset, table_line) in &lines[start..index] {
+                detect_linked_images(table_line.trim_start(), *table_offset, &mut diagnostics);
+            }
             if index > start + 1 {
                 let table_lines = lines[start..index]
                     .iter()
@@ -332,6 +335,8 @@ fn analyze_markdown_compatibility(markdown: &str) -> Vec<MarkdownDiagnostic> {
             continue;
         }
 
+        detect_linked_images(trimmed, offset, &mut diagnostics);
+
         if trimmed.starts_with("[^") && trimmed.contains("]:") {
             diagnostics.push(MarkdownDiagnostic::source(
                 MarkdownDiagnosticSeverity::Error,
@@ -344,13 +349,6 @@ fn analyze_markdown_compatibility(markdown: &str) -> Vec<MarkdownDiagnostic> {
                 MarkdownDiagnosticSeverity::Error,
                 "markdown.source.reference_link_unsupported",
                 "Reference-style links are not supported by the editable Markdown parser",
-                offset..offset + line.len(),
-            ));
-        } else if looks_like_raw_html(trimmed) {
-            diagnostics.push(MarkdownDiagnostic::source(
-                MarkdownDiagnosticSeverity::Error,
-                "markdown.source.raw_html_unsupported",
-                "Raw HTML is SourceOnly until its original source can be projected without fallback",
                 offset..offset + line.len(),
             ));
         } else if trimmed.starts_with("$$") {
@@ -415,6 +413,38 @@ fn analyze_markdown_compatibility(markdown: &str) -> Vec<MarkdownDiagnostic> {
         ));
     }
     diagnostics
+}
+
+fn detect_linked_images(line: &str, line_offset: usize, diagnostics: &mut Vec<MarkdownDiagnostic>) {
+    let mut cursor = 0usize;
+    while let Some(relative_start) = line[cursor..].find("[![") {
+        let start = cursor + relative_start;
+        let Some((_alt, source, link, consumed)) = parse_linked_markdown_image(&line[start..])
+        else {
+            cursor = start + 3;
+            continue;
+        };
+        let (severity, code, message) = if source == link {
+            (
+                MarkdownDiagnosticSeverity::Info,
+                "markdown.source.self_linked_image_normalized",
+                "An image linked to itself is normalized to a plain Markdown image",
+            )
+        } else {
+            (
+                MarkdownDiagnosticSeverity::Error,
+                "markdown.source.linked_image_unsupported",
+                "Images linked to a different destination are SourceOnly until image links can be preserved",
+            )
+        };
+        diagnostics.push(MarkdownDiagnostic::source(
+            severity,
+            code,
+            message,
+            line_offset + start..line_offset + start + consumed,
+        ));
+        cursor = start + consumed;
+    }
 }
 
 fn analyze_parsed_document_compatibility(

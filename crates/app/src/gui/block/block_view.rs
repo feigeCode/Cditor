@@ -9,6 +9,7 @@ use crate::gui::block::block_content::render_block_content;
 use crate::gui::block::block_shell::{BlockActionState, block_shell};
 use crate::gui::block::code::{CodeHighlightContext, render_code_block};
 use crate::gui::block::heading::render_heading;
+use crate::gui::block::html::{html_source_editor_visible, render_html_source_and_preview};
 use crate::gui::block::paragraph::render_paragraph;
 use crate::gui::block::table::{
     TableAxisSelection, TableCellRangeSelection, TableReorderPreview, TableResizePreview,
@@ -287,6 +288,33 @@ fn render_kind_content(
             view,
             cx,
         ),
+        RichBlockKind::Html => {
+            if html_source_editor_visible(block.focused, readonly, suppress_document_text_input) {
+                let Some(html) = (match &block.payload {
+                    cditor_core::rich_text::BlockPayloadView::Loaded(payload) => {
+                        match &payload.payload {
+                            cditor_core::rich_text::BlockPayload::Html { html, .. } => {
+                                Some(html.as_str())
+                            }
+                            _ => None,
+                        }
+                    }
+                    _ => None,
+                }) else {
+                    return content;
+                };
+                render_html_source_and_preview(
+                    block.block_id,
+                    content,
+                    html,
+                    theme,
+                    media_base_path,
+                    cx,
+                )
+            } else {
+                content
+            }
+        }
         RichBlockKind::RawMarkdown => div()
             .w_full()
             .rounded(px(3.0))
