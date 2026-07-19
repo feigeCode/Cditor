@@ -401,31 +401,43 @@ fn render_native_html_image(config: HtmlImageRender<'_>, fallback_width: f32) ->
     let fallback_source = config.source.to_owned();
     let fallback_alt = config.alt.to_owned();
     let theme = config.theme;
-    let loading = ImagePlaceholder::new(
-        fallback_source.clone(),
-        theme,
-        ImagePlaceholderState::Loading,
-    )
-    .alt(fallback_alt.clone())
-    .height(HTML_IMAGE_PLACEHOLDER_HEIGHT_PX);
+    let loading_source = fallback_source.clone();
+    let loading_alt = fallback_alt.clone();
     let mut image = img(gpui_image_source(config.source, config.media_base_path))
         .max_w(gpui::relative(1.0))
         .object_fit(gpui::ObjectFit::Contain)
-        .with_loading(move || loading.clone().into_any_element())
+        .with_loading(move || {
+            div()
+                .w(px(fallback_width))
+                .max_w(gpui::relative(1.0))
+                .child(
+                    ImagePlaceholder::new(
+                        loading_source.clone(),
+                        theme,
+                        ImagePlaceholderState::Loading,
+                    )
+                    .alt(loading_alt.clone())
+                    .height(HTML_IMAGE_PLACEHOLDER_HEIGHT_PX),
+                )
+                .into_any_element()
+        })
         .with_fallback(move || {
-            ImagePlaceholder::new(
-                fallback_source.clone(),
-                theme,
-                ImagePlaceholderState::Failed,
-            )
-            .alt(fallback_alt.clone())
-            .height(HTML_IMAGE_PLACEHOLDER_HEIGHT_PX)
-            .into_any_element()
+            div()
+                .w(px(fallback_width))
+                .max_w(gpui::relative(1.0))
+                .child(
+                    ImagePlaceholder::new(
+                        fallback_source.clone(),
+                        theme,
+                        ImagePlaceholderState::Failed,
+                    )
+                    .alt(fallback_alt.clone())
+                    .height(HTML_IMAGE_PLACEHOLDER_HEIGHT_PX),
+                )
+                .into_any_element()
         });
     if let Some(width) = config.requested_width {
         image = image.w(px(width));
-    } else {
-        image = image.w(px(fallback_width));
     }
     image.into_any_element()
 }

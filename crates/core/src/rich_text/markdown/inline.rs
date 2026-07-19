@@ -189,6 +189,23 @@ fn find_atomic_spans(text: &str) -> Vec<AtomicSpan> {
             }
         }
 
+        // Older best-effort exports escaped the nested image delimiters and
+        // expanded the outer destination into a rendered Markdown link. Keep
+        // those documents visually recoverable without rewriting their source.
+        if rest.starts_with("[!\\[") {
+            if let Some((alt, source, consumed)) = parse_export_escaped_linked_image(rest) {
+                atomics.push(AtomicSpan {
+                    start: cursor,
+                    end: cursor + consumed,
+                    kind: AtomicKind::Image,
+                    label: alt,
+                    href: source,
+                });
+                cursor += consumed;
+                continue;
+            }
+        }
+
         // Image: ![alt](src) — retained as source in normal rich text and
         // projected as media by table cells.
         if rest.starts_with("![") {
@@ -601,6 +618,30 @@ pub(super) fn parse_linked_markdown_image(text: &str) -> Option<(String, String,
     ))
 }
 
+fn parse_export_escaped_linked_image(text: &str) -> Option<(String, String, usize)> {
+    let inner = text.strip_prefix('[')?;
+    let (alt, source, image_consumed) = parse_export_escaped_image_parts(inner)?;
+    let outer_destination = inner.get(image_consumed..)?.strip_prefix("\\]\\(")?;
+    let outer_end = outer_destination.find("\\)")?;
+    Some((
+        unescape_markdown_text(alt),
+        unescape_markdown_text(source),
+        1 + image_consumed + 4 + outer_end + 2,
+    ))
+}
+
+fn parse_export_escaped_image_parts(text: &str) -> Option<(&str, &str, usize)> {
+    let inner = text.strip_prefix("!\\[")?;
+    let label_end = inner.find("](")?;
+    let after_label = &inner[label_end + 2..];
+    let (source, destination_consumed) = parse_markdown_destination(after_label)?;
+    Some((
+        &inner[..label_end],
+        source,
+        3 + label_end + 2 + destination_consumed,
+    ))
+}
+
 fn parse_markdown_image_parts(text: &str) -> Option<(&str, &str, usize)> {
     let inner = text.strip_prefix("![")?;
     let label_end = inner.find("](")?;
@@ -806,6 +847,34 @@ mod tests {
             &fragments[1],
             InlineMediaFragment::Image(image)
                 if image.alt == "Stars" && image.source == "https://example.com/stars.svg"
+        ));
+    }
+
+    #[test]
+    fn inline_media_fragments_render_images_linked_to_other_destinations() {
+        let fragments = parse_inline_media_fragments(
+            "Legacy · [![Stars](https://img.shields.io/stars)](https://example.com)",
+        );
+
+        assert!(matches!(fragments[0], InlineMediaFragment::Text(_)));
+        assert!(matches!(
+            &fragments[1],
+            InlineMediaFragment::Image(image)
+                if image.alt == "Stars" && image.source == "https://img.shields.io/stars"
+        ));
+    }
+
+    #[test]
+    fn inline_media_fragments_recover_escaped_linked_images_from_old_exports() {
+        let fragments = parse_inline_media_fragments(
+            r"Legacy · [!\[Stars](<https://img.shields.io/stars>)\]\([https://example.com](<https://example.com>)\)",
+        );
+
+        assert!(matches!(fragments[0], InlineMediaFragment::Text(_)));
+        assert!(matches!(
+            &fragments[1],
+            InlineMediaFragment::Image(image)
+                if image.alt == "Stars" && image.source == "https://img.shields.io/stars"
         ));
     }
 

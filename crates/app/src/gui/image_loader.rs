@@ -274,9 +274,32 @@ pub fn resolve_render_image_source(src: &str, base_path: Option<&Path>) -> Strin
     if path.is_absolute() {
         return path.to_string_lossy().into_owned();
     }
-    base_path
-        .map(|base| base.join(&path).to_string_lossy().into_owned())
-        .unwrap_or_else(|| path.to_string_lossy().into_owned())
+    resolve_relative_image_path(&path, base_path, std::env::current_dir().ok().as_deref())
+        .to_string_lossy()
+        .into_owned()
+}
+
+fn resolve_relative_image_path(
+    path: &Path,
+    base_path: Option<&Path>,
+    working_directory: Option<&Path>,
+) -> PathBuf {
+    if let Some(base_path) = base_path {
+        let document_relative = base_path.join(path);
+        if document_relative.exists() {
+            return document_relative;
+        }
+        if let Some(working_directory) = working_directory {
+            let working_relative = working_directory.join(path);
+            if working_relative.exists() {
+                return working_relative;
+            }
+        }
+        return document_relative;
+    }
+    working_directory
+        .map(|working_directory| working_directory.join(path))
+        .unwrap_or_else(|| path.to_path_buf())
 }
 
 pub fn gpui_image_source(src: &str, base_path: Option<&Path>) -> ImageSource {
@@ -514,6 +537,45 @@ mod tests {
                 Some(Path::new("/tmp/project"))
             ),
             "https://example.com/badge.svg"
+        );
+    }
+
+    #[test]
+    fn missing_document_asset_falls_back_to_the_application_working_directory() {
+        let temp = tempfile::tempdir().unwrap();
+        let document_directory = temp.path().join("notes");
+        let working_directory = temp.path().join("project");
+        std::fs::create_dir_all(&document_directory).unwrap();
+        std::fs::create_dir_all(working_directory.join("resources")).unwrap();
+        std::fs::write(working_directory.join("resources/icon.png"), b"png").unwrap();
+
+        assert_eq!(
+            resolve_relative_image_path(
+                Path::new("resources/icon.png"),
+                Some(&document_directory),
+                Some(&working_directory),
+            ),
+            working_directory.join("resources/icon.png")
+        );
+    }
+
+    #[test]
+    fn document_relative_assets_take_priority_over_working_directory_assets() {
+        let temp = tempfile::tempdir().unwrap();
+        let document_directory = temp.path().join("notes");
+        let working_directory = temp.path().join("project");
+        std::fs::create_dir_all(document_directory.join("resources")).unwrap();
+        std::fs::create_dir_all(working_directory.join("resources")).unwrap();
+        std::fs::write(document_directory.join("resources/icon.png"), b"note").unwrap();
+        std::fs::write(working_directory.join("resources/icon.png"), b"project").unwrap();
+
+        assert_eq!(
+            resolve_relative_image_path(
+                Path::new("resources/icon.png"),
+                Some(&document_directory),
+                Some(&working_directory),
+            ),
+            document_directory.join("resources/icon.png")
         );
     }
 

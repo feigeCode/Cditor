@@ -223,12 +223,23 @@ fn render_inline_media_fragments(
                     .height(INLINE_IMAGE_HEIGHT_PX)
                     .compact();
                     return img(gpui_image_source(&image.source, media_base_path))
-                        .w(px(INLINE_IMAGE_PLACEHOLDER_WIDTH_PX))
                         .h(px(INLINE_IMAGE_HEIGHT_PX))
                         .max_w(px(480.0))
                         .object_fit(ObjectFit::Contain)
-                        .with_loading(move || loading.clone().into_any_element())
-                        .with_fallback(move || failed.clone().into_any_element())
+                        .with_loading(move || {
+                            div()
+                                .w(px(INLINE_IMAGE_PLACEHOLDER_WIDTH_PX))
+                                .h(px(INLINE_IMAGE_HEIGHT_PX))
+                                .child(loading.clone())
+                                .into_any_element()
+                        })
+                        .with_fallback(move || {
+                            div()
+                                .w(px(INLINE_IMAGE_PLACEHOLDER_WIDTH_PX))
+                                .h(px(INLINE_IMAGE_HEIGHT_PX))
+                                .child(failed.clone())
+                                .into_any_element()
+                        })
                         .into_any_element();
                 }
                 match load_render_image_state_from_base(&image.source, media_base_path, cx) {
