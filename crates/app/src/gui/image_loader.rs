@@ -297,6 +297,34 @@ pub fn is_svg_image_source(src: &str) -> bool {
         .is_some_and(|path| path.to_ascii_lowercase().ends_with(".svg"))
 }
 
+/// GPUI can decode remote images from their response content, including SVG
+/// endpoints such as shields.io that do not expose a `.svg` suffix. Keep
+/// explicit raster files on the decoded-image path so their intrinsic sizing
+/// and resize behavior remain available.
+pub fn should_use_native_image_source(src: &str) -> bool {
+    let source = src.trim();
+    if source.starts_with("data:") || is_svg_image_source(source) {
+        return true;
+    }
+    if !(source.starts_with("http://") || source.starts_with("https://")) {
+        return false;
+    }
+    let path = source
+        .split(['?', '#'])
+        .next()
+        .unwrap_or(source)
+        .rsplit('/')
+        .next()
+        .unwrap_or_default();
+    let Some(extension) = path.rsplit_once('.').map(|(_, extension)| extension) else {
+        return true;
+    };
+    !matches!(
+        extension.to_ascii_lowercase().as_str(),
+        "png" | "jpg" | "jpeg" | "gif" | "webp" | "bmp" | "ico" | "tif" | "tiff"
+    )
+}
+
 fn fetch_image_bytes(src: &str) -> Option<Vec<u8>> {
     if src.starts_with("http://") || src.starts_with("https://") {
         fetch_remote_image_bytes(src)
@@ -487,6 +515,20 @@ mod tests {
             ),
             "https://example.com/badge.svg"
         );
+    }
+
+    #[test]
+    fn extensionless_remote_images_use_gpui_content_decoding() {
+        assert!(should_use_native_image_source(
+            "https://img.shields.io/badge/license-Apache--2.0-blue?style=flat"
+        ));
+        assert!(should_use_native_image_source(
+            "https://example.com/icon.svg"
+        ));
+        assert!(!should_use_native_image_source(
+            "https://example.com/icon.png"
+        ));
+        assert!(!should_use_native_image_source("resources/icon.png"));
     }
 
     #[test]

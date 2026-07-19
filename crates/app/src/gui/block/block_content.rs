@@ -19,7 +19,7 @@ use crate::gui::block::{
 use crate::gui::document::DEFAULT_DOCUMENT_CONTENT_WIDTH_PX;
 use crate::gui::image_loader::{
     ImagePlaceholder, ImagePlaceholderState, RasterImageElement, RenderImageLoadState,
-    gpui_image_source, is_svg_image_source, load_render_image_state_from_base,
+    gpui_image_source, load_render_image_state_from_base, should_use_native_image_source,
 };
 use crate::gui::text::{RichTextElement, RichTextLayoutInput};
 use crate::gui::{GuiTheme, rich_text::render_payload_text};
@@ -205,7 +205,7 @@ fn render_inline_media_fragments(
                 crate::gui::rich_text::render_inline_spans(&spans, theme)
             }
             InlineMediaFragment::Image(image) => {
-                if is_svg_image_source(&image.source) {
+                if should_use_native_image_source(&image.source) {
                     let loading = ImagePlaceholder::new(
                         image.source.clone(),
                         theme,

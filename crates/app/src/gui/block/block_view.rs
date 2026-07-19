@@ -1,6 +1,6 @@
 use gpui::{
-    AnyElement, App, Entity, FocusHandle, IntoElement, ParentElement, ScrollHandle, Styled, div,
-    px, rgb,
+    AnyElement, App, Entity, FocusHandle, IntoElement, ParentElement, ScrollHandle, Styled, canvas,
+    div, px, rgb,
 };
 
 use crate::gui::GuiTheme;
@@ -10,6 +10,7 @@ use crate::gui::block::block_shell::{BlockActionState, block_shell};
 use crate::gui::block::code::{CodeHighlightContext, render_code_block};
 use crate::gui::block::heading::render_heading;
 use crate::gui::block::html::{html_source_editor_visible, render_html_source_and_preview};
+use crate::gui::block::media::schedule_rendered_media_height_report;
 use crate::gui::block::paragraph::render_paragraph;
 use crate::gui::block::table::{
     TableAxisSelection, TableCellRangeSelection, TableReorderPreview, TableResizePreview,
@@ -23,6 +24,7 @@ use crate::gui::input::{
     hover_block_from_mouse, toggle_block_fold_from_mouse, toggle_todo_from_mouse,
 };
 use crate::gui::platform::EDITOR_MONO_FONT_FAMILY;
+use cditor_core::layout::COMPLEX_BLOCK_SHELL_CHROME_HEIGHT_PX;
 use cditor_core::rich_text::RichBlockKind;
 use cditor_runtime::ViewBlockSnapshot;
 
@@ -304,7 +306,13 @@ fn render_kind_content(
             cx,
         ),
         RichBlockKind::Html => {
-            if html_source_editor_visible(
+            let content_version = match &block.payload {
+                cditor_core::rich_text::BlockPayloadView::Loaded(payload) => {
+                    payload.content_version
+                }
+                _ => 0,
+            };
+            let html_content = if html_source_editor_visible(
                 show_document_source,
                 readonly,
                 suppress_document_text_input,
@@ -329,12 +337,13 @@ fn render_kind_content(
                     theme,
                     media_base_path,
                     html_scroll_handle.unwrap_or_default(),
-                    view,
+                    view.clone(),
                     cx,
                 )
             } else {
                 content
-            }
+            };
+            render_html_height_reporter(html_content, block.block_id, content_version, view)
         }
         RichBlockKind::RawMarkdown => div()
             .w_full()
@@ -352,6 +361,40 @@ fn render_kind_content(
             .into_any_element(),
         _ => render_paragraph(content),
     }
+}
+
+fn render_html_height_reporter(
+    content: AnyElement,
+    block_id: u64,
+    content_version: u64,
+    view: Entity<CditorV2View>,
+) -> AnyElement {
+    div()
+        .relative()
+        .w_full()
+        .child(content)
+        .child(
+            canvas(
+                move |bounds, _window, cx| {
+                    let measured_height = html_block_measured_height(f64::from(bounds.size.height));
+                    schedule_rendered_media_height_report(
+                        view,
+                        block_id,
+                        content_version,
+                        measured_height,
+                        cx,
+                    );
+                },
+                |_, _, _, _| {},
+            )
+            .absolute()
+            .size_full(),
+        )
+        .into_any_element()
+}
+
+fn html_block_measured_height(content_height: f64) -> f64 {
+    content_height.max(0.0) + COMPLEX_BLOCK_SHELL_CHROME_HEIGHT_PX
 }
 
 #[cfg(test)]
@@ -372,5 +415,17 @@ mod tests {
             block.kind,
             cditor_core::rich_text::RichBlockKind::Heading { .. }
         ));
+    }
+
+    #[test]
+    fn html_height_report_includes_block_shell_chrome() {
+        assert_eq!(
+            html_block_measured_height(640.0),
+            640.0 + COMPLEX_BLOCK_SHELL_CHROME_HEIGHT_PX
+        );
+        assert_eq!(
+            html_block_measured_height(-1.0),
+            COMPLEX_BLOCK_SHELL_CHROME_HEIGHT_PX
+        );
     }
 }

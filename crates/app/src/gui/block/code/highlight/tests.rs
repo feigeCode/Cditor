@@ -152,9 +152,10 @@ fn visible_html_blocks_request_html_highlighting() {
     let projection = runtime.projection_for_window();
 
     assert_eq!(
-        language::visible_code_blocks(&projection),
+        language::visible_code_blocks(&projection, Some(1)),
         vec![(1, 3, html, "html".to_owned())]
     );
+    assert!(language::visible_code_blocks(&projection, None).is_empty());
 }
 
 #[test]

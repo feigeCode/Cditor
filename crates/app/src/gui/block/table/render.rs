@@ -12,6 +12,7 @@ use crate::gui::app::CditorV2View;
 use crate::gui::image_loader::{
     ImagePlaceholder, ImagePlaceholderState, RasterImageElement, RenderImageLoadState,
     gpui_image_source, is_svg_image_source, load_render_image_state_from_base,
+    should_use_native_image_source,
 };
 use cditor_core::ids::BlockId;
 use cditor_core::layout::TABLE_HORIZONTAL_SCROLLBAR_CHROME_HEIGHT_PX;
@@ -218,7 +219,7 @@ fn render_table_cell_image(
     cx: &mut App,
 ) -> AnyElement {
     let preview_height = table_cell_image_preview_height_px(&image.source);
-    if is_svg_image_source(&image.source) {
+    if should_use_native_image_source(&image.source) {
         let loading =
             ImagePlaceholder::new(image.source.clone(), theme, ImagePlaceholderState::Loading)
                 .alt(image.alt.clone())

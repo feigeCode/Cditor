@@ -13,7 +13,7 @@ use markup5ever_rcdom::{Node, NodeData, RcDom};
 use crate::gui::GuiTheme;
 use crate::gui::image_loader::{
     ImagePlaceholder, ImagePlaceholderState, RenderImageLoadState, gpui_image_source,
-    is_svg_image_source, load_render_image_state_from_base,
+    load_render_image_state_from_base, should_use_native_image_source,
 };
 use crate::gui::platform::EDITOR_MONO_FONT_FAMILY;
 
@@ -362,7 +362,7 @@ fn render_html_image(config: HtmlImageRender<'_>, cx: &mut App) -> AnyElement {
     let fallback_width = config
         .requested_width
         .unwrap_or(HTML_IMAGE_FALLBACK_WIDTH_PX);
-    if is_svg_image_source(config.source) || config.source.starts_with("data:") {
+    if should_use_native_image_source(config.source) {
         return render_native_html_image(config, fallback_width);
     }
     match load_render_image_state_from_base(config.source, config.media_base_path, cx) {

@@ -343,6 +343,7 @@ impl Render for CditorV2View {
                 }
                 self.code_highlights.sync_visible_window(
                     &projection,
+                    self.html_source_block_id,
                     self.code_highlight_theme,
                     cx,
                 );

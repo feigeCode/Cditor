@@ -202,6 +202,7 @@ impl CodeHighlightCache {
     pub(crate) fn sync_visible_window(
         &mut self,
         projection: &EditorViewProjection,
+        html_source_block_id: Option<BlockId>,
         selected_theme: &'static str,
         cx: &mut Context<CditorV2View>,
     ) {
@@ -213,7 +214,7 @@ impl CodeHighlightCache {
         }
         self.sync_tick = self.sync_tick.wrapping_add(1);
         let tick = self.sync_tick;
-        let visible = visible_code_blocks(projection);
+        let visible = visible_code_blocks(projection, html_source_block_id);
         let visible_ids = visible.iter().map(|item| item.0).collect::<HashSet<_>>();
         let mut hits = 0usize;
         let mut misses = 0usize;

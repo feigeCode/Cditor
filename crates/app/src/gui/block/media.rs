@@ -12,7 +12,7 @@ use crate::gui::GuiTheme;
 use crate::gui::app::CditorV2View;
 use crate::gui::image_loader::{
     ImagePlaceholder, ImagePlaceholderState, RasterImageElement, RenderImageLoadState,
-    gpui_image_source, is_svg_image_source, load_render_image_state_from_base,
+    gpui_image_source, load_render_image_state_from_base, should_use_native_image_source,
 };
 use crate::gui::image_preview::open_image_preview;
 use cditor_core::ids::BlockId;
@@ -41,7 +41,7 @@ pub fn render_image_block(
     media_base_path: Option<&Path>,
     cx: &mut App,
 ) -> AnyElement {
-    if is_svg_image_source(&image.source) {
+    if should_use_native_image_source(&image.source) {
         let loading =
             ImagePlaceholder::new(image.source.clone(), theme, ImagePlaceholderState::Loading)
                 .alt(image.alt.clone())

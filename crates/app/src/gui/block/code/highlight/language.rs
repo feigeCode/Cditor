@@ -35,6 +35,7 @@ pub(super) fn provider_language_items(
 
 pub(super) fn visible_code_blocks(
     projection: &EditorViewProjection,
+    html_source_block_id: Option<BlockId>,
 ) -> Vec<(BlockId, u64, &str, String)> {
     projection
         .blocks
@@ -54,7 +55,9 @@ pub(super) fn visible_code_blocks(
                     text.as_str(),
                     normalize_language(payload_language.as_deref().or(language.as_deref()))?,
                 ),
-                (RichBlockKind::Html, BlockPayload::Html { html, .. }) => {
+                (RichBlockKind::Html, BlockPayload::Html { html, .. })
+                    if html_source_block_id == Some(block.block_id) =>
+                {
                     (html.as_str(), "html".to_owned())
                 }
                 _ => return None,
