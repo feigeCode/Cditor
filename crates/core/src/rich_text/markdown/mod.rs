@@ -532,6 +532,40 @@ fn looks_like_raw_html(line: &str) -> bool {
             .is_some_and(|ch| ch.is_ascii_alphabetic())
 }
 
+fn collect_raw_html_region(lines: &[&str], start: usize) -> usize {
+    let line = lines[start].trim_start();
+    let Some(tag) = raw_html_opening_tag(line) else {
+        return start + 1;
+    };
+    let closing = format!("</{tag}");
+    if line.trim_end().ends_with("/>") || line.to_ascii_lowercase().contains(&closing) {
+        return start + 1;
+    }
+    lines
+        .iter()
+        .enumerate()
+        .skip(start + 1)
+        .find_map(|(index, line)| {
+            line.trim_start()
+                .to_ascii_lowercase()
+                .contains(&closing)
+                .then_some(index + 1)
+        })
+        .unwrap_or(start + 1)
+}
+
+fn raw_html_opening_tag(line: &str) -> Option<String> {
+    let rest = line.strip_prefix('<')?;
+    if rest.starts_with('/') || rest.starts_with('!') || rest.starts_with('?') {
+        return None;
+    }
+    let tag = rest
+        .chars()
+        .take_while(|ch| ch.is_ascii_alphanumeric() || *ch == '-')
+        .collect::<String>();
+    (!tag.is_empty()).then(|| tag.to_ascii_lowercase())
+}
+
 fn ordered_list_number(line: &str) -> Option<u64> {
     let digits = line.bytes().take_while(u8::is_ascii_digit).count();
     if digits == 0 || !line[digits..].starts_with(". ") {
@@ -683,6 +717,21 @@ impl MarkdownParser {
                     )
                 };
                 document.push_root_block(block);
+                continue;
+            }
+
+            if looks_like_raw_html(line.trim_start()) {
+                list_stack.clear();
+                let region_start = index;
+                index = collect_raw_html_region(&lines, index);
+                let source = lines[region_start..index].join("\n");
+                document.push_root_block(self.new_block(
+                    RichBlockKind::Html,
+                    BlockPayload::Html {
+                        html: source,
+                        sanitized: false,
+                    },
+                ));
                 continue;
             }
 

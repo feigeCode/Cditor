@@ -201,14 +201,13 @@ pub fn height_rule_for_kind(kind: &RichBlockKind) -> BlockHeightRule {
             estimated_height: 232.0,
             max_error_hint: 1028.0,
         },
-        RichBlockKind::Html => BlockHeightRule::TextLike(
-            text_metrics(
-                text_block_chrome_metrics_for_kind(kind),
-                NOTION_BODY_LINE_HEIGHT_PX,
-                9.0,
-            )
-            .with_max_height(640.0),
-        ),
+        // HTML projections can contain nested paragraphs and remote images. Keep
+        // a generous stable box so the native renderer has room before a future
+        // measured-height correction is available.
+        RichBlockKind::Html => BlockHeightRule::StableBox {
+            estimated_height: 960.0,
+            max_error_hint: 720.0,
+        },
         RichBlockKind::Table => BlockHeightRule::Table,
         RichBlockKind::Image => BlockHeightRule::Media,
         RichBlockKind::File => BlockHeightRule::Fixed(56.0),

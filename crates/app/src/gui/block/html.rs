@@ -1,0 +1,181 @@
+use std::cell::RefCell;
+use std::rc::Rc;
+
+use gpui::{AnyElement, InteractiveElement, IntoElement, ParentElement, Styled, div, img, px, rgb};
+use html5ever::tendril::TendrilSink;
+use html5ever::{LocalName, ParseOpts, parse_document};
+use markup5ever_rcdom::{Node, NodeData, RcDom};
+
+use crate::gui::GuiTheme;
+
+pub(crate) const HTML_PREVIEW_TEXT_SIZE_PX: f32 = 16.0;
+
+pub(crate) fn render_html_block(block_id: u64, html: &str, theme: GuiTheme) -> AnyElement {
+    let sanitized = cditor_runtime::sanitize_external_html(
+        html,
+        cditor_runtime::ExternalContentPolicy {
+            remote_image_policy: cditor_runtime::RemoteResourcePolicy::Allow,
+            file_url_policy: cditor_runtime::FileUrlPolicy::Block,
+            ..Default::default()
+        },
+    );
+    let dom = parse_html(&sanitized.html);
+    render_node(&dom.document, block_id, theme, 0)
+}
+
+fn parse_html(source: &str) -> RcDom {
+    parse_document(RcDom::default(), ParseOpts::default())
+        .from_utf8()
+        .read_from(&mut std::io::Cursor::new(source.as_bytes()))
+        .unwrap_or_default()
+}
+
+fn render_node(node: &Rc<Node>, block_id: u64, theme: GuiTheme, depth: usize) -> AnyElement {
+    match &node.data {
+        NodeData::Document => div()
+            .id(("html", block_id))
+            .w_full()
+            .flex()
+            .flex_col()
+            .text_size(px(HTML_PREVIEW_TEXT_SIZE_PX))
+            .text_color(rgb(theme.text))
+            .children(
+                node.children
+                    .borrow()
+                    .iter()
+                    .enumerate()
+                    .map(|(index, child)| {
+                        render_node(child, block_id.wrapping_add(index as u64), theme, depth)
+                    }),
+            )
+            .into_any_element(),
+        NodeData::Text { contents } => {
+            let text = contents
+                .borrow()
+                .split_whitespace()
+                .collect::<Vec<_>>()
+                .join(" ");
+            if text.is_empty() {
+                div().into_any_element()
+            } else {
+                div().child(text).into_any_element()
+            }
+        }
+        NodeData::Element { name, attrs, .. } => {
+            let children = node.children.borrow();
+            let elements = children
+                .iter()
+                .enumerate()
+                .map(|(index, child)| {
+                    render_node(child, block_id.wrapping_add(index as u64), theme, depth + 1)
+                })
+                .collect::<Vec<_>>();
+            let tag = name.local.as_ref();
+            let mut element = match tag {
+                "h1" => div()
+                    .text_size(px(32.0))
+                    .font_weight(gpui::FontWeight::BOLD),
+                "h2" => div()
+                    .text_size(px(26.0))
+                    .font_weight(gpui::FontWeight::BOLD),
+                "h3" => div()
+                    .text_size(px(21.0))
+                    .font_weight(gpui::FontWeight::SEMIBOLD),
+                "h4" => div()
+                    .text_size(px(18.0))
+                    .font_weight(gpui::FontWeight::SEMIBOLD),
+                "h5" => div()
+                    .text_size(px(16.0))
+                    .font_weight(gpui::FontWeight::SEMIBOLD),
+                "h6" => div()
+                    .text_size(px(14.0))
+                    .font_weight(gpui::FontWeight::MEDIUM),
+                "blockquote" => div()
+                    .border_l_3()
+                    .border_color(rgb(theme.quote_bar))
+                    .pl(px(14.0))
+                    .text_color(rgb(theme.muted)),
+                "code" | "pre" => div()
+                    .rounded(px(4.0))
+                    .bg(rgb(theme.code_background))
+                    .px(px(8.0))
+                    .py(px(4.0)),
+                "hr" => div().h(px(1.0)).my(px(12.0)).bg(rgb(theme.border)),
+                "br" => div().h(px(10.0)),
+                "img" => {
+                    let src = attr(attrs, "src").unwrap_or_default();
+                    return img(src).max_w(gpui::relative(1.0)).into_any_element();
+                }
+                "a" => div().text_color(rgb(theme.focused)),
+                "strong" | "b" => div().font_weight(gpui::FontWeight::BOLD),
+                "em" | "i" => div().italic(),
+                "del" | "s" => div().text_color(rgb(theme.muted)),
+                _ => div(),
+            };
+            if matches!(
+                tag,
+                "div"
+                    | "section"
+                    | "article"
+                    | "main"
+                    | "header"
+                    | "footer"
+                    | "body"
+                    | "html"
+                    | "ul"
+                    | "ol"
+                    | "li"
+                    | "figure"
+                    | "figcaption"
+                    | "table"
+                    | "tr"
+            ) {
+                element = element.flex().flex_col();
+            }
+            if matches!(tag, "p" | "a" | "strong" | "b" | "em" | "i")
+                || tag.starts_with('h') && tag.len() == 2
+            {
+                element = element.flex().flex_row().flex_wrap().items_center();
+            }
+            if attr(attrs, "align").is_some_and(|align| align.eq_ignore_ascii_case("center")) {
+                element = element.items_center().text_center();
+            }
+            if matches!(
+                tag,
+                "p" | "div"
+                    | "section"
+                    | "article"
+                    | "main"
+                    | "header"
+                    | "footer"
+                    | "ul"
+                    | "ol"
+                    | "li"
+                    | "figure"
+                    | "figcaption"
+                    | "table"
+                    | "tr"
+            ) {
+                element = element.pb(px(8.0));
+            }
+            element.children(elements).into_any_element()
+        }
+        _ => div().into_any_element(),
+    }
+}
+
+fn attr(attrs: &RefCell<Vec<html5ever::Attribute>>, name: &str) -> Option<String> {
+    attrs.borrow().iter().find_map(|attribute| {
+        (attribute.name.local == LocalName::from(name)).then(|| attribute.value.to_string())
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn html_preview_keeps_typora_body_size() {
+        assert_eq!(HTML_PREVIEW_TEXT_SIZE_PX, 16.0);
+    }
+}

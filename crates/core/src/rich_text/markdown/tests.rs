@@ -39,6 +39,21 @@ fn outer_markdown_fence_is_unwrapped_before_block_parsing() {
 }
 
 #[test]
+fn raw_html_is_kept_as_a_renderable_html_block() {
+    let source =
+        "<div align=\"center\">\n<p><strong>Navop</strong></p>\n\n<p>Native preview</p>\n</div>";
+    let result = parse_markdown_document_with_report(source, MarkdownImportOptions::default());
+
+    assert!(matches!(
+        result.compatibility,
+        MarkdownCompatibility::SourceOnly(_)
+    ));
+    assert_eq!(1, result.document.blocks.len());
+    assert_eq!(RichBlockKind::Html, result.document.blocks[0].kind);
+    assert_eq!(source, result.document.blocks[0].payload.plain_text());
+}
+
+#[test]
 fn block_math_imports_and_round_trips_as_an_editable_math_block() {
     let source = "$$\n\\frac{-b \\pm \\sqrt{b^2 - 4ac}}{2a}\n$$";
     let result = parse_markdown_document_with_report(source, MarkdownImportOptions::default());

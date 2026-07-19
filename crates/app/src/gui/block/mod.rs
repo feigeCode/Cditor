@@ -6,6 +6,7 @@ pub mod code;
 pub mod drag_overlay;
 pub mod gutter;
 pub mod heading;
+pub mod html;
 pub mod list;
 pub mod media;
 pub mod mermaid;
