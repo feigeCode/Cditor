@@ -259,14 +259,13 @@ fn render_table_cell_image(
             RenderImageLoadState::Ready(image) => {
                 RasterImageElement::new(image, ObjectFit::Contain, px(0.0)).into_any_element()
             }
-            state => ImagePlaceholder::new(
+            state => ImagePlaceholder::for_load_state(
                 image.source.clone(),
+                image.alt.clone(),
                 theme,
-                state
-                    .placeholder_state()
-                    .unwrap_or(ImagePlaceholderState::Failed),
+                &state,
             )
-            .alt(image.alt.clone())
+            .expect("non-ready image state must have a placeholder")
             .height(preview_height)
             .compact()
             .into_any_element(),

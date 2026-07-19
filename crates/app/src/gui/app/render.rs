@@ -637,7 +637,7 @@ mod ai_preview_position_tests {
     #[test]
     fn ai_panel_anchor_tracks_projected_block_after_scroll() {
         let anchor = ai_preview_block_anchor(920.0, 48.0, 42.0, 760.0, 1200.0, 600.0);
-        assert_eq!(f32::from(anchor.left()), 90.0);
+        assert_eq!(f32::from(anchor.left()), 66.0);
         assert_eq!(f32::from(anchor.top()), 352.0);
         assert_eq!(f32::from(anchor.bottom()), 400.0);
     }

@@ -32,7 +32,7 @@ pub enum RenderImageLoadState {
 }
 
 impl RenderImageLoadState {
-    pub fn placeholder_state(&self) -> Option<ImagePlaceholderState> {
+    fn placeholder_state(&self) -> Option<ImagePlaceholderState> {
         match self {
             Self::Loading => Some(ImagePlaceholderState::Loading),
             Self::Ready(_) => None,
@@ -82,6 +82,19 @@ impl ImagePlaceholder {
     pub fn compact(mut self) -> Self {
         self.compact = true;
         self
+    }
+
+    /// Build the shared Loading/Failed presentation used by every document
+    /// image surface. Ready images deliberately return `None`, keeping state
+    /// branching in one place and preventing individual renderers from
+    /// silently assigning a failure placeholder to ready content.
+    pub fn for_load_state(
+        source: impl Into<String>,
+        alt: impl Into<String>,
+        theme: GuiTheme,
+        state: &RenderImageLoadState,
+    ) -> Option<Self> {
+        Some(Self::new(source, theme, state.placeholder_state()?).alt(alt))
     }
 }
 
@@ -625,6 +638,29 @@ mod tests {
             image::RgbaImage::new(1, 1),
         )]));
         assert_eq!(RenderImageLoadState::Ready(ready).placeholder_state(), None);
+    }
+
+    #[test]
+    fn shared_placeholder_factory_rejects_ready_images() {
+        let image = Arc::new(RenderImage::new(vec![]));
+        assert!(
+            ImagePlaceholder::for_load_state(
+                "image.png",
+                "Image",
+                GuiTheme::light(),
+                &RenderImageLoadState::Ready(image),
+            )
+            .is_none()
+        );
+        assert!(
+            ImagePlaceholder::for_load_state(
+                "image.png",
+                "Image",
+                GuiTheme::light(),
+                &RenderImageLoadState::Loading,
+            )
+            .is_some()
+        );
     }
 
     #[test]

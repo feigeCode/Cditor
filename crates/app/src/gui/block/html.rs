@@ -357,15 +357,9 @@ fn render_html_image(config: HtmlImageRender<'_>, cx: &mut App) -> AnyElement {
             .w(px(fallback_width))
             .max_w(gpui::relative(1.0))
             .child(
-                ImagePlaceholder::new(
-                    config.source,
-                    config.theme,
-                    state
-                        .placeholder_state()
-                        .unwrap_or(ImagePlaceholderState::Failed),
-                )
-                .alt(config.alt)
-                .height(HTML_IMAGE_PLACEHOLDER_HEIGHT_PX),
+                ImagePlaceholder::for_load_state(config.source, config.alt, config.theme, &state)
+                    .expect("non-ready image state must have a placeholder")
+                    .height(HTML_IMAGE_PLACEHOLDER_HEIGHT_PX),
             )
             .into_any_element(),
     }

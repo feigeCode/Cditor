@@ -134,14 +134,13 @@ pub fn render_image_block(
             ))
             .into_any_element()
     } else {
-        ImagePlaceholder::new(
+        ImagePlaceholder::for_load_state(
             image.source.clone(),
+            image.alt.clone(),
             theme,
-            load_state
-                .placeholder_state()
-                .unwrap_or(ImagePlaceholderState::Failed),
+            &load_state,
         )
-        .alt(image.alt.clone())
+        .expect("non-ready image state must have a placeholder")
         .height(IMAGE_PLACEHOLDER_HEIGHT_PX)
         .into_any_element()
     });

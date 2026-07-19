@@ -259,14 +259,13 @@ fn render_inline_media_fragments(
                     state => div()
                         .w(px(INLINE_IMAGE_PLACEHOLDER_WIDTH_PX))
                         .child(
-                            ImagePlaceholder::new(
+                            ImagePlaceholder::for_load_state(
                                 image.source.clone(),
+                                image.alt.clone(),
                                 theme,
-                                state
-                                    .placeholder_state()
-                                    .unwrap_or(ImagePlaceholderState::Failed),
+                                &state,
                             )
-                            .alt(image.alt.clone())
+                            .expect("non-ready image state must have a placeholder")
                             .height(INLINE_IMAGE_HEIGHT_PX)
                             .compact(),
                         )

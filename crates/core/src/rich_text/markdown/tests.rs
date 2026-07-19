@@ -58,6 +58,40 @@ fn raw_html_is_kept_as_a_renderable_html_block() {
 }
 
 #[test]
+fn sibling_html_regions_remain_independent_typora_style_blocks() {
+    let source = concat!(
+        "<section>\n<strong>first</strong>\n</section>\n",
+        "\n<aside>\nsecond\n</aside>"
+    );
+    let result = parse_markdown_document_with_report(source, MarkdownImportOptions::default());
+
+    assert!(matches!(
+        result.compatibility,
+        MarkdownCompatibility::Editable
+    ));
+    assert_eq!(2, result.document.blocks.len());
+    assert!(
+        result
+            .document
+            .blocks
+            .iter()
+            .all(|block| block.kind == RichBlockKind::Html)
+    );
+    assert_eq!(
+        "<section>\n<strong>first</strong>\n</section>",
+        result.document.blocks[0].payload.plain_text()
+    );
+    assert_eq!(
+        "<aside>\nsecond\n</aside>",
+        result.document.blocks[1].payload.plain_text()
+    );
+
+    let document = document_from_parsed(result.document);
+    let exported = export_document_blocks(&document, MarkdownExportMode::Strict);
+    assert_eq!(source, exported.markdown);
+}
+
+#[test]
 fn markdown_table_cells_preserve_images_as_media() {
     let source = "| Logo |\n| --- |\n| ![Navop](https://example.com/navop.png) |";
     let result = parse_markdown_document_with_report(source, MarkdownImportOptions::default());
