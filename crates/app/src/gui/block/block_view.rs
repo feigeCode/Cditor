@@ -9,7 +9,7 @@ use crate::gui::block::block_content::render_block_content;
 use crate::gui::block::block_shell::{BlockActionState, block_shell};
 use crate::gui::block::code::{CodeHighlightContext, render_code_block};
 use crate::gui::block::heading::render_heading;
-use crate::gui::block::html::{html_source_editor_visible, render_html_source_and_preview};
+use crate::gui::block::html::{html_source_editor_visible, render_html_source_editor};
 use crate::gui::block::media::schedule_rendered_media_height_report;
 use crate::gui::block::paragraph::render_paragraph;
 use crate::gui::block::table::{
@@ -56,7 +56,7 @@ impl BlockView {
         code_highlight_theme: &'static str,
         suppress_document_text_input: bool,
         table_scroll_handle: Option<ScrollHandle>,
-        html_scroll_handle: Option<ScrollHandle>,
+        html_source_active: bool,
         readonly: bool,
         media_base_path: Option<&std::path::Path>,
         code_highlights: &CodeHighlightCache,
@@ -84,7 +84,7 @@ impl BlockView {
             code_highlight_theme,
             suppress_document_text_input,
             table_scroll_handle,
-            html_scroll_handle,
+            html_source_active,
             readonly,
             media_base_path,
             code_highlights,
@@ -185,7 +185,7 @@ fn render_kind_content(
     code_highlight_theme: &'static str,
     suppress_document_text_input: bool,
     table_scroll_handle: Option<ScrollHandle>,
-    html_scroll_handle: Option<ScrollHandle>,
+    html_source_active: bool,
     readonly: bool,
     media_base_path: Option<&std::path::Path>,
     code_highlights: &CodeHighlightCache,
@@ -207,6 +207,11 @@ fn render_kind_content(
     } else {
         mermaid_show_source
     };
+    let show_block_source = if matches!(block.kind, RichBlockKind::Html) {
+        html_source_active
+    } else {
+        show_document_source
+    };
     let content = render_block_content(
         block,
         theme,
@@ -221,7 +226,7 @@ fn render_kind_content(
             || ((matches!(block.kind, RichBlockKind::Mermaid | RichBlockKind::Math)
                 || math_code_language.is_some())
                 && !show_document_source),
-        show_document_source,
+        show_block_source,
         table_axis_selection,
         table_scroll_handle,
         readonly,
@@ -313,33 +318,11 @@ fn render_kind_content(
                 _ => 0,
             };
             let html_content = if html_source_editor_visible(
-                show_document_source,
+                html_source_active,
                 readonly,
                 suppress_document_text_input,
             ) {
-                let Some(html) = (match &block.payload {
-                    cditor_core::rich_text::BlockPayloadView::Loaded(payload) => {
-                        match &payload.payload {
-                            cditor_core::rich_text::BlockPayload::Html { html, .. } => {
-                                Some(html.as_str())
-                            }
-                            _ => None,
-                        }
-                    }
-                    _ => None,
-                }) else {
-                    return content;
-                };
-                render_html_source_and_preview(
-                    block.block_id,
-                    content,
-                    html,
-                    theme,
-                    media_base_path,
-                    html_scroll_handle.unwrap_or_default(),
-                    view.clone(),
-                    cx,
-                )
+                render_html_source_editor(block.block_id, content, theme, view.clone())
             } else {
                 content
             };

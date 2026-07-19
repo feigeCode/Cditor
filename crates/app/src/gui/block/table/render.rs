@@ -30,6 +30,11 @@ use super::style::{
 use super::text::TableCellTextElement;
 use super::trace_table;
 
+const TABLE_CELL_IMAGE_MIN_PREVIEW_HEIGHT_PX: f32 = 96.0;
+const TABLE_CELL_IMAGE_MAX_PREVIEW_HEIGHT_PX: f32 = 240.0;
+const TABLE_CELL_IMAGE_ASPECT_HEIGHT_RATIO: f32 = 9.0 / 16.0;
+const TABLE_CELL_HORIZONTAL_PADDING_PX: f32 = 20.0;
+
 pub(crate) fn render_table_block(
     block_id: BlockId,
     content_version: u64,
@@ -95,6 +100,7 @@ pub(crate) fn render_table_block(
                             .and_then(|row| row.cells.get(cell.position.col))
                             .map(|cell| cell.images.as_slice())
                             .unwrap_or(&[]),
+                        cell.width_px,
                         active,
                         table_view.focused_cell_offset,
                         table_view.focused_cell_selection_range.clone(),
@@ -153,6 +159,7 @@ fn render_table_cell_content(
     content_version: u64,
     spans: Vec<InlineSpan>,
     images: &[ImagePayload],
+    cell_width_px: f32,
     active: bool,
     focused_cell_offset: Option<usize>,
     selected_range: Option<Range<usize>>,
@@ -204,9 +211,9 @@ fn render_table_cell_content(
         .flex_col()
         .gap(px(6.0))
         .children(
-            images
-                .iter()
-                .map(|image| render_table_cell_image(image, theme, media_base_path, cx)),
+            images.iter().map(|image| {
+                render_table_cell_image(image, cell_width_px, theme, media_base_path, cx)
+            }),
         )
         .child(text_element)
         .into_any_element()
@@ -214,11 +221,12 @@ fn render_table_cell_content(
 
 fn render_table_cell_image(
     image: &ImagePayload,
+    cell_width_px: f32,
     theme: GuiTheme,
     media_base_path: Option<&Path>,
     cx: &mut App,
 ) -> AnyElement {
-    let preview_height = table_cell_image_preview_height_px(&image.source);
+    let preview_height = table_cell_image_preview_height_px(&image.source, cell_width_px);
     if should_use_native_image_source(&image.source) {
         let loading =
             ImagePlaceholder::new(image.source.clone(), theme, ImagePlaceholderState::Loading)
@@ -266,8 +274,15 @@ fn render_table_cell_image(
         .into_any_element()
 }
 
-fn table_cell_image_preview_height_px(source: &str) -> f32 {
-    is_svg_image_source(source).then_some(28.0).unwrap_or(72.0)
+fn table_cell_image_preview_height_px(source: &str, cell_width_px: f32) -> f32 {
+    if is_svg_image_source(source) {
+        return 28.0;
+    }
+    ((cell_width_px - TABLE_CELL_HORIZONTAL_PADDING_PX) * TABLE_CELL_IMAGE_ASPECT_HEIGHT_RATIO)
+        .clamp(
+            TABLE_CELL_IMAGE_MIN_PREVIEW_HEIGHT_PX,
+            TABLE_CELL_IMAGE_MAX_PREVIEW_HEIGHT_PX,
+        )
 }
 
 fn render_empty_table(theme: GuiTheme) -> AnyElement {
@@ -280,4 +295,17 @@ fn render_empty_table(theme: GuiTheme) -> AnyElement {
         .text_color(rgb(theme.muted))
         .child("Empty table")
         .into_any_element()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn wide_table_cells_render_readable_screenshot_previews() {
+        assert!(
+            (table_cell_image_preview_height_px("screenshot.png", 430.0) - 230.625).abs() < 0.001
+        );
+        assert_eq!(table_cell_image_preview_height_px("badge.svg", 430.0), 28.0);
+    }
 }

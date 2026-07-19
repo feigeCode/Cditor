@@ -121,7 +121,6 @@ impl DocumentEditorView {
         code_highlight_theme: &'static str,
         suppress_document_text_input: bool,
         table_scroll_snapshots: &HashMap<BlockId, TableScrollSnapshot>,
-        html_scroll_handles: &HashMap<BlockId, gpui::ScrollHandle>,
         code_highlights: &CodeHighlightCache,
         document_renders: &DocumentRenderCache,
         document_source_blocks: &std::collections::HashSet<BlockId>,
@@ -284,13 +283,12 @@ impl DocumentEditorView {
                             table_scroll_snapshots
                                 .get(&block.block_id)
                                 .map(|snapshot| snapshot.handle.clone()),
-                            html_scroll_handles.get(&block.block_id).cloned(),
+                            html_source_block_id == Some(block.block_id),
                             readonly,
                             media_base_path,
                             code_highlights,
                             document_renders,
-                            document_source_blocks.contains(&block.block_id)
-                                || html_source_block_id == Some(block.block_id),
+                            document_source_blocks.contains(&block.block_id),
                             whiteboard_thumbnails,
                             cx,
                         )

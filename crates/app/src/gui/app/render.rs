@@ -417,18 +417,6 @@ impl Render for CditorV2View {
                         },
                     );
                 }
-                let html_block_ids = projection
-                    .blocks
-                    .iter()
-                    .filter(|block| {
-                        matches!(block.kind, cditor_core::rich_text::RichBlockKind::Html)
-                    })
-                    .map(|block| block.block_id)
-                    .collect::<Vec<_>>();
-                let html_scroll_handles = html_block_ids
-                    .into_iter()
-                    .map(|block_id| (block_id, self.html_scroll_handle(block_id)))
-                    .collect::<std::collections::HashMap<_, _>>();
                 root = root
                     .child(document_editor.render(
                         &projection,
@@ -455,7 +443,6 @@ impl Render for CditorV2View {
                         code_highlight_theme,
                         self.ai_prompt.is_some(),
                         &table_scroll_snapshots,
-                        &html_scroll_handles,
                         &self.code_highlights,
                         &self.document_renders,
                         &document_source_blocks,

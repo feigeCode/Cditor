@@ -103,19 +103,12 @@ pub(crate) fn render_block_content(
             }
             if readonly && let BlockPayload::RichText { spans } = &payload.payload {
                 let source = plain_text_from_spans(spans);
-                if source.contains("![") {
-                    let fragments = parse_inline_media_fragments(&source);
-                    if fragments
-                        .iter()
-                        .any(|fragment| matches!(fragment, InlineMediaFragment::Image(_)))
-                    {
-                        return render_inline_media_fragments(
-                            fragments,
-                            theme,
-                            media_base_path,
-                            cx,
-                        );
-                    }
+                let fragments = parse_inline_media_fragments(&source);
+                if fragments
+                    .iter()
+                    .any(|fragment| matches!(fragment, InlineMediaFragment::Image(_)))
+                {
+                    return render_inline_media_fragments(fragments, theme, media_base_path, cx);
                 }
             }
             if let Some(mut input) = RichTextLayoutInput::from_snapshot(

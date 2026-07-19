@@ -3,8 +3,8 @@ use std::path::Path;
 use std::rc::Rc;
 
 use gpui::{
-    AnyElement, App, Entity, InteractiveElement, IntoElement, MouseButton, ParentElement,
-    ScrollHandle, StatefulInteractiveElement, Styled, StyledImage, div, img, px, rgb,
+    AnyElement, App, Entity, InteractiveElement, IntoElement, MouseButton, ParentElement, Styled,
+    StyledImage, div, img, px, rgb,
 };
 use html5ever::tendril::TendrilSink;
 use html5ever::{LocalName, ParseOpts, parse_document};
@@ -18,7 +18,6 @@ use crate::gui::image_loader::{
 use crate::gui::platform::EDITOR_MONO_FONT_FAMILY;
 
 pub(crate) const HTML_PREVIEW_TEXT_SIZE_PX: f32 = 16.0;
-const HTML_SOURCE_MAX_HEIGHT_PX: f32 = 420.0;
 const HTML_IMAGE_FALLBACK_WIDTH_PX: f32 = 180.0;
 const HTML_IMAGE_PLACEHOLDER_HEIGHT_PX: f32 = 96.0;
 
@@ -30,20 +29,15 @@ pub(crate) fn html_source_editor_visible(
     source_mode && !readonly && !suppress_text_input
 }
 
-/// Render the focused HTML block as a source editor followed by its live preview.
+/// Render the focused HTML block as a natural-height source editor.
 ///
 /// The source editor is supplied by the normal rich-text input path so caret,
-/// selection, IME, undo, and persistence remain identical to other plain-text
-/// blocks. This wrapper only owns the visual split between source and preview.
-pub(crate) fn render_html_source_and_preview(
+/// selection, IME, undo, and persistence remain identical to code blocks.
+pub(crate) fn render_html_source_editor(
     block_id: u64,
     source_editor: AnyElement,
-    html: &str,
     theme: GuiTheme,
-    media_base_path: Option<&Path>,
-    source_scroll_handle: ScrollHandle,
     view: Entity<crate::gui::app::CditorV2View>,
-    cx: &mut App,
 ) -> AnyElement {
     div()
         .id(("html-render-block", block_id))
@@ -64,32 +58,12 @@ pub(crate) fn render_html_source_and_preview(
                 .text_color(rgb(theme.code_text))
                 .child(
                     div()
-                        .id(("html-source-scroll", block_id))
-                        .max_h(px(HTML_SOURCE_MAX_HEIGHT_PX))
-                        .overflow_y_scroll()
-                        .track_scroll(&source_scroll_handle)
                         .px(px(10.0))
                         .pt(px(42.0))
                         .pb(px(10.0))
                         .child(source_editor),
                 )
                 .child(render_html_editor_toolbar(block_id, theme, view.clone())),
-        )
-        .child(
-            div()
-                .w_full()
-                .border_t_1()
-                .border_color(rgb(theme.border))
-                .bg(rgb(theme.surface))
-                .px(px(10.0))
-                .py(px(10.0))
-                .child(render_html_block(
-                    block_id,
-                    html,
-                    theme,
-                    media_base_path,
-                    cx,
-                )),
         )
         .into_any_element()
 }
@@ -459,12 +433,6 @@ mod tests {
     #[test]
     fn html_preview_keeps_typora_body_size() {
         assert_eq!(HTML_PREVIEW_TEXT_SIZE_PX, 16.0);
-    }
-
-    #[test]
-    fn html_source_has_a_bounded_scroll_viewport() {
-        assert_eq!(HTML_SOURCE_MAX_HEIGHT_PX, 420.0);
-        assert!(HTML_SOURCE_MAX_HEIGHT_PX > HTML_PREVIEW_TEXT_SIZE_PX * 10.0);
     }
 
     #[test]

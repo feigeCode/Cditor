@@ -79,7 +79,6 @@ pub struct CditorV2View {
     pub(in crate::gui::app) text_layouts: HashMap<BlockId, RichTextPlatformLayout>,
     pub(in crate::gui::app) table_cell_layouts: HashMap<TableCellLayoutKey, RichTextPlatformLayout>,
     pub(in crate::gui::app) table_scroll_state: GuiTableScrollState,
-    pub(in crate::gui::app) html_scroll_handles: HashMap<BlockId, gpui::ScrollHandle>,
     pub(in crate::gui::app) code_highlights: CodeHighlightCache,
     pub(in crate::gui::app) code_highlight_refresh_scheduled: bool,
     pub(in crate::gui::app) document_renders: DocumentRenderCache,

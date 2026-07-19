@@ -6,6 +6,7 @@ use cditor_core::layout::{
 use cditor_core::rich_text::{InlineSpan, TableCellMerge, TablePayload, TableTrackSize};
 
 const DEFAULT_TABLE_COLUMN_WIDTH_PX: f32 = 120.0;
+const DEFAULT_TABLE_AVAILABLE_WIDTH_PX: f32 = 860.0;
 const DEFAULT_TABLE_ROW_HEIGHT_PX: f32 = NOTION_TABLE_DEFAULT_ROW_HEIGHT_PX as f32;
 const TABLE_CELL_PADDING_Y_PX: f32 = NOTION_TABLE_CELL_PADDING_Y_PX as f32;
 const TABLE_CELL_PADDING_X_PX: f32 = 10.0;
@@ -13,7 +14,9 @@ const TABLE_CELL_LINE_HEIGHT_PX: f32 = NOTION_TABLE_CELL_LINE_HEIGHT_PX as f32;
 const TABLE_CELL_APPROX_ASCII_CHAR_WIDTH_PX: f32 = 7.0;
 const TABLE_CELL_APPROX_CJK_CHAR_WIDTH_PX: f32 = 14.0;
 const TABLE_CELL_APPROX_NON_ASCII_CHAR_WIDTH_PX: f32 = 11.0;
-const TABLE_CELL_IMAGE_PREVIEW_HEIGHT_PX: f32 = 72.0;
+const TABLE_CELL_IMAGE_MIN_PREVIEW_HEIGHT_PX: f32 = 96.0;
+const TABLE_CELL_IMAGE_MAX_PREVIEW_HEIGHT_PX: f32 = 240.0;
+const TABLE_CELL_IMAGE_ASPECT_HEIGHT_RATIO: f32 = 9.0 / 16.0;
 const TABLE_CELL_SVG_PREVIEW_HEIGHT_PX: f32 = 28.0;
 const TABLE_CELL_IMAGE_GAP_PX: f32 = 6.0;
 
@@ -51,6 +54,7 @@ pub(in crate::document_runtime) struct TableLayoutInput<'a> {
     pub metrics: TableLayoutMetrics,
 }
 
+#[cfg(test)]
 impl<'a> TableLayoutInput<'a> {
     pub(in crate::document_runtime) fn new(table: &'a TablePayload) -> Self {
         Self {
@@ -73,7 +77,11 @@ pub(in crate::document_runtime) struct TableLayout {
 }
 
 pub(in crate::document_runtime) fn table_layout_from_payload(table: &TablePayload) -> TableLayout {
-    table_layout_from_input(TableLayoutInput::new(table))
+    table_layout_from_input(TableLayoutInput {
+        table,
+        available_width_px: Some(DEFAULT_TABLE_AVAILABLE_WIDTH_PX),
+        metrics: TableLayoutMetrics::default(),
+    })
 }
 
 pub(in crate::document_runtime) fn table_layout_from_input(
@@ -184,7 +192,7 @@ fn table_cell_auto_content_height_px(
     let image_count = images.len();
     let image_height = images
         .iter()
-        .map(|image| table_cell_image_preview_height_px(&image.source))
+        .map(|image| table_cell_image_preview_height_px(&image.source, cell_width_px, metrics))
         .sum::<f32>()
         + image_count.saturating_sub(1) as f32 * TABLE_CELL_IMAGE_GAP_PX
         + (!text.trim().is_empty() && image_count > 0)
@@ -196,13 +204,23 @@ fn table_cell_auto_content_height_px(
         .max(metrics.default_row_height_px)
 }
 
-fn table_cell_image_preview_height_px(source: &str) -> f32 {
-    source
+fn table_cell_image_preview_height_px(
+    source: &str,
+    cell_width_px: f32,
+    metrics: TableLayoutMetrics,
+) -> f32 {
+    if source
         .split(['?', '#'])
         .next()
         .is_some_and(|path| path.to_ascii_lowercase().ends_with(".svg"))
-        .then_some(TABLE_CELL_SVG_PREVIEW_HEIGHT_PX)
-        .unwrap_or(TABLE_CELL_IMAGE_PREVIEW_HEIGHT_PX)
+    {
+        return TABLE_CELL_SVG_PREVIEW_HEIGHT_PX;
+    }
+    ((cell_width_px - metrics.cell_padding_x_px * 2.0) * TABLE_CELL_IMAGE_ASPECT_HEIGHT_RATIO)
+        .clamp(
+            TABLE_CELL_IMAGE_MIN_PREVIEW_HEIGHT_PX,
+            TABLE_CELL_IMAGE_MAX_PREVIEW_HEIGHT_PX,
+        )
 }
 
 fn table_cell_wrapped_line_count(
@@ -360,6 +378,18 @@ mod tests {
     }
 
     #[test]
+    fn projected_auto_tables_fill_the_document_content_width() {
+        let mut table = table_with_text("abc");
+        table.rows[0].cells.push(TableCellPayload::plain("def"));
+        table.normalize();
+
+        let layout = table_layout_from_payload(&table);
+
+        assert_eq!(layout.column_widths, vec![430.0, 430.0]);
+        assert_eq!(layout.width_px, DEFAULT_TABLE_AVAILABLE_WIDTH_PX);
+    }
+
+    #[test]
     fn table_layout_input_metrics_control_wrapping_height() {
         let table = table_with_text("abcdefghijklmnop");
 
@@ -406,7 +436,10 @@ mod tests {
 
         let layout = table_layout_from_payload(&table);
 
-        assert!(layout.row_heights[0] >= 72.0 + NOTION_TABLE_CELL_LINE_HEIGHT_PX as f32);
+        assert!(
+            layout.row_heights[0]
+                >= TABLE_CELL_IMAGE_MIN_PREVIEW_HEIGHT_PX + NOTION_TABLE_CELL_LINE_HEIGHT_PX as f32
+        );
     }
 
     #[test]
@@ -430,7 +463,21 @@ mod tests {
         let layout = table_layout_from_payload(&table);
 
         assert!(
-            layout.row_heights[0] >= 2.0 * 72.0 + 6.0 + NOTION_TABLE_CELL_LINE_HEIGHT_PX as f32
+            layout.row_heights[0]
+                >= 2.0 * TABLE_CELL_IMAGE_MIN_PREVIEW_HEIGHT_PX
+                    + 6.0
+                    + NOTION_TABLE_CELL_LINE_HEIGHT_PX as f32
         );
+    }
+
+    #[test]
+    fn wide_markdown_cells_reserve_a_readable_screenshot_preview() {
+        let height = table_cell_image_preview_height_px(
+            "screenshot.png",
+            430.0,
+            TableLayoutMetrics::default(),
+        );
+
+        assert!((height - 230.625).abs() < 0.001);
     }
 }
