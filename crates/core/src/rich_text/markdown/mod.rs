@@ -27,7 +27,10 @@ use block::{
     parse_numbered_item,
 };
 use export::block_to_plain_markdown;
-use inline::{parse_block_image, parse_inline_markdown, parse_inline_markdown_extended};
+use inline::{
+    parse_block_image, parse_inline_markdown, parse_inline_markdown_extended,
+    parse_inline_markdown_with_images,
+};
 use table::{collect_table_candidate_region, is_table_candidate_line, parse_table_region};
 
 #[derive(Debug, Clone, Default, PartialEq)]

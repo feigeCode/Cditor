@@ -573,7 +573,32 @@ fn export_table(exporter: &mut BlockExporter<'_>, block_id: u64, table: &TablePa
                 diagnostic.block_id = Some(block_id);
             }
             exporter.diagnostics.extend(inline.diagnostics);
-            cells.push(escape_table_cell(&inline.markdown));
+            let mut content = inline.markdown;
+            for image in &cell.images {
+                if image.source.trim().is_empty() || image.source.starts_with("asset:") {
+                    exporter.unsupported(
+                        block_id,
+                        "markdown.table.image_source_unsupported",
+                        "Table image source is internal and cannot be written safely to Markdown",
+                    );
+                }
+                if !image.caption.is_empty() || image.display_width_ratio_milli.is_some() {
+                    exporter.unsupported(
+                        block_id,
+                        "markdown.table.image_metadata_unsupported",
+                        "Table image captions and display-width metadata cannot be preserved in standard Markdown",
+                    );
+                }
+                if !content.is_empty() {
+                    content.push(' ');
+                }
+                content.push_str(&format!(
+                    "![{}](<{}>)",
+                    escape_link_label(&image.alt),
+                    escape_link_destination(&image.source)
+                ));
+            }
+            cells.push(escape_table_cell(&content));
         }
         lines.push(format!("| {} |", cells.join(" | ")));
         if row_index == 0 {

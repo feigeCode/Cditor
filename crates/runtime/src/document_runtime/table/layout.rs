@@ -13,6 +13,8 @@ const TABLE_CELL_LINE_HEIGHT_PX: f32 = NOTION_TABLE_CELL_LINE_HEIGHT_PX as f32;
 const TABLE_CELL_APPROX_ASCII_CHAR_WIDTH_PX: f32 = 7.0;
 const TABLE_CELL_APPROX_CJK_CHAR_WIDTH_PX: f32 = 14.0;
 const TABLE_CELL_APPROX_NON_ASCII_CHAR_WIDTH_PX: f32 = 11.0;
+const TABLE_CELL_IMAGE_PREVIEW_HEIGHT_PX: f32 = 72.0;
+const TABLE_CELL_IMAGE_GAP_PX: f32 = 6.0;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(in crate::document_runtime) struct TableLayoutMetrics {
@@ -134,7 +136,8 @@ fn grow_auto_table_rows_for_content(
             TableCellMerge::Unmerged | TableCellMerge::Covered { .. } => (1, 1),
         };
         let width = span_size(column_widths, col, col_span);
-        let required_height = table_cell_auto_content_height_px(&cell.spans, width, metrics);
+        let required_height =
+            table_cell_auto_content_height_px(&cell.spans, cell.images.len(), width, metrics);
         let current_height = span_size(row_heights, row, row_span);
         if required_height <= current_height {
             continue;
@@ -165,6 +168,7 @@ fn table_row_is_auto(table: &TablePayload, row: usize) -> bool {
 
 fn table_cell_auto_content_height_px(
     spans: &[InlineSpan],
+    image_count: usize,
     cell_width_px: f32,
     metrics: TableLayoutMetrics,
 ) -> f32 {
@@ -176,7 +180,14 @@ fn table_cell_auto_content_height_px(
         .map(|line| table_cell_wrapped_line_count(line, content_width, metrics))
         .sum::<usize>()
         .max(1);
-    (line_count as f32 * metrics.cell_line_height_px + metrics.cell_padding_y_px * 2.0)
+    let image_height = image_count as f32 * TABLE_CELL_IMAGE_PREVIEW_HEIGHT_PX
+        + image_count.saturating_sub(1) as f32 * TABLE_CELL_IMAGE_GAP_PX
+        + (!text.trim().is_empty() && image_count > 0)
+            .then_some(TABLE_CELL_IMAGE_GAP_PX)
+            .unwrap_or(0.0);
+    (line_count as f32 * metrics.cell_line_height_px
+        + image_height
+        + metrics.cell_padding_y_px * 2.0)
         .max(metrics.default_row_height_px)
 }
 
@@ -365,5 +376,47 @@ mod tests {
 
         assert!((layout.row_heights[0] - expected).abs() < 0.001);
         assert!(layout.row_heights[0] > DEFAULT_TABLE_ROW_HEIGHT_PX);
+    }
+
+    #[test]
+    fn image_only_cells_reserve_preview_height() {
+        let mut table = table_with_text("");
+        table.rows[0].cells[0]
+            .images
+            .push(cditor_core::rich_text::ImagePayload {
+                source: "https://example.com/logo.png".to_owned(),
+                alt: "Logo".to_owned(),
+                caption: String::new(),
+                display_width_ratio_milli: None,
+            });
+
+        let layout = table_layout_from_payload(&table);
+
+        assert!(layout.row_heights[0] >= 72.0 + NOTION_TABLE_CELL_LINE_HEIGHT_PX as f32);
+    }
+
+    #[test]
+    fn multiple_cell_images_reserve_previews_and_gaps() {
+        let mut table = table_with_text("");
+        table.rows[0].cells[0].images = vec![
+            cditor_core::rich_text::ImagePayload {
+                source: "https://example.com/one.png".to_owned(),
+                alt: "One".to_owned(),
+                caption: String::new(),
+                display_width_ratio_milli: None,
+            },
+            cditor_core::rich_text::ImagePayload {
+                source: "https://example.com/two.png".to_owned(),
+                alt: "Two".to_owned(),
+                caption: String::new(),
+                display_width_ratio_milli: None,
+            },
+        ];
+
+        let layout = table_layout_from_payload(&table);
+
+        assert!(
+            layout.row_heights[0] >= 2.0 * 72.0 + 6.0 + NOTION_TABLE_CELL_LINE_HEIGHT_PX as f32
+        );
     }
 }

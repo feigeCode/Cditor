@@ -10,6 +10,35 @@ pub(super) fn parse_inline_markdown(markdown: &str) -> Vec<InlineSpan> {
     spans
 }
 
+pub(super) fn parse_inline_markdown_with_images(
+    markdown: &str,
+) -> (Vec<InlineSpan>, Vec<ImagePayload>) {
+    let atomics = find_atomic_spans(markdown);
+    let image_atomics = atomics
+        .iter()
+        .filter(|atomic| atomic.kind == AtomicKind::Image)
+        .collect::<Vec<_>>();
+    if image_atomics.is_empty() {
+        return (parse_inline_markdown(markdown), Vec::new());
+    }
+
+    let mut text = String::with_capacity(markdown.len());
+    let mut images = Vec::with_capacity(image_atomics.len());
+    let mut cursor = 0;
+    for atomic in image_atomics {
+        text.push_str(&markdown[cursor..atomic.start]);
+        images.push(ImagePayload {
+            source: atomic.href.clone(),
+            alt: atomic.label.clone(),
+            caption: String::new(),
+            display_width_ratio_milli: None,
+        });
+        cursor = atomic.end;
+    }
+    text.push_str(&markdown[cursor..]);
+    (parse_inline_markdown(text.trim()), images)
+}
+
 pub(super) struct InlineParseResult {
     pub(super) spans: Vec<InlineSpan>,
     pub(super) changed: bool,
@@ -104,15 +133,16 @@ fn find_atomic_spans(text: &str) -> Vec<AtomicSpan> {
             }
         }
 
-        // Image: ![alt](src) — consumed as plain text, not a mark
+        // Image: ![alt](src) — retained as source in normal rich text and
+        // projected as media by table cells.
         if rest.starts_with("![") {
-            if let Some(consumed) = parse_markdown_image(rest) {
+            if let Some((alt, source, consumed)) = parse_markdown_image_parts(rest) {
                 atomics.push(AtomicSpan {
                     start: cursor,
                     end: cursor + consumed,
                     kind: AtomicKind::Image,
-                    label: String::new(),
-                    href: String::new(),
+                    label: unescape_markdown_text(alt),
+                    href: unescape_markdown_text(source),
                 });
                 cursor += consumed;
                 continue;
@@ -495,10 +525,6 @@ fn parse_auto_link(text: &str) -> Option<(&str, usize)> {
         end -= text[..end].chars().next_back().map_or(0, char::len_utf8);
     }
     (end > prefix_len).then_some((&text[..end], end))
-}
-
-fn parse_markdown_image(text: &str) -> Option<usize> {
-    parse_markdown_image_parts(text).map(|(_, _, consumed)| consumed)
 }
 
 pub(super) fn parse_block_image(text: &str) -> Option<(String, String)> {

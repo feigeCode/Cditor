@@ -154,6 +154,16 @@ fn estimated_table_bytes(table: &TablePayload) -> usize {
                                 .map(|cell| {
                                     estimated_spans_bytes(&cell.spans, cell.spans.capacity())
                                         .saturating_add(
+                                            cell.images
+                                                .iter()
+                                                .map(|image| {
+                                                    image.source.capacity()
+                                                        + image.alt.capacity()
+                                                        + image.caption.capacity()
+                                                })
+                                                .sum::<usize>(),
+                                        )
+                                        .saturating_add(
                                             cell.style
                                                 .background_color
                                                 .as_ref()

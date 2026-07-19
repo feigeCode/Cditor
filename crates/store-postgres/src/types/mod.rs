@@ -90,6 +90,12 @@ mod tests {
             BlockPayload::Table(TablePayload {
                 rows: vec![TableRowPayload {
                     cells: vec![TableCellPayload {
+                        images: vec![ImagePayload {
+                            source: "https://example.com/logo.png".to_owned(),
+                            alt: "Logo".to_owned(),
+                            caption: String::new(),
+                            display_width_ratio_milli: None,
+                        }],
                         style: TableCellStyle {
                             background_color: Some("yellow".to_owned()),
                         },
@@ -122,6 +128,31 @@ mod tests {
     }
 
     #[test]
+    fn legacy_table_cell_payload_without_images_decodes_with_empty_media() {
+        let encoded = serde_json::json!({
+            "type": "table",
+            "rows": [{
+                "cells": [{
+                    "spans": [{"text": "legacy", "marks": []}],
+                    "align": "left",
+                    "merge": {"type": "unmerged"},
+                    "style": {}
+                }],
+                "height": {"type": "auto"}
+            }],
+            "columns": [],
+            "header_rows": 0,
+            "header_cols": 0,
+            "header_style": {}
+        });
+
+        let BlockPayload::Table(table) = decode_block_payload(encoded).unwrap() else {
+            panic!("expected table payload");
+        };
+        assert!(table.rows[0].cells[0].images.is_empty());
+    }
+
+    #[test]
     fn table_payload_schema_round_trips_structure_geometry_merge_and_align() {
         let payload = BlockPayload::Table(TablePayload {
             rows: vec![
@@ -132,6 +163,7 @@ mod tests {
                                 text: "merged".to_owned(),
                                 marks: vec![InlineMark::Bold],
                             }],
+                            images: Vec::new(),
                             align: TableCellAlign::Center,
                             merge: TableCellMerge::Origin {
                                 row_span: 2,

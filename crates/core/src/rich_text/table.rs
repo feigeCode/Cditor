@@ -1,4 +1,4 @@
-use super::{InlineSpan, plain_text_from_spans};
+use super::{ImagePayload, InlineSpan, plain_text_from_spans};
 use serde::{Deserialize, Serialize};
 
 mod clipboard;
@@ -30,6 +30,8 @@ pub struct TableColumnPayload {
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub struct TableCellPayload {
     pub spans: Vec<InlineSpan>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub images: Vec<ImagePayload>,
     pub align: TableCellAlign,
     pub merge: TableCellMerge,
     pub style: TableCellStyle,
@@ -99,6 +101,7 @@ impl TableCellPayload {
     pub fn plain(text: impl Into<String>) -> Self {
         Self {
             spans: vec![InlineSpan::plain(text)],
+            images: Vec::new(),
             align: TableCellAlign::Left,
             merge: TableCellMerge::Unmerged,
             style: TableCellStyle::default(),
@@ -161,7 +164,7 @@ impl TablePayload {
         self.rows
             .get(row)
             .and_then(|row| row.cells.get(col))
-            .map(|cell| plain_text_from_spans(&cell.spans))
+            .map(cell_plain_text)
     }
 
     pub fn plain_text(&self) -> String {
@@ -174,7 +177,7 @@ impl TablePayload {
                     .enumerate()
                     .map(|(col_index, cell)| {
                         if self.cell_origin(row_index, col_index) == Some((row_index, col_index)) {
-                            plain_text_from_spans(&cell.spans)
+                            cell_plain_text(cell)
                         } else {
                             String::new()
                         }
@@ -465,6 +468,22 @@ impl TablePayload {
                 }
             }
         }
+    }
+}
+
+fn cell_plain_text(cell: &TableCellPayload) -> String {
+    let text = plain_text_from_spans(&cell.spans);
+    let image_alts = cell
+        .images
+        .iter()
+        .map(|image| image.alt.trim())
+        .filter(|alt| !alt.is_empty())
+        .collect::<Vec<_>>()
+        .join(" ");
+    match (text.trim().is_empty(), image_alts.is_empty()) {
+        (true, false) => image_alts,
+        (false, false) => format!("{text} {image_alts}"),
+        _ => text,
     }
 }
 

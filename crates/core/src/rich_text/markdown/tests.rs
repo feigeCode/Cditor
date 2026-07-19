@@ -54,6 +54,35 @@ fn raw_html_is_kept_as_a_renderable_html_block() {
 }
 
 #[test]
+fn markdown_table_cells_preserve_images_as_media() {
+    let source = "| Logo |\n| --- |\n| ![Navop](https://example.com/navop.png) |";
+    let result = parse_markdown_document_with_report(source, MarkdownImportOptions::default());
+    let BlockPayload::Table(table) = &result.document.blocks[0].payload else {
+        panic!("expected table payload");
+    };
+    let cell = &table.rows[1].cells[0];
+
+    assert_eq!(1, cell.images.len());
+    assert_eq!("Navop", cell.images[0].alt);
+    assert_eq!("https://example.com/navop.png", cell.images[0].source);
+    assert!(cell.spans.iter().all(|span| span.text.trim().is_empty()));
+    let images = cell.images.clone();
+
+    let document = document_from_parsed(result.document);
+    let exported = export_document_blocks(&document, MarkdownExportMode::Strict);
+    assert!(
+        exported
+            .markdown
+            .contains("![Navop](<https://example.com/navop.png>)")
+    );
+    let reparsed = parse_markdown_document(&exported.markdown, MarkdownImportOptions::default());
+    let BlockPayload::Table(reparsed_table) = &reparsed.blocks[0].payload else {
+        panic!("expected reparsed table payload");
+    };
+    assert_eq!(reparsed_table.rows[1].cells[0].images, images);
+}
+
+#[test]
 fn block_math_imports_and_round_trips_as_an_editable_math_block() {
     let source = "$$\n\\frac{-b \\pm \\sqrt{b^2 - 4ac}}{2a}\n$$";
     let result = parse_markdown_document_with_report(source, MarkdownImportOptions::default());

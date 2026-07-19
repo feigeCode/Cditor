@@ -88,10 +88,14 @@ fn table_row_from_cells(cells: Vec<String>, alignments: &[TableCellAlign]) -> Ta
         cells: cells
             .into_iter()
             .enumerate()
-            .map(|(index, cell)| TableCellPayload {
-                spans: parse_inline_markdown(&cell),
-                align: alignments.get(index).copied().unwrap_or_default(),
-                ..Default::default()
+            .map(|(index, cell)| {
+                let (spans, images) = parse_inline_markdown_with_images(&cell);
+                TableCellPayload {
+                    spans,
+                    images,
+                    align: alignments.get(index).copied().unwrap_or_default(),
+                    ..Default::default()
+                }
             })
             .collect(),
         height: Default::default(),
@@ -112,7 +116,16 @@ pub(super) fn table_to_plain_markdown(payload: &BlockPayload) -> Option<String> 
         let cells = row
             .cells
             .iter()
-            .map(|cell| escape_table_cell(&crate::rich_text::plain_text_from_spans(&cell.spans)))
+            .map(|cell| {
+                let mut content = crate::rich_text::plain_text_from_spans(&cell.spans);
+                for image in &cell.images {
+                    if !content.is_empty() {
+                        content.push(' ');
+                    }
+                    content.push_str(&format!("![{}](<{}>)", image.alt, image.source));
+                }
+                escape_table_cell(&content)
+            })
             .collect::<Vec<_>>();
         lines.push(format!("| {} |", cells.join(" | ")));
         if row_index == 0 {

@@ -332,8 +332,18 @@ fn table_clipboard_markdown(table: &cditor_core::rich_text::TablePayload) -> Opt
             .cells
             .iter()
             .map(|cell| {
-                let text = cditor_core::rich_text::plain_text_from_spans(&cell.spans);
-                text.replace('|', "\\|").replace('\n', "<br>")
+                let mut content = cditor_core::rich_text::plain_text_from_spans(&cell.spans);
+                for image in &cell.images {
+                    if !content.trim().is_empty() {
+                        content.push(' ');
+                    }
+                    content.push_str("![");
+                    content.push_str(&image.alt.replace(']', "\\]"));
+                    content.push_str("](<");
+                    content.push_str(&image.source.replace('>', "\\>"));
+                    content.push_str(">)");
+                }
+                content.replace('|', "\\|").replace('\n', "<br>")
             })
             .collect::<Vec<_>>();
         lines.push(format!("| {} |", cells.join(" | ")));

@@ -1,15 +1,16 @@
 use std::ops::Range;
 
 use gpui::{
-    AnyElement, Entity, FocusHandle, InteractiveElement, IntoElement, ParentElement, ScrollHandle,
-    StatefulInteractiveElement, Styled, div, px, rgb,
+    AnyElement, App, Entity, FocusHandle, InteractiveElement, IntoElement, ObjectFit,
+    ParentElement, ScrollHandle, StatefulInteractiveElement, Styled, div, px, rgb,
 };
 
 use crate::gui::GuiTheme;
 use crate::gui::app::CditorV2View;
+use crate::gui::image_loader::{RasterImageElement, load_render_image};
 use cditor_core::ids::BlockId;
 use cditor_core::layout::TABLE_HORIZONTAL_SCROLLBAR_CHROME_HEIGHT_PX;
-use cditor_core::rich_text::{InlineSpan, TableCellAlign, plain_text_from_spans};
+use cditor_core::rich_text::{ImagePayload, InlineSpan, TableCellAlign, plain_text_from_spans};
 use cditor_runtime::{TableCellPosition, TableViewState};
 
 use super::cell::{is_active_cell, render_table_cell};
@@ -36,6 +37,7 @@ pub(crate) fn render_table_block(
     table_scroll_handle: Option<ScrollHandle>,
     view: Entity<CditorV2View>,
     focus: FocusHandle,
+    cx: &mut App,
 ) -> AnyElement {
     if table_view.visible_cells.is_empty() {
         trace_table(
@@ -79,6 +81,13 @@ pub(crate) fn render_table_block(
                         block_id,
                         content_version,
                         cell.spans.clone(),
+                        table_view
+                            .table
+                            .rows
+                            .get(cell.position.row)
+                            .and_then(|row| row.cells.get(cell.position.col))
+                            .map(|cell| cell.images.clone())
+                            .unwrap_or_default(),
                         active,
                         table_view.focused_cell_offset,
                         table_view.focused_cell_selection_range.clone(),
@@ -89,6 +98,7 @@ pub(crate) fn render_table_block(
                         focus.clone(),
                         cell.position,
                         cell.align,
+                        cx,
                     );
                     render_table_cell(
                         cell,
@@ -134,6 +144,7 @@ fn render_table_cell_content(
     block_id: BlockId,
     content_version: u64,
     spans: Vec<InlineSpan>,
+    images: Vec<ImagePayload>,
     active: bool,
     focused_cell_offset: Option<usize>,
     selected_range: Option<Range<usize>>,
@@ -144,6 +155,7 @@ fn render_table_cell_content(
     focus: FocusHandle,
     position: TableCellPosition,
     align: TableCellAlign,
+    cx: &mut App,
 ) -> AnyElement {
     let text = plain_text_from_spans(&spans);
     if active {
@@ -157,7 +169,7 @@ fn render_table_cell_content(
             ),
         );
     }
-    TableCellTextElement::new(
+    let text_element = TableCellTextElement::new(
         block_id,
         content_version,
         position,
@@ -172,7 +184,52 @@ fn render_table_cell_content(
         focus,
         align,
     )
-    .into_any_element()
+    .into_any_element();
+    if images.is_empty() {
+        return text_element;
+    }
+    div()
+        .w_full()
+        .min_w(px(0.0))
+        .flex()
+        .flex_col()
+        .gap(px(6.0))
+        .children(
+            images
+                .iter()
+                .map(|image| render_table_cell_image(image, theme, cx)),
+        )
+        .child(text_element)
+        .into_any_element()
+}
+
+fn render_table_cell_image(image: &ImagePayload, theme: GuiTheme, cx: &mut App) -> AnyElement {
+    const PREVIEW_HEIGHT_PX: f32 = 72.0;
+    let loaded = load_render_image(&image.source, cx);
+    div()
+        .w_full()
+        .h(px(PREVIEW_HEIGHT_PX))
+        .rounded(px(3.0))
+        .overflow_hidden()
+        .bg(rgb(theme.hover_surface))
+        .child(if let Some(image) = loaded {
+            RasterImageElement::new(image, ObjectFit::Contain, px(0.0)).into_any_element()
+        } else {
+            div()
+                .size_full()
+                .flex()
+                .items_center()
+                .justify_center()
+                .text_size(px(11.0))
+                .text_color(rgb(theme.muted))
+                .child(if image.alt.trim().is_empty() {
+                    "Image".to_owned()
+                } else {
+                    image.alt.clone()
+                })
+                .into_any_element()
+        })
+        .into_any_element()
 }
 
 fn render_empty_table(theme: GuiTheme) -> AnyElement {

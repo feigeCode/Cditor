@@ -80,6 +80,8 @@ pub struct DbTableColumn {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DbTableCell {
     pub spans: Vec<DbInlineSpan>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub images: Vec<ImagePayload>,
     #[serde(default)]
     pub align: DbTableCellAlign,
     #[serde(default)]
@@ -314,6 +316,7 @@ impl From<&TableCellPayload> for DbTableCell {
     fn from(cell: &TableCellPayload) -> Self {
         Self {
             spans: cell.spans.iter().map(DbInlineSpan::from).collect(),
+            images: cell.images.clone(),
             align: DbTableCellAlign::from(cell.align),
             merge: DbTableCellMerge::from(cell.merge),
             style: DbTableCellStyle::from(&cell.style),
@@ -325,6 +328,7 @@ impl From<DbTableCell> for TableCellPayload {
     fn from(cell: DbTableCell) -> Self {
         Self {
             spans: cell.spans.into_iter().map(InlineSpan::from).collect(),
+            images: cell.images,
             align: TableCellAlign::from(cell.align),
             merge: TableCellMerge::from(cell.merge),
             style: TableCellStyle::from(cell.style),

@@ -499,3 +499,30 @@ fn table_clipboard_exports_cell_range_row_column_and_whole_table() {
     assert!(runtime.table_clipboard_for_cell(10, 3, 0).is_none());
     assert!(runtime.table_clipboard_for_whole_table(99).is_none());
 }
+
+#[test]
+fn table_clipboard_preserves_cell_images_in_markdown_and_plain_text() {
+    let mut payload = sample_table_payload();
+    let BlockPayload::Table(table) = &mut payload.payload else {
+        panic!("expected table payload");
+    };
+    table.rows[0].cells[0]
+        .images
+        .push(cditor_core::rich_text::ImagePayload {
+            source: "https://example.com/logo.png".to_owned(),
+            alt: "Logo".to_owned(),
+            caption: String::new(),
+            display_width_ratio_milli: None,
+        });
+
+    let runtime = DocumentRuntime::from_payloads(1, vec![payload], 720.0);
+    let clipboard = runtime
+        .table_clipboard_for_cell(10, 0, 0)
+        .expect("cell clipboard");
+
+    assert_eq!(clipboard.plain_text, "A Logo");
+    assert_eq!(
+        clipboard.markdown,
+        "| A ![Logo](<https://example.com/logo.png>) |\n| --- |"
+    );
+}
