@@ -87,6 +87,28 @@ fn markdown_table_cells_preserve_images_as_media() {
 }
 
 #[test]
+fn markdown_table_cells_render_plain_relative_images() {
+    let source =
+        "| Database | SSH |\n| --- | --- |\n| ![Database](database.png) | ![SSH](ssh.png) |";
+    let result = parse_markdown_document_with_report(source, MarkdownImportOptions::default());
+    let BlockPayload::Table(table) = &result.document.blocks[0].payload else {
+        panic!("expected table payload");
+    };
+
+    assert_eq!(table.rows[1].cells[0].images.len(), 1);
+    assert_eq!(table.rows[1].cells[0].images[0].alt, "Database");
+    assert_eq!(table.rows[1].cells[0].images[0].source, "database.png");
+    assert_eq!(table.rows[1].cells[1].images.len(), 1);
+    assert_eq!(table.rows[1].cells[1].images[0].source, "ssh.png");
+    assert!(
+        table.rows[1]
+            .cells
+            .iter()
+            .all(|cell| { cell.spans.iter().all(|span| span.text.trim().is_empty()) })
+    );
+}
+
+#[test]
 fn markdown_table_cells_render_self_linked_relative_images() {
     let source = "| Database |\n| --- |\n| [![Database](database.png)](database.png) |";
     let result = parse_markdown_document_with_report(source, MarkdownImportOptions::default());

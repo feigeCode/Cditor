@@ -90,10 +90,12 @@ impl CditorV2View {
             text_layouts: HashMap::new(),
             table_cell_layouts: HashMap::new(),
             table_scroll_state: Default::default(),
+            html_scroll_handles: HashMap::new(),
             code_highlights: Default::default(),
             code_highlight_refresh_scheduled: false,
             document_renders: Default::default(),
             document_source_blocks: Default::default(),
+            html_source_block_id: None,
             whiteboard_thumbnails: Default::default(),
             whiteboard_editor: None,
             scrollbar_drag: None,
@@ -176,10 +178,12 @@ impl CditorV2View {
             text_layouts: HashMap::new(),
             table_cell_layouts: HashMap::new(),
             table_scroll_state: Default::default(),
+            html_scroll_handles: HashMap::new(),
             code_highlights: Default::default(),
             code_highlight_refresh_scheduled: false,
             document_renders: Default::default(),
             document_source_blocks: Default::default(),
+            html_source_block_id: None,
             whiteboard_thumbnails: Default::default(),
             whiteboard_editor: None,
             scrollbar_drag: None,
@@ -263,10 +267,12 @@ impl CditorV2View {
             text_layouts: HashMap::new(),
             table_cell_layouts: HashMap::new(),
             table_scroll_state: Default::default(),
+            html_scroll_handles: HashMap::new(),
             code_highlights: Default::default(),
             code_highlight_refresh_scheduled: false,
             document_renders: Default::default(),
             document_source_blocks: Default::default(),
+            html_source_block_id: None,
             whiteboard_thumbnails: Default::default(),
             whiteboard_editor: None,
             scrollbar_drag: None,
@@ -325,6 +331,8 @@ impl CditorV2View {
         self.code_highlights.clear();
         self.document_renders.clear();
         self.document_source_blocks.clear();
+        self.html_source_block_id = None;
+        self.html_scroll_handles.clear();
         self.whiteboard_thumbnails.clear();
         self.whiteboard_editor = None;
         self.payload_window_load_scheduler.reset();
@@ -369,6 +377,8 @@ impl CditorV2View {
         self.code_highlights.clear();
         self.document_renders.clear();
         self.document_source_blocks.clear();
+        self.html_source_block_id = None;
+        self.html_scroll_handles.clear();
         self.text_drag_selection = None;
         self.block_drag_selection = BlockDragSelectionController::default();
         self.code_language_edit = None;
@@ -400,6 +410,16 @@ impl CditorV2View {
         offset_x: f32,
     ) -> gpui::ScrollHandle {
         self.table_scroll_state.handle(block_id, offset_x)
+    }
+
+    pub(in crate::gui::app) fn html_scroll_handle(
+        &mut self,
+        block_id: BlockId,
+    ) -> gpui::ScrollHandle {
+        self.html_scroll_handles
+            .entry(block_id)
+            .or_default()
+            .clone()
     }
 
     pub(in crate::gui::app) fn stable_table_viewport_measurement(

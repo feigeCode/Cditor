@@ -1,6 +1,6 @@
 use gpui::{
     AnyElement, App, Entity, FocusHandle, IntoElement, ObjectFit, ParentElement, ScrollHandle,
-    Styled, StyledImage, div, img, px, rgb,
+    Styled, StyledImage, div, img, px,
 };
 
 use crate::gui::app::CditorV2View;
@@ -18,7 +18,8 @@ use crate::gui::block::{
 };
 use crate::gui::document::DEFAULT_DOCUMENT_CONTENT_WIDTH_PX;
 use crate::gui::image_loader::{
-    RasterImageElement, gpui_image_source, is_svg_image_source, load_render_image_from_base,
+    ImagePlaceholder, ImagePlaceholderState, RasterImageElement, RenderImageLoadState,
+    gpui_image_source, is_svg_image_source, load_render_image_state_from_base,
 };
 use crate::gui::text::{RichTextElement, RichTextLayoutInput};
 use crate::gui::{GuiTheme, rich_text::render_payload_text};
@@ -28,6 +29,9 @@ use cditor_core::rich_text::{
     plain_text_from_spans,
 };
 use cditor_runtime::ViewBlockSnapshot;
+
+const INLINE_IMAGE_HEIGHT_PX: f32 = 24.0;
+const INLINE_IMAGE_PLACEHOLDER_WIDTH_PX: f32 = 120.0;
 
 pub(crate) fn render_block_content(
     block: &ViewBlockSnapshot,
@@ -39,6 +43,7 @@ pub(crate) fn render_block_content(
     table_reorder_preview: Option<TableReorderPreview>,
     table_range_selection: Option<TableCellRangeSelection>,
     suppress_text_input: bool,
+    show_document_source: bool,
     table_selection: Option<TableAxisSelection>,
     table_scroll_handle: Option<ScrollHandle>,
     readonly: bool,
@@ -84,7 +89,7 @@ pub(crate) fn render_block_content(
                 );
             }
             if let BlockPayload::Html { html, .. } = &payload.payload
-                && !html_source_editor_visible(block.focused, readonly, suppress_text_input)
+                && !html_source_editor_visible(show_document_source, readonly, suppress_text_input)
             {
                 return render_html_block(block.block_id, html, theme, media_base_path, cx);
             }
@@ -122,6 +127,7 @@ pub(crate) fn render_block_content(
                 if matches!(
                     block.kind,
                     cditor_core::rich_text::RichBlockKind::Code { .. }
+                        | cditor_core::rich_text::RichBlockKind::Html
                 ) && let Some(spans) = code_highlights.spans(block.block_id)
                 {
                     input.spans = spans.to_vec();
@@ -135,6 +141,7 @@ pub(crate) fn render_block_content(
                 let text_theme = if matches!(
                     block.kind,
                     cditor_core::rich_text::RichBlockKind::Code { .. }
+                        | cditor_core::rich_text::RichBlockKind::Html
                 ) {
                     GuiTheme {
                         code_text: code_highlights.theme_item(code_highlight_theme).foreground,
@@ -199,42 +206,61 @@ fn render_inline_media_fragments(
             }
             InlineMediaFragment::Image(image) => {
                 if is_svg_image_source(&image.source) {
+                    let loading = ImagePlaceholder::new(
+                        image.source.clone(),
+                        theme,
+                        ImagePlaceholderState::Loading,
+                    )
+                    .alt(image.alt.clone())
+                    .height(INLINE_IMAGE_HEIGHT_PX)
+                    .compact();
+                    let failed = ImagePlaceholder::new(
+                        image.source.clone(),
+                        theme,
+                        ImagePlaceholderState::Failed,
+                    )
+                    .alt(image.alt.clone())
+                    .height(INLINE_IMAGE_HEIGHT_PX)
+                    .compact();
                     return img(gpui_image_source(&image.source, media_base_path))
-                        .h(px(24.0))
+                        .w(px(INLINE_IMAGE_PLACEHOLDER_WIDTH_PX))
+                        .h(px(INLINE_IMAGE_HEIGHT_PX))
                         .max_w(px(480.0))
                         .object_fit(ObjectFit::Contain)
+                        .with_loading(move || loading.clone().into_any_element())
+                        .with_fallback(move || failed.clone().into_any_element())
                         .into_any_element();
                 }
-                if let Some(render_image) =
-                    load_render_image_from_base(&image.source, media_base_path, cx)
-                {
-                    let size = render_image.size(0);
-                    let aspect = (size.width.0 as f32 / size.height.0.max(1) as f32).max(0.1);
-                    let height = 24.0;
-                    div()
-                        .w(px((height * aspect).clamp(24.0, 480.0)))
-                        .h(px(height))
-                        .child(RasterImageElement::new(
-                            render_image,
-                            ObjectFit::Contain,
-                            px(0.0),
-                        ))
-                        .into_any_element()
-                } else {
-                    div()
-                        .h(px(24.0))
-                        .px(px(6.0))
-                        .flex()
-                        .items_center()
-                        .rounded(px(3.0))
-                        .bg(rgb(theme.hover_surface))
-                        .text_color(rgb(theme.muted))
-                        .child(if image.alt.trim().is_empty() {
-                            "Image".to_owned()
-                        } else {
-                            image.alt
-                        })
-                        .into_any_element()
+                match load_render_image_state_from_base(&image.source, media_base_path, cx) {
+                    RenderImageLoadState::Ready(render_image) => {
+                        let size = render_image.size(0);
+                        let aspect = (size.width.0 as f32 / size.height.0.max(1) as f32).max(0.1);
+                        let height = INLINE_IMAGE_HEIGHT_PX;
+                        div()
+                            .w(px((height * aspect).clamp(24.0, 480.0)))
+                            .h(px(height))
+                            .child(RasterImageElement::new(
+                                render_image,
+                                ObjectFit::Contain,
+                                px(0.0),
+                            ))
+                            .into_any_element()
+                    }
+                    state => div()
+                        .w(px(INLINE_IMAGE_PLACEHOLDER_WIDTH_PX))
+                        .child(
+                            ImagePlaceholder::new(
+                                image.source.clone(),
+                                theme,
+                                state
+                                    .placeholder_state()
+                                    .unwrap_or(ImagePlaceholderState::Failed),
+                            )
+                            .alt(image.alt.clone())
+                            .height(INLINE_IMAGE_HEIGHT_PX)
+                            .compact(),
+                        )
+                        .into_any_element(),
                 }
             }
         }))

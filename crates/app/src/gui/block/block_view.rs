@@ -54,6 +54,7 @@ impl BlockView {
         code_highlight_theme: &'static str,
         suppress_document_text_input: bool,
         table_scroll_handle: Option<ScrollHandle>,
+        html_scroll_handle: Option<ScrollHandle>,
         readonly: bool,
         media_base_path: Option<&std::path::Path>,
         code_highlights: &CodeHighlightCache,
@@ -81,6 +82,7 @@ impl BlockView {
             code_highlight_theme,
             suppress_document_text_input,
             table_scroll_handle,
+            html_scroll_handle,
             readonly,
             media_base_path,
             code_highlights,
@@ -90,6 +92,8 @@ impl BlockView {
             cx,
         );
         let focus_view = view.clone();
+        let html_edit_view = view.clone();
+        let begins_html_edit = matches!(block.kind, RichBlockKind::Html) && !readonly;
         let hover_view = view.clone();
         let add_view = view.clone();
         let gutter_view = view.clone();
@@ -132,6 +136,15 @@ impl BlockView {
             action,
             move |event, window, cx| {
                 focus_block_from_mouse(&focus_view, block_id, event, window, cx);
+                if begins_html_edit {
+                    let _ = html_edit_view.update(cx, |view, cx| {
+                        view.begin_document_source_from_gui(block_id, cx);
+                    });
+                } else {
+                    let _ = html_edit_view.update(cx, |view, cx| {
+                        view.end_html_source_from_gui(cx);
+                    });
+                }
                 cx.stop_propagation();
             },
             Some(Box::new(move |event, _window, cx| {
@@ -170,6 +183,7 @@ fn render_kind_content(
     code_highlight_theme: &'static str,
     suppress_document_text_input: bool,
     table_scroll_handle: Option<ScrollHandle>,
+    html_scroll_handle: Option<ScrollHandle>,
     readonly: bool,
     media_base_path: Option<&std::path::Path>,
     code_highlights: &CodeHighlightCache,
@@ -205,6 +219,7 @@ fn render_kind_content(
             || ((matches!(block.kind, RichBlockKind::Mermaid | RichBlockKind::Math)
                 || math_code_language.is_some())
                 && !show_document_source),
+        show_document_source,
         table_axis_selection,
         table_scroll_handle,
         readonly,
@@ -289,7 +304,11 @@ fn render_kind_content(
             cx,
         ),
         RichBlockKind::Html => {
-            if html_source_editor_visible(block.focused, readonly, suppress_document_text_input) {
+            if html_source_editor_visible(
+                show_document_source,
+                readonly,
+                suppress_document_text_input,
+            ) {
                 let Some(html) = (match &block.payload {
                     cditor_core::rich_text::BlockPayloadView::Loaded(payload) => {
                         match &payload.payload {
@@ -309,6 +328,8 @@ fn render_kind_content(
                     html,
                     theme,
                     media_base_path,
+                    html_scroll_handle.unwrap_or_default(),
+                    view,
                     cx,
                 )
             } else {

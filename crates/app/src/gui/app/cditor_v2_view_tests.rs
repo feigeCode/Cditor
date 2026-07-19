@@ -21,6 +21,20 @@ fn save_status_for_mode_respects_readonly() {
 }
 
 #[test]
+fn html_source_mode_moves_between_individual_blocks() {
+    let mut active = None;
+    assert!(begin_html_source(&mut active, 7));
+    assert_eq!(active, Some(7));
+    assert!(!begin_html_source(&mut active, 7));
+
+    assert!(begin_html_source(&mut active, 9));
+    assert_eq!(active, Some(9));
+    assert!(!close_html_source(&mut active, 7));
+    assert!(close_html_source(&mut active, 9));
+    assert_eq!(active, None);
+}
+
+#[test]
 fn cditor_view_state_can_swap_from_loading_to_ready_or_failed() {
     let mut state = CditorViewState::Loading {
         message: "loading".to_owned(),

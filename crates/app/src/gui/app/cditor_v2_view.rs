@@ -79,10 +79,12 @@ pub struct CditorV2View {
     pub(in crate::gui::app) text_layouts: HashMap<BlockId, RichTextPlatformLayout>,
     pub(in crate::gui::app) table_cell_layouts: HashMap<TableCellLayoutKey, RichTextPlatformLayout>,
     pub(in crate::gui::app) table_scroll_state: GuiTableScrollState,
+    pub(in crate::gui::app) html_scroll_handles: HashMap<BlockId, gpui::ScrollHandle>,
     pub(in crate::gui::app) code_highlights: CodeHighlightCache,
     pub(in crate::gui::app) code_highlight_refresh_scheduled: bool,
     pub(in crate::gui::app) document_renders: DocumentRenderCache,
     pub(in crate::gui::app) document_source_blocks: std::collections::HashSet<BlockId>,
+    pub(in crate::gui::app) html_source_block_id: Option<BlockId>,
     pub(in crate::gui::app) whiteboard_thumbnails: WhiteboardThumbnailCache,
     pub(in crate::gui::app) whiteboard_editor: Option<WhiteboardEditorSession>,
     pub(in crate::gui::app) scrollbar_drag: Option<GuiScrollbarDrag>,
@@ -173,6 +175,39 @@ impl CditorV2View {
             self.document_source_blocks.insert(block_id);
         }
         cx.notify();
+    }
+
+    pub(crate) fn begin_document_source_from_gui(
+        &mut self,
+        block_id: BlockId,
+        cx: &mut Context<Self>,
+    ) {
+        if begin_html_source(&mut self.html_source_block_id, block_id) {
+            cx.notify();
+        }
+    }
+
+    pub(crate) fn preview_html_block_from_gui(
+        &mut self,
+        block_id: BlockId,
+        cx: &mut Context<Self>,
+    ) {
+        if close_html_source(&mut self.html_source_block_id, block_id) {
+            cx.notify();
+        }
+    }
+
+    pub(crate) fn end_html_source_from_gui(&mut self, cx: &mut Context<Self>) {
+        if self.html_source_block_id.take().is_some() {
+            cx.notify();
+        }
+    }
+
+    pub(crate) fn save_html_block_from_gui(&mut self, block_id: BlockId, cx: &mut Context<Self>) {
+        if close_html_source(&mut self.html_source_block_id, block_id) {
+            self.flush_storage_persistence(cx);
+            cx.notify();
+        }
     }
 
     pub(crate) fn copy_code_block_from_gui(&mut self, block_id: BlockId, cx: &mut Context<Self>) {
@@ -418,6 +453,22 @@ impl CditorV2View {
         cx.notify();
         true
     }
+}
+
+fn begin_html_source(active: &mut Option<BlockId>, block_id: BlockId) -> bool {
+    if *active == Some(block_id) {
+        return false;
+    }
+    *active = Some(block_id);
+    true
+}
+
+fn close_html_source(active: &mut Option<BlockId>, block_id: BlockId) -> bool {
+    if *active != Some(block_id) {
+        return false;
+    }
+    *active = None;
+    true
 }
 
 #[cfg(test)]

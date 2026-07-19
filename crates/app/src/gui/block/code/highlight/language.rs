@@ -40,26 +40,26 @@ pub(super) fn visible_code_blocks(
         .blocks
         .iter()
         .filter_map(|block| {
-            let RichBlockKind::Code { language } = &block.kind else {
-                return None;
-            };
             let BlockPayloadView::Loaded(payload) = &block.payload else {
                 return None;
             };
-            let BlockPayload::Code {
-                language: payload_language,
-                text,
-            } = &payload.payload
-            else {
-                return None;
+            let (text, language) = match (&block.kind, &payload.payload) {
+                (
+                    RichBlockKind::Code { language },
+                    BlockPayload::Code {
+                        language: payload_language,
+                        text,
+                    },
+                ) => (
+                    text.as_str(),
+                    normalize_language(payload_language.as_deref().or(language.as_deref()))?,
+                ),
+                (RichBlockKind::Html, BlockPayload::Html { html, .. }) => {
+                    (html.as_str(), "html".to_owned())
+                }
+                _ => return None,
             };
-            let language = normalize_language(payload_language.as_deref().or(language.as_deref()))?;
-            Some((
-                block.block_id,
-                payload.content_version,
-                text.as_str(),
-                language,
-            ))
+            Some((block.block_id, payload.content_version, text, language))
         })
         .collect()
 }

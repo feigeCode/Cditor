@@ -134,6 +134,30 @@ fn language_aliases_are_normalized_without_rejecting_extensions() {
 }
 
 #[test]
+fn visible_html_blocks_request_html_highlighting() {
+    let html = "<section><strong>hello</strong></section>";
+    let runtime = cditor_runtime::DocumentRuntime::from_payloads(
+        1,
+        vec![cditor_core::rich_text::BlockPayloadRecord {
+            block_id: 1,
+            content_version: 3,
+            kind: cditor_core::rich_text::RichBlockKind::Html,
+            payload: cditor_core::rich_text::BlockPayload::Html {
+                html: html.to_owned(),
+                sanitized: false,
+            },
+        }],
+        720.0,
+    );
+    let projection = runtime.projection_for_window();
+
+    assert_eq!(
+        language::visible_code_blocks(&projection),
+        vec![(1, 3, html, "html".to_owned())]
+    );
+}
+
+#[test]
 fn rebase_preserves_exact_text_for_unicode_edits() {
     let old_source = "const 名 = 1;";
     let old_spans = vec![InlineSpan {

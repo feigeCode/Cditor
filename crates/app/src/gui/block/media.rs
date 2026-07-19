@@ -11,7 +11,8 @@ use gpui::{
 use crate::gui::GuiTheme;
 use crate::gui::app::CditorV2View;
 use crate::gui::image_loader::{
-    RasterImageElement, gpui_image_source, is_svg_image_source, load_render_image_from_base,
+    ImagePlaceholder, ImagePlaceholderState, RasterImageElement, RenderImageLoadState,
+    gpui_image_source, is_svg_image_source, load_render_image_state_from_base,
 };
 use crate::gui::image_preview::open_image_preview;
 use cditor_core::ids::BlockId;
@@ -41,6 +42,14 @@ pub fn render_image_block(
     cx: &mut App,
 ) -> AnyElement {
     if is_svg_image_source(&image.source) {
+        let loading =
+            ImagePlaceholder::new(image.source.clone(), theme, ImagePlaceholderState::Loading)
+                .alt(image.alt.clone())
+                .height(IMAGE_PLACEHOLDER_HEIGHT_PX);
+        let failed =
+            ImagePlaceholder::new(image.source.clone(), theme, ImagePlaceholderState::Failed)
+                .alt(image.alt.clone())
+                .height(IMAGE_PLACEHOLDER_HEIGHT_PX);
         return div()
             .w_full()
             .flex()
@@ -49,7 +58,9 @@ pub fn render_image_block(
             .child(
                 img(gpui_image_source(&image.source, media_base_path))
                     .max_w(px(NOTE_IMAGE_MAX_WIDTH_PX))
-                    .object_fit(ObjectFit::Contain),
+                    .object_fit(ObjectFit::Contain)
+                    .with_loading(move || loading.clone().into_any_element())
+                    .with_fallback(move || failed.clone().into_any_element()),
             )
             .when(!image.caption.trim().is_empty(), |this| {
                 this.child(
@@ -63,7 +74,11 @@ pub fn render_image_block(
             })
             .into_any_element();
     }
-    let loaded = load_render_image_from_base(&image.source, media_base_path, cx);
+    let load_state = load_render_image_state_from_base(&image.source, media_base_path, cx);
+    let loaded = match &load_state {
+        RenderImageLoadState::Ready(image) => Some(image.clone()),
+        RenderImageLoadState::Loading | RenderImageLoadState::Failed => None,
+    };
     let display_size = loaded.as_deref().map(|render_image| {
         display_image_size_px(render_image, image, image_resize_preview_width_px)
     });
@@ -119,7 +134,16 @@ pub fn render_image_block(
             ))
             .into_any_element()
     } else {
-        render_image_placeholder(image, theme)
+        ImagePlaceholder::new(
+            image.source.clone(),
+            theme,
+            load_state
+                .placeholder_state()
+                .unwrap_or(ImagePlaceholderState::Failed),
+        )
+        .alt(image.alt.clone())
+        .height(IMAGE_PLACEHOLDER_HEIGHT_PX)
+        .into_any_element()
     });
 
     let caption_width = display_size.map(|(width, _)| width);
@@ -346,25 +370,6 @@ fn image_block_measured_height(image_height_px: f32, has_caption: bool) -> f64 {
                 0.0
             },
     )
-}
-
-fn render_image_placeholder(image: &ImagePayload, theme: GuiTheme) -> AnyElement {
-    div()
-        .w_full()
-        .h(px(IMAGE_PLACEHOLDER_HEIGHT_PX))
-        .rounded(px(V1_IMAGE_RADIUS_PX))
-        .bg(rgb(theme.hover_surface))
-        .flex()
-        .items_center()
-        .justify_center()
-        .text_size(px(12.0))
-        .text_color(rgb(theme.muted))
-        .child(if image.source.is_empty() {
-            "Image".to_owned()
-        } else {
-            "Loading image".to_owned()
-        })
-        .into_any_element()
 }
 
 #[cfg(test)]

@@ -72,6 +72,7 @@ impl Render for CditorV2View {
         let code_theme_menu_block_id = self.code_theme_menu_block_id;
         let code_highlight_theme = self.code_highlight_theme;
         let document_source_blocks = self.document_source_blocks.clone();
+        let html_source_block_id = self.html_source_block_id;
         let embedded_ai_prompt = self.ai_prompt.as_ref().is_some_and(|prompt| {
             self.gutter_toolbar_block_id == Some(prompt.block_id)
                 || (prompt.presentation == AiRequestPresentation::Automatic
@@ -415,6 +416,18 @@ impl Render for CditorV2View {
                         },
                     );
                 }
+                let html_block_ids = projection
+                    .blocks
+                    .iter()
+                    .filter(|block| {
+                        matches!(block.kind, cditor_core::rich_text::RichBlockKind::Html)
+                    })
+                    .map(|block| block.block_id)
+                    .collect::<Vec<_>>();
+                let html_scroll_handles = html_block_ids
+                    .into_iter()
+                    .map(|block_id| (block_id, self.html_scroll_handle(block_id)))
+                    .collect::<std::collections::HashMap<_, _>>();
                 root = root
                     .child(document_editor.render(
                         &projection,
@@ -441,9 +454,11 @@ impl Render for CditorV2View {
                         code_highlight_theme,
                         self.ai_prompt.is_some(),
                         &table_scroll_snapshots,
+                        &html_scroll_handles,
                         &self.code_highlights,
                         &self.document_renders,
                         &document_source_blocks,
+                        html_source_block_id,
                         &self.whiteboard_thumbnails,
                         cx,
                     ))

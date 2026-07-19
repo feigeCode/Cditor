@@ -10,7 +10,8 @@ use gpui::{
 use crate::gui::GuiTheme;
 use crate::gui::app::CditorV2View;
 use crate::gui::image_loader::{
-    RasterImageElement, gpui_image_source, is_svg_image_source, load_render_image_from_base,
+    ImagePlaceholder, ImagePlaceholderState, RasterImageElement, RenderImageLoadState,
+    gpui_image_source, is_svg_image_source, load_render_image_state_from_base,
 };
 use cditor_core::ids::BlockId;
 use cditor_core::layout::TABLE_HORIZONTAL_SCROLLBAR_CHROME_HEIGHT_PX;
@@ -218,37 +219,48 @@ fn render_table_cell_image(
 ) -> AnyElement {
     let preview_height = table_cell_image_preview_height_px(&image.source);
     if is_svg_image_source(&image.source) {
+        let loading =
+            ImagePlaceholder::new(image.source.clone(), theme, ImagePlaceholderState::Loading)
+                .alt(image.alt.clone())
+                .height(preview_height)
+                .compact();
+        let failed =
+            ImagePlaceholder::new(image.source.clone(), theme, ImagePlaceholderState::Failed)
+                .alt(image.alt.clone())
+                .height(preview_height)
+                .compact();
         return div()
             .w_full()
             .h(px(preview_height))
             .child(
                 img(gpui_image_source(&image.source, media_base_path))
                     .size_full()
-                    .object_fit(ObjectFit::Contain),
+                    .object_fit(ObjectFit::Contain)
+                    .with_loading(move || loading.clone().into_any_element())
+                    .with_fallback(move || failed.clone().into_any_element()),
             )
             .into_any_element();
     }
-    let loaded = load_render_image_from_base(&image.source, media_base_path, cx);
+    let load_state = load_render_image_state_from_base(&image.source, media_base_path, cx);
     div()
         .w_full()
         .h(px(preview_height))
         .overflow_hidden()
-        .child(if let Some(image) = loaded {
-            RasterImageElement::new(image, ObjectFit::Contain, px(0.0)).into_any_element()
-        } else {
-            div()
-                .size_full()
-                .flex()
-                .items_center()
-                .justify_center()
-                .text_size(px(11.0))
-                .text_color(rgb(theme.muted))
-                .child(if image.alt.trim().is_empty() {
-                    "Image".to_owned()
-                } else {
-                    image.alt.clone()
-                })
-                .into_any_element()
+        .child(match load_state {
+            RenderImageLoadState::Ready(image) => {
+                RasterImageElement::new(image, ObjectFit::Contain, px(0.0)).into_any_element()
+            }
+            state => ImagePlaceholder::new(
+                image.source.clone(),
+                theme,
+                state
+                    .placeholder_state()
+                    .unwrap_or(ImagePlaceholderState::Failed),
+            )
+            .alt(image.alt.clone())
+            .height(preview_height)
+            .compact()
+            .into_any_element(),
         })
         .into_any_element()
 }

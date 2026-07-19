@@ -9,16 +9,153 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, OnceLock};
 
 use gpui::{
-    App, Bounds, Corners, DevicePixels, Element, ElementId, GlobalElementId, ImageSource,
-    InspectorElementId, IntoElement, LayoutId, ObjectFit, Pixels, RenderImage, Size, Style, Window,
-    point, px, relative, size,
+    AnyElement, App, Bounds, Corners, DevicePixels, Element, ElementId, GlobalElementId,
+    ImageSource, InspectorElementId, IntoElement, LayoutId, ObjectFit, ParentElement, Pixels,
+    RenderImage, RenderOnce, Size, Style, Styled, Window, div, point, px, relative, rgb, size,
 };
+
+use crate::gui::GuiTheme;
 
 #[derive(Clone)]
 enum ImageState {
     Loading,
     Ready(Arc<RenderImage>),
     Failed,
+}
+
+#[derive(Clone, Debug)]
+pub enum RenderImageLoadState {
+    Loading,
+    Ready(Arc<RenderImage>),
+    Failed,
+}
+
+impl RenderImageLoadState {
+    pub fn placeholder_state(&self) -> Option<ImagePlaceholderState> {
+        match self {
+            Self::Loading => Some(ImagePlaceholderState::Loading),
+            Self::Ready(_) => None,
+            Self::Failed => Some(ImagePlaceholderState::Failed),
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ImagePlaceholderState {
+    Loading,
+    Failed,
+}
+
+#[derive(Clone, IntoElement)]
+pub struct ImagePlaceholder {
+    source: String,
+    alt: String,
+    theme: GuiTheme,
+    height: f32,
+    compact: bool,
+    state: ImagePlaceholderState,
+}
+
+impl ImagePlaceholder {
+    pub fn new(source: impl Into<String>, theme: GuiTheme, state: ImagePlaceholderState) -> Self {
+        Self {
+            source: source.into(),
+            alt: String::new(),
+            theme,
+            height: 96.0,
+            compact: false,
+            state,
+        }
+    }
+
+    pub fn alt(mut self, alt: impl Into<String>) -> Self {
+        self.alt = alt.into();
+        self
+    }
+
+    pub fn height(mut self, height: f32) -> Self {
+        self.height = height;
+        self
+    }
+
+    pub fn compact(mut self) -> Self {
+        self.compact = true;
+        self
+    }
+}
+
+impl RenderOnce for ImagePlaceholder {
+    fn render(self, _window: &mut Window, _cx: &mut App) -> impl IntoElement {
+        let title = image_placeholder_title(&self.source, &self.alt);
+        let status = match self.state {
+            ImagePlaceholderState::Loading => "图片加载中",
+            ImagePlaceholderState::Failed => "图片加载失败",
+        };
+        if self.compact {
+            return render_compact_image_placeholder(&self, title, status);
+        }
+        render_regular_image_placeholder(&self, title, status)
+    }
+}
+
+fn render_compact_image_placeholder(
+    placeholder: &ImagePlaceholder,
+    title: String,
+    status: &'static str,
+) -> AnyElement {
+    div()
+        .w_full()
+        .h(px(placeholder.height))
+        .rounded(px(4.0))
+        .border_1()
+        .border_color(rgb(placeholder.theme.border))
+        .bg(rgb(placeholder.theme.hover_surface))
+        .px(px(6.0))
+        .flex()
+        .items_center()
+        .gap(px(5.0))
+        .text_color(rgb(placeholder.theme.muted))
+        .child(div().text_size(px(9.0)).child("IMG"))
+        .child(
+            div()
+                .min_w(px(0.0))
+                .text_size(px(10.0))
+                .text_ellipsis()
+                .whitespace_nowrap()
+                .child(format!("{title} · {status}")),
+        )
+        .into_any_element()
+}
+
+fn render_regular_image_placeholder(
+    placeholder: &ImagePlaceholder,
+    title: String,
+    status: &'static str,
+) -> AnyElement {
+    div()
+        .w_full()
+        .h(px(placeholder.height))
+        .rounded(px(4.0))
+        .border_1()
+        .border_color(rgb(placeholder.theme.border))
+        .bg(rgb(placeholder.theme.hover_surface))
+        .flex()
+        .flex_col()
+        .items_center()
+        .justify_center()
+        .gap(px(4.0))
+        .text_color(rgb(placeholder.theme.muted))
+        .child(render_image_placeholder_icon(placeholder.theme))
+        .child(
+            div()
+                .max_w(relative(0.8))
+                .text_size(px(12.0))
+                .text_ellipsis()
+                .whitespace_nowrap()
+                .child(title),
+        )
+        .child(div().text_size(px(10.0)).child(status))
+        .into_any_element()
 }
 
 fn image_cache() -> &'static Mutex<HashMap<String, ImageState>> {
@@ -39,9 +176,20 @@ pub fn load_render_image_from_base(
     base_path: Option<&Path>,
     cx: &mut App,
 ) -> Option<Arc<RenderImage>> {
+    match load_render_image_state_from_base(src, base_path, cx) {
+        RenderImageLoadState::Ready(image) => Some(image),
+        RenderImageLoadState::Loading | RenderImageLoadState::Failed => None,
+    }
+}
+
+pub fn load_render_image_state_from_base(
+    src: &str,
+    base_path: Option<&Path>,
+    cx: &mut App,
+) -> RenderImageLoadState {
     let src = resolve_render_image_source(src, base_path);
     if src.trim().is_empty() {
-        return None;
+        return RenderImageLoadState::Failed;
     }
 
     if let Some(state) = image_cache()
@@ -50,8 +198,9 @@ pub fn load_render_image_from_base(
         .and_then(|cache| cache.get(&src).cloned())
     {
         return match state {
-            ImageState::Ready(image) => Some(image),
-            ImageState::Loading | ImageState::Failed => None,
+            ImageState::Ready(image) => RenderImageLoadState::Ready(image),
+            ImageState::Loading => RenderImageLoadState::Loading,
+            ImageState::Failed => RenderImageLoadState::Failed,
         };
     }
 
@@ -79,7 +228,35 @@ pub fn load_render_image_from_base(
         })
         .detach();
 
-    None
+    RenderImageLoadState::Loading
+}
+
+fn image_placeholder_title(source: &str, alt: &str) -> String {
+    if !alt.trim().is_empty() {
+        alt.trim().to_owned()
+    } else {
+        source
+            .split(['/', '\\'])
+            .next_back()
+            .filter(|name| !name.is_empty())
+            .unwrap_or("图片")
+            .to_owned()
+    }
+}
+
+fn render_image_placeholder_icon(theme: GuiTheme) -> AnyElement {
+    div()
+        .w(px(30.0))
+        .h(px(22.0))
+        .rounded(px(3.0))
+        .border_1()
+        .border_color(rgb(theme.muted))
+        .flex()
+        .items_center()
+        .justify_center()
+        .text_size(px(9.0))
+        .child("IMG")
+        .into_any_element()
 }
 
 pub fn resolve_render_image_source(src: &str, base_path: Option<&Path>) -> String {
@@ -310,6 +487,35 @@ mod tests {
             ),
             "https://example.com/badge.svg"
         );
+    }
+
+    #[test]
+    fn image_placeholder_uses_alt_before_the_source_filename() {
+        assert_eq!(
+            image_placeholder_title("assets/database.png", "Database"),
+            "Database"
+        );
+        assert_eq!(
+            image_placeholder_title("assets/database.png", ""),
+            "database.png"
+        );
+        assert_eq!(image_placeholder_title("", ""), "图片");
+    }
+
+    #[test]
+    fn image_load_states_map_to_loading_and_failed_placeholders_only() {
+        assert_eq!(
+            RenderImageLoadState::Loading.placeholder_state(),
+            Some(ImagePlaceholderState::Loading)
+        );
+        assert_eq!(
+            RenderImageLoadState::Failed.placeholder_state(),
+            Some(ImagePlaceholderState::Failed)
+        );
+        let ready = Arc::new(RenderImage::new([image::Frame::new(
+            image::RgbaImage::new(1, 1),
+        )]));
+        assert_eq!(RenderImageLoadState::Ready(ready).placeholder_state(), None);
     }
 
     #[test]
