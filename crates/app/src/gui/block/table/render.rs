@@ -180,7 +180,7 @@ fn render_table_cell_content(
         block_id,
         content_version,
         position,
-        text,
+        spans,
         active,
         focused_cell_offset,
         active.then_some(selected_range).flatten(),

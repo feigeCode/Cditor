@@ -2,20 +2,22 @@ use std::ops::Range;
 use std::{cell::RefCell, rc::Rc};
 
 use gpui::{
-    App, AvailableSpace, Bounds, Element, ElementId, Entity, FocusHandle, FontWeight,
+    App, AvailableSpace, Bounds, Element, ElementId, Entity, FocusHandle, FontStyle, FontWeight,
     GlobalElementId, Hsla, InspectorElementId, IntoElement, LayoutId, Pixels, SharedString, Size,
-    Style, TextAlign, TextRun, UnderlineStyle, Window, WrappedLine, fill, point, px, rgb, rgba,
+    StrikethroughStyle, Style, TextAlign, TextRun, UnderlineStyle, Window, WrappedLine, fill,
+    point, px, rgb, rgba,
 };
 
 use crate::gui::GuiTheme;
 use crate::gui::app::{CditorV2View, GuiPlatformInputTarget};
 use crate::gui::input::platform_adapter::handle_registered_platform_input;
+use crate::gui::rich_text::{NOTION_MONO_FONT_FAMILY, inline_mark_visual_style};
 use crate::gui::text::{
     RichTextPlatformLayout, normalized_text_range, platform_cursor_bounds_for_offset,
     platform_range_segment_bounds,
 };
 use cditor_core::ids::BlockId;
-use cditor_core::rich_text::TableCellAlign;
+use cditor_core::rich_text::{InlineSpan, TableCellAlign, plain_text_from_spans};
 use cditor_runtime::TableCellPosition;
 
 use super::style::{table_active_border_color, table_cell_line_height, table_cell_text_size};
@@ -25,6 +27,7 @@ pub(super) struct TableCellTextElement {
     block_id: BlockId,
     content_version: u64,
     position: TableCellPosition,
+    spans: Vec<InlineSpan>,
     text: String,
     active: bool,
     caret_offset: Option<usize>,
@@ -50,7 +53,7 @@ impl TableCellTextElement {
         block_id: BlockId,
         content_version: u64,
         position: TableCellPosition,
-        text: String,
+        spans: Vec<InlineSpan>,
         active: bool,
         caret_offset: Option<usize>,
         selection_range: Option<Range<usize>>,
@@ -61,10 +64,12 @@ impl TableCellTextElement {
         focus: FocusHandle,
         align: TableCellAlign,
     ) -> Self {
+        let text = plain_text_from_spans(&spans);
         Self {
             block_id,
             content_version,
             position,
+            spans,
             text,
             active,
             caret_offset,
@@ -118,6 +123,7 @@ impl Element for TableCellTextElement {
         let text = SharedString::from(display_text.clone());
         let text_size = table_cell_text_size();
         let runs = table_cell_text_runs(
+            &self.spans,
             &display_text,
             if self.placeholder_visible() {
                 None
@@ -367,6 +373,7 @@ impl TableCellTextElement {
 }
 
 fn table_cell_text_runs(
+    spans: &[InlineSpan],
     text: &str,
     marked_range: Option<&Range<usize>>,
     theme: GuiTheme,
@@ -387,29 +394,76 @@ fn table_cell_text_runs(
         }];
     }
 
-    table_cell_text_run_segments(text, marked_range)
+    let span_ranges = table_cell_span_ranges(spans);
+    table_cell_text_run_segments(text, &span_ranges, marked_range)
         .into_iter()
-        .map(|(range, marked)| TextRun {
-            len: range.end - range.start,
-            font: font.clone(),
-            color: Hsla::from(rgb(if placeholder { theme.muted } else { theme.text })),
-            background_color: None,
-            underline: marked.then_some(UnderlineStyle {
-                color: Some(Hsla::from(rgb(theme.focused))),
-                thickness: px(1.0),
-                wavy: false,
-            }),
-            strikethrough: None,
+        .map(|(range, marks, marked)| {
+            let visual_style = inline_mark_visual_style(
+                marks,
+                theme,
+                if placeholder { theme.muted } else { theme.text },
+            );
+            let mut run_font = font.clone();
+            if visual_style.bold && run_font.weight < FontWeight::BOLD {
+                run_font.weight = FontWeight::BOLD;
+            }
+            if visual_style.italic {
+                run_font.style = FontStyle::Italic;
+            }
+            if visual_style.code {
+                run_font.family = NOTION_MONO_FONT_FAMILY.into();
+            }
+            let color = Hsla::from(rgb(visual_style.text_color));
+            TextRun {
+                len: range.end - range.start,
+                font: run_font,
+                color,
+                background_color: visual_style
+                    .background_color
+                    .map(|color| Hsla::from(rgb(color))),
+                underline: (marked || visual_style.underline).then_some(UnderlineStyle {
+                    color: Some(if marked {
+                        Hsla::from(rgb(theme.focused))
+                    } else {
+                        color
+                    }),
+                    thickness: px(1.0),
+                    wavy: false,
+                }),
+                strikethrough: visual_style.strike.then_some(StrikethroughStyle {
+                    thickness: px(1.0),
+                    color: Some(color),
+                }),
+            }
         })
         .collect()
 }
 
-fn table_cell_text_run_segments(
+fn table_cell_span_ranges(
+    spans: &[InlineSpan],
+) -> Vec<(Range<usize>, &[cditor_core::rich_text::InlineMark])> {
+    let mut offset = 0;
+    spans
+        .iter()
+        .map(|span| {
+            let range = offset..offset + span.text.len();
+            offset = range.end;
+            (range, span.marks.as_slice())
+        })
+        .collect()
+}
+
+fn table_cell_text_run_segments<'a>(
     text: &str,
+    span_ranges: &'a [(Range<usize>, &'a [cditor_core::rich_text::InlineMark])],
     marked_range: Option<&Range<usize>>,
-) -> Vec<(Range<usize>, bool)> {
+) -> Vec<(Range<usize>, &'a [cditor_core::rich_text::InlineMark], bool)> {
     let marked_range = marked_range.map(|range| normalized_text_range(text, range.clone()));
     let mut boundaries = vec![0, text.len()];
+    for (range, _) in span_ranges {
+        boundaries.push(range.start.min(text.len()));
+        boundaries.push(range.end.min(text.len()));
+    }
     if let Some(range) = marked_range.as_ref() {
         boundaries.push(range.start.min(text.len()));
         boundaries.push(range.end.min(text.len()));
@@ -424,8 +478,15 @@ fn table_cell_text_run_segments(
             let end = pair[1];
             let range = start..end;
             (start < end).then(|| {
+                let marks = span_ranges
+                    .iter()
+                    .find(|(span_range, _)| {
+                        span_range.start <= range.start && range.start < span_range.end
+                    })
+                    .map(|(_, marks)| *marks)
+                    .unwrap_or(&[]);
                 let marked = table_cell_segment_is_marked(range.clone(), marked_range.as_ref());
-                (range, marked)
+                (range, marks, marked)
             })
         })
         .collect()
@@ -468,6 +529,23 @@ mod tests {
     }
 
     #[test]
+    fn table_cell_span_ranges_keep_inline_mark_boundaries() {
+        let spans = vec![
+            InlineSpan::plain("plain "),
+            InlineSpan {
+                text: "bold".to_owned(),
+                marks: vec![cditor_core::rich_text::InlineMark::Bold],
+            },
+        ];
+
+        let ranges = table_cell_span_ranges(&spans);
+
+        assert_eq!(ranges[0].0, 0..6);
+        assert_eq!(ranges[1].0, 6..10);
+        assert_eq!(ranges[1].1, &[cditor_core::rich_text::InlineMark::Bold]);
+    }
+
+    #[test]
     fn table_cell_placeholder_is_only_visible_while_editing_empty_cell() {
         assert!(!table_cell_placeholder_visible(false, ""));
         assert!(table_cell_placeholder_visible(true, ""));
@@ -484,13 +562,16 @@ mod tests {
     fn table_cell_text_runs_never_split_cjk_for_invalid_marked_range() {
         let text = "萨德";
         let marked = 0..2;
-        let segments = table_cell_text_run_segments(text, Some(&marked));
+        let segments = table_cell_text_run_segments(text, &[], Some(&marked));
 
         assert_eq!(
-            segments,
+            segments
+                .iter()
+                .map(|(range, _, marked)| (range.clone(), *marked))
+                .collect::<Vec<_>>(),
             vec![(0.."萨".len(), true), ("萨".len()..text.len(), false)]
         );
-        assert!(segments.iter().all(|(range, _)| {
+        assert!(segments.iter().all(|(range, _, _)| {
             text.is_char_boundary(range.start) && text.is_char_boundary(range.end)
         }));
     }

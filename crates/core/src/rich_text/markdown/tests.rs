@@ -83,6 +83,55 @@ fn markdown_table_cells_preserve_images_as_media() {
 }
 
 #[test]
+fn markdown_table_cells_preserve_inline_marks_links_and_images() {
+    let source = concat!(
+        "| Content |\n",
+        "| :--- |\n",
+        "| **Bold** *italic* ~~gone~~ `code` [link](https://example.com) ![Badge](https://example.com/badge.svg) |"
+    );
+    let result = parse_markdown_document_with_report(source, MarkdownImportOptions::default());
+    let BlockPayload::Table(table) = &result.document.blocks[0].payload else {
+        panic!("expected table payload");
+    };
+    let cell = &table.rows[1].cells[0];
+
+    assert!(
+        cell.spans
+            .iter()
+            .any(|span| { span.text == "Bold" && span.marks.contains(&InlineMark::Bold) })
+    );
+    assert!(
+        cell.spans
+            .iter()
+            .any(|span| { span.text == "italic" && span.marks.contains(&InlineMark::Italic) })
+    );
+    assert!(
+        cell.spans
+            .iter()
+            .any(|span| { span.text == "gone" && span.marks.contains(&InlineMark::Strike) })
+    );
+    assert!(
+        cell.spans
+            .iter()
+            .any(|span| { span.text == "code" && span.marks.contains(&InlineMark::Code) })
+    );
+    assert!(cell.spans.iter().any(|span| {
+        span.text == "link"
+            && matches!(span.marks.as_slice(), [InlineMark::Link { href }] if href == "https://example.com")
+    }));
+    assert_eq!(cell.images.len(), 1);
+    let expected_cell = cell.clone();
+
+    let document = document_from_parsed(result.document);
+    let exported = export_document_blocks(&document, MarkdownExportMode::Strict);
+    let reparsed = parse_markdown_document(&exported.markdown, MarkdownImportOptions::default());
+    let BlockPayload::Table(reparsed_table) = &reparsed.blocks[0].payload else {
+        panic!("expected reparsed table payload");
+    };
+    assert_eq!(reparsed_table.rows[1].cells[0], expected_cell);
+}
+
+#[test]
 fn block_math_imports_and_round_trips_as_an_editable_math_block() {
     let source = "$$\n\\frac{-b \\pm \\sqrt{b^2 - 4ac}}{2a}\n$$";
     let result = parse_markdown_document_with_report(source, MarkdownImportOptions::default());
