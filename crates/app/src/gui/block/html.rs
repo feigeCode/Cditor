@@ -137,26 +137,28 @@ fn render_node(
                 "img" => {
                     let src = attr(attrs, "src").unwrap_or_default();
                     let alt = attr(attrs, "alt").unwrap_or_else(|| "Image".to_owned());
-                    let width = attr(attrs, "width")
-                        .and_then(|width| width.parse::<f32>().ok())
-                        .unwrap_or(120.0)
-                        .max(16.0);
-                    return img(gpui_image_source(&src, media_base_path))
-                        .w(px(width))
+                    let requested_width = attr(attrs, "width")
+                        .as_deref()
+                        .and_then(html_image_requested_width);
+                    let fallback_width = requested_width.unwrap_or(180.0);
+                    let mut image = img(gpui_image_source(&src, media_base_path))
                         .max_w(gpui::relative(1.0))
                         .object_fit(gpui::ObjectFit::Contain)
                         .with_fallback(move || {
                             div()
-                                .w(px(width))
-                                .h(px(width))
+                                .w(px(fallback_width))
+                                .h(px(32.0))
                                 .flex()
                                 .items_center()
                                 .justify_center()
                                 .text_color(rgb(theme.muted))
                                 .child(alt.clone())
                                 .into_any_element()
-                        })
-                        .into_any_element();
+                        });
+                    if let Some(width) = requested_width {
+                        image = image.w(px(width));
+                    }
+                    return image.into_any_element();
                 }
                 "a" => div().text_color(rgb(theme.focused)),
                 "strong" | "b" => div().font_weight(gpui::FontWeight::BOLD),
@@ -222,6 +224,10 @@ fn attr(attrs: &RefCell<Vec<html5ever::Attribute>>, name: &str) -> Option<String
     })
 }
 
+fn html_image_requested_width(value: &str) -> Option<f32> {
+    value.parse::<f32>().ok().map(|width| width.max(16.0))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -229,5 +235,12 @@ mod tests {
     #[test]
     fn html_preview_keeps_typora_body_size() {
         assert_eq!(HTML_PREVIEW_TEXT_SIZE_PX, 16.0);
+    }
+
+    #[test]
+    fn html_images_only_use_explicit_width_attributes() {
+        assert_eq!(html_image_requested_width("120"), Some(120.0));
+        assert_eq!(html_image_requested_width("8"), Some(16.0));
+        assert_eq!(html_image_requested_width("auto"), None);
     }
 }
