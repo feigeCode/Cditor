@@ -21,14 +21,6 @@ impl CditorV2View {
         self.media_base_path = media_base_path;
     }
 
-    pub(crate) fn media_base_path(&self) -> Option<std::path::PathBuf> {
-        self.media_base_path.clone()
-    }
-
-    pub(crate) fn is_readonly(&self) -> bool {
-        self.readonly
-    }
-
     pub(crate) fn sdk_configure_markdown_native_blocks_only(&mut self, enabled: bool) {
         self.markdown_native_blocks_only = enabled;
     }

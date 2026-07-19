@@ -315,6 +315,7 @@ impl Render for CditorV2View {
 
         let mut pending_table_scroll_offsets = Vec::new();
         let payload_storage_session = self.storage_persistence.session().cloned();
+        let media_base_path = self.media_base_path.clone();
         let mut pending_payload_window_load = None;
         let mut pending_payload_window_range = None;
 
@@ -430,6 +431,7 @@ impl Render for CditorV2View {
                         editor_viewport.width,
                         editor_viewport.height,
                         self.readonly,
+                        media_base_path.as_deref(),
                         self.image_resize_preview(),
                         self.table_resize_preview(),
                         self.table_reorder_preview(),

@@ -41,6 +41,8 @@ pub(crate) fn render_block_content(
     suppress_text_input: bool,
     table_selection: Option<TableAxisSelection>,
     table_scroll_handle: Option<ScrollHandle>,
+    readonly: bool,
+    media_base_path: Option<&std::path::Path>,
     code_highlights: &CodeHighlightCache,
     code_highlight_theme: &'static str,
     whiteboard_thumbnails: &WhiteboardThumbnailCache,
@@ -49,7 +51,6 @@ pub(crate) fn render_block_content(
     match &block.payload {
         BlockPayloadView::Loaded(payload) => {
             if let Some(table_view) = &block.table_view {
-                let media_base_path = view.read(cx).media_base_path();
                 return render_table_block(
                     block.block_id,
                     payload.content_version,
@@ -63,7 +64,7 @@ pub(crate) fn render_block_content(
                     table_scroll_handle,
                     view.clone(),
                     focus.clone(),
-                    media_base_path.as_deref(),
+                    media_base_path,
                     cx,
                 );
             }
@@ -71,7 +72,6 @@ pub(crate) fn render_block_content(
                 return crate::gui::rich_text::render_payload_text(payload, theme);
             }
             if let BlockPayload::Image(image) = &payload.payload {
-                let media_base_path = view.read(cx).media_base_path();
                 return render_image_block(
                     block.block_id,
                     payload.content_version,
@@ -79,19 +79,12 @@ pub(crate) fn render_block_content(
                     theme,
                     view,
                     image_resize_preview_width_px,
-                    media_base_path.as_deref(),
+                    media_base_path,
                     cx,
                 );
             }
             if let BlockPayload::Html { html, .. } = &payload.payload {
-                let media_base_path = view.read(cx).media_base_path();
-                return render_html_block(
-                    block.block_id,
-                    html,
-                    theme,
-                    media_base_path.as_deref(),
-                    cx,
-                );
+                return render_html_block(block.block_id, html, theme, media_base_path, cx);
             }
             if matches!(payload.payload, BlockPayload::Whiteboard(_)) {
                 return render_whiteboard_thumbnail(
@@ -101,9 +94,7 @@ pub(crate) fn render_block_content(
                     view,
                 );
             }
-            if view.read(cx).is_readonly()
-                && let BlockPayload::RichText { spans } = &payload.payload
-            {
+            if readonly && let BlockPayload::RichText { spans } = &payload.payload {
                 let source = plain_text_from_spans(spans);
                 if source.contains("![") {
                     let fragments = parse_inline_media_fragments(&source);
@@ -111,11 +102,10 @@ pub(crate) fn render_block_content(
                         .iter()
                         .any(|fragment| matches!(fragment, InlineMediaFragment::Image(_)))
                     {
-                        let media_base_path = view.read(cx).media_base_path();
                         return render_inline_media_fragments(
                             fragments,
                             theme,
-                            media_base_path.as_deref(),
+                            media_base_path,
                             cx,
                         );
                     }

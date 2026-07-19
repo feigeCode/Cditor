@@ -111,6 +111,7 @@ impl DocumentEditorView {
         editor_viewport_width_px: f32,
         editor_viewport_height_px: f32,
         readonly: bool,
+        media_base_path: Option<&std::path::Path>,
         image_resize_preview: Option<(BlockId, f32)>,
         table_resize_preview: Option<TableResizePreview>,
         table_reorder_preview: Option<TableReorderPreview>,
@@ -281,6 +282,8 @@ impl DocumentEditorView {
                             table_scroll_snapshots
                                 .get(&block.block_id)
                                 .map(|snapshot| snapshot.handle.clone()),
+                            readonly,
+                            media_base_path,
                             code_highlights,
                             document_renders,
                             document_source_blocks.contains(&block.block_id),
