@@ -2,6 +2,7 @@ use super::compatibility::{
     MarkdownDiagnostic, MarkdownDiagnosticSeverity, MarkdownExportMode, MarkdownFidelity,
 };
 use super::escape::{choose_code_span_delimiter, escape_inline_text, escape_link_destination};
+use super::inline::{parse_linked_markdown_image, parse_markdown_image_parts};
 use crate::rich_text::{InlineMark, InlineSpan};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -42,7 +43,7 @@ pub fn export_inline_spans(spans: &[InlineSpan], mode: MarkdownExportMode) -> In
         let mut rendered = if normalized.code {
             render_code_span(&span.text)
         } else {
-            escape_inline_text(&span.text)
+            escape_inline_text_preserving_images(&span.text)
         };
 
         if !normalized.code {
@@ -79,6 +80,32 @@ pub fn export_inline_spans(spans: &[InlineSpan], mode: MarkdownExportMode) -> In
         fidelity,
         diagnostics,
     }
+}
+
+fn escape_inline_text_preserving_images(text: &str) -> String {
+    let mut rendered = String::new();
+    let mut plain_start = 0usize;
+    let mut cursor = 0usize;
+    while cursor < text.len() {
+        let rest = &text[cursor..];
+        let consumed = if rest.starts_with("[![") {
+            parse_linked_markdown_image(rest).map(|(_, _, _, consumed)| consumed)
+        } else if rest.starts_with("![") {
+            parse_markdown_image_parts(rest).map(|(_, _, consumed)| consumed)
+        } else {
+            None
+        };
+        if let Some(consumed) = consumed {
+            rendered.push_str(&escape_inline_text(&text[plain_start..cursor]));
+            rendered.push_str(&rest[..consumed]);
+            cursor += consumed;
+            plain_start = cursor;
+        } else {
+            cursor += rest.chars().next().map_or(1, char::len_utf8);
+        }
+    }
+    rendered.push_str(&escape_inline_text(&text[plain_start..]));
+    rendered
 }
 
 #[derive(Default)]

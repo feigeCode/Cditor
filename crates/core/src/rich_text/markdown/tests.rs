@@ -132,17 +132,24 @@ fn markdown_table_cells_render_self_linked_relative_images() {
 }
 
 #[test]
-fn linked_images_with_different_targets_remain_source_only() {
-    let source = "| Docs |\n| --- |\n| [![Docs](preview.png)](https://example.com/docs) |";
+fn linked_images_with_different_targets_remain_editable_and_round_trip() {
+    let source = "[![Docs](preview.png)](https://example.com/docs)";
     let result = parse_markdown_document_with_report(source, MarkdownImportOptions::default());
     assert!(matches!(
         result.compatibility,
-        MarkdownCompatibility::SourceOnly(_)
+        MarkdownCompatibility::Editable
     ));
-    let BlockPayload::Table(table) = &result.document.blocks[0].payload else {
-        panic!("expected table payload");
+    let BlockPayload::RichText { spans } = &result.document.blocks[0].payload else {
+        panic!("expected rich text payload");
     };
-    assert_eq!("preview.png", table.rows[1].cells[0].images[0].source);
+    assert_eq!(source, crate::rich_text::plain_text_from_spans(spans));
+    let document = document_from_parsed(result.document);
+    let exported = export_document_blocks(&document, MarkdownExportMode::Strict);
+    assert!(
+        exported
+            .markdown
+            .contains("[![Docs](preview.png)](https://example.com/docs)")
+    );
 }
 
 #[test]

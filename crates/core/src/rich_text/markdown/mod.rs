@@ -432,9 +432,9 @@ fn detect_linked_images(line: &str, line_offset: usize, diagnostics: &mut Vec<Ma
             )
         } else {
             (
-                MarkdownDiagnosticSeverity::Error,
-                "markdown.source.linked_image_unsupported",
-                "Images linked to a different destination are SourceOnly until image links can be preserved",
+                MarkdownDiagnosticSeverity::Info,
+                "markdown.source.linked_image_preserved",
+                "Images linked to a different destination are preserved as inline Markdown",
             )
         };
         diagnostics.push(MarkdownDiagnostic::source(

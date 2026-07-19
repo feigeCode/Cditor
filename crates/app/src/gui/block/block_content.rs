@@ -101,7 +101,9 @@ pub(crate) fn render_block_content(
                     view,
                 );
             }
-            if readonly && let BlockPayload::RichText { spans } = &payload.payload {
+            if inline_media_preview_visible(readonly, block.focused)
+                && let BlockPayload::RichText { spans } = &payload.payload
+            {
                 let source = plain_text_from_spans(spans);
                 let fragments = parse_inline_media_fragments(&source);
                 if fragments
@@ -178,6 +180,10 @@ pub(crate) fn render_block_content(
         BlockPayloadView::Loading { .. } => render_loading(block, theme),
         BlockPayloadView::Error { message } => render_error(message, theme),
     }
+}
+
+fn inline_media_preview_visible(readonly: bool, focused: bool) -> bool {
+    readonly || !focused
 }
 
 fn render_inline_media_fragments(
@@ -269,6 +275,19 @@ fn render_inline_media_fragments(
             }
         }))
         .into_any_element()
+}
+
+#[cfg(test)]
+mod inline_media_tests {
+    use super::inline_media_preview_visible;
+
+    #[test]
+    fn inline_media_uses_preview_until_the_editable_block_is_focused() {
+        assert!(inline_media_preview_visible(false, false));
+        assert!(!inline_media_preview_visible(false, true));
+        assert!(inline_media_preview_visible(true, false));
+        assert!(inline_media_preview_visible(true, true));
+    }
 }
 
 fn parse_block_hex_color(value: &str) -> Option<u32> {

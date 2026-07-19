@@ -94,6 +94,53 @@ impl DocumentRuntime {
         }
     }
 
+    /// Move within explicit newline-delimited source text while preserving the
+    /// caret's byte column. This is the fallback used by naturally-sized code
+    /// and HTML editors when the platform layout cannot resolve another visual
+    /// row (for example before the next layout cache has been painted).
+    pub fn move_focused_caret_to_adjacent_logical_line(
+        &mut self,
+        direction: i32,
+        extend_selection: bool,
+    ) -> Result<bool, String> {
+        let Some(block_id) = self.focused_block_id() else {
+            return Ok(false);
+        };
+        if !matches!(
+            self.block_kind(block_id),
+            Some(RichBlockKind::Code { .. } | RichBlockKind::Html | RichBlockKind::RawMarkdown)
+        ) {
+            return Ok(false);
+        }
+        let Some(model) = self.text_models.get(&block_id) else {
+            return Ok(false);
+        };
+        let text = model.text();
+        let caret = normalized_grapheme_offset(
+            text,
+            self.caret_offset_for_block(block_id).unwrap_or(text.len()),
+        );
+        let line_start = logical_line_boundary(text, caret, false);
+        let column = caret.saturating_sub(line_start);
+        let target = if direction < 0 {
+            if line_start == 0 {
+                return Ok(false);
+            }
+            let previous_end = line_start.saturating_sub(1);
+            let previous_start = logical_line_boundary(text, previous_end, false);
+            previous_start + column.min(previous_end.saturating_sub(previous_start))
+        } else {
+            let line_end = logical_line_boundary(text, caret, true);
+            if line_end == text.len() {
+                return Ok(false);
+            }
+            let next_start = line_end + text[line_end..].chars().next().map_or(0, char::len_utf8);
+            let next_end = logical_line_boundary(text, next_start, true);
+            next_start + column.min(next_end.saturating_sub(next_start))
+        };
+        self.move_focused_caret_to_offset(block_id, target, extend_selection)
+    }
+
     pub fn move_focused_caret_to_offset(
         &mut self,
         block_id: BlockId,

@@ -6,7 +6,7 @@ use cditor_core::layout::{
 use cditor_core::rich_text::{InlineSpan, TableCellMerge, TablePayload, TableTrackSize};
 
 const DEFAULT_TABLE_COLUMN_WIDTH_PX: f32 = 120.0;
-const DEFAULT_TABLE_AVAILABLE_WIDTH_PX: f32 = 860.0;
+const DEFAULT_TABLE_AVAILABLE_WIDTH_PX: f32 = 812.0;
 const DEFAULT_TABLE_ROW_HEIGHT_PX: f32 = NOTION_TABLE_DEFAULT_ROW_HEIGHT_PX as f32;
 const TABLE_CELL_PADDING_Y_PX: f32 = NOTION_TABLE_CELL_PADDING_Y_PX as f32;
 const TABLE_CELL_PADDING_X_PX: f32 = 10.0;
@@ -385,7 +385,7 @@ mod tests {
 
         let layout = table_layout_from_payload(&table);
 
-        assert_eq!(layout.column_widths, vec![430.0, 430.0]);
+        assert_eq!(layout.column_widths, vec![406.0, 406.0]);
         assert_eq!(layout.width_px, DEFAULT_TABLE_AVAILABLE_WIDTH_PX);
     }
 
@@ -474,10 +474,10 @@ mod tests {
     fn wide_markdown_cells_reserve_a_readable_screenshot_preview() {
         let height = table_cell_image_preview_height_px(
             "screenshot.png",
-            430.0,
+            406.0,
             TableLayoutMetrics::default(),
         );
 
-        assert!((height - 230.625).abs() < 0.001);
+        assert!((height - 217.125).abs() < 0.001);
     }
 }

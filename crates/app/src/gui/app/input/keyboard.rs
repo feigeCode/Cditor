@@ -231,7 +231,11 @@ impl CditorV2View {
                         extend_selection,
                     )
                     .unwrap_or(false);
-                    if !moved_in_block {
+                    let moved_in_source = !moved_in_block
+                        && runtime
+                            .move_focused_caret_to_adjacent_logical_line(-1, extend_selection)
+                            .unwrap_or(false);
+                    if !moved_in_block && !moved_in_source {
                         let _ = runtime.move_caret_up(extend_selection);
                     }
                 }
@@ -243,7 +247,11 @@ impl CditorV2View {
                         extend_selection,
                     )
                     .unwrap_or(false);
-                    if !moved_in_block {
+                    let moved_in_source = !moved_in_block
+                        && runtime
+                            .move_focused_caret_to_adjacent_logical_line(1, extend_selection)
+                            .unwrap_or(false);
+                    if !moved_in_block && !moved_in_source {
                         let _ = runtime.move_caret_down(extend_selection);
                     }
                 }

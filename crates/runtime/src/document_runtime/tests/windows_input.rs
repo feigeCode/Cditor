@@ -41,6 +41,24 @@ fn table_runtime(text: &str, caret: usize) -> DocumentRuntime {
     runtime
 }
 
+fn html_runtime(text: &str, caret: usize) -> DocumentRuntime {
+    let mut runtime = DocumentRuntime::from_payloads(
+        1,
+        vec![BlockPayloadRecord {
+            block_id: 1,
+            content_version: 1,
+            kind: RichBlockKind::Html,
+            payload: BlockPayload::Html {
+                html: text.to_owned(),
+                sanitized: true,
+            },
+        }],
+        720.0,
+    );
+    runtime.focus_block_at_offset(1, caret).unwrap();
+    runtime
+}
+
 #[test]
 fn home_and_end_use_current_soft_line_boundaries() {
     let mut runtime = paragraph_runtime("first\nsecond\nthird", 9);
@@ -95,4 +113,22 @@ fn legacy_crlf_content_has_windows_line_boundaries() {
         .move_focused_caret_to_line_boundary(false, false)
         .unwrap();
     assert_eq!(runtime.caret_offset_for_block(1), Some(7));
+}
+
+#[test]
+fn html_source_moves_between_logical_lines_before_leaving_the_block() {
+    let mut runtime = html_runtime("<div>\n  <span>text</span>\n</div>", 10);
+
+    assert!(
+        runtime
+            .move_focused_caret_to_adjacent_logical_line(1, false)
+            .unwrap()
+    );
+    assert_eq!(runtime.caret_offset_for_block(1), Some(30));
+    assert!(
+        runtime
+            .move_focused_caret_to_adjacent_logical_line(-1, false)
+            .unwrap()
+    );
+    assert_eq!(runtime.caret_offset_for_block(1), Some(10));
 }

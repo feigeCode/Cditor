@@ -304,7 +304,7 @@ mod tests {
     #[test]
     fn wide_table_cells_render_readable_screenshot_previews() {
         assert!(
-            (table_cell_image_preview_height_px("screenshot.png", 430.0) - 230.625).abs() < 0.001
+            (table_cell_image_preview_height_px("screenshot.png", 406.0) - 217.125).abs() < 0.001
         );
         assert_eq!(table_cell_image_preview_height_px("badge.svg", 430.0), 28.0);
     }

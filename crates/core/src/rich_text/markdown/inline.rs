@@ -642,7 +642,7 @@ fn parse_export_escaped_image_parts(text: &str) -> Option<(&str, &str, usize)> {
     ))
 }
 
-fn parse_markdown_image_parts(text: &str) -> Option<(&str, &str, usize)> {
+pub(super) fn parse_markdown_image_parts(text: &str) -> Option<(&str, &str, usize)> {
     let inner = text.strip_prefix("![")?;
     let label_end = inner.find("](")?;
     let after_label = &inner[label_end + 2..];
