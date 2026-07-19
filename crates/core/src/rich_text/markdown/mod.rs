@@ -18,6 +18,7 @@ pub use compatibility::{
     MarkdownCompatibility, MarkdownDiagnostic, MarkdownDiagnosticSeverity, MarkdownExportMode,
     MarkdownExportResult, MarkdownFidelity,
 };
+pub use inline::{InlineMediaFragment, parse_inline_media_fragments};
 pub use inline_export::{InlineMarkdownExport, export_inline_spans};
 mod inline;
 mod table;

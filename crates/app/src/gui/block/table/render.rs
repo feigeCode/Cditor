@@ -1,13 +1,17 @@
 use std::ops::Range;
+use std::path::Path;
 
 use gpui::{
     AnyElement, App, Entity, FocusHandle, InteractiveElement, IntoElement, ObjectFit,
-    ParentElement, ScrollHandle, StatefulInteractiveElement, Styled, div, px, rgb,
+    ParentElement, ScrollHandle, StatefulInteractiveElement, Styled, StyledImage, div, img, px,
+    rgb,
 };
 
 use crate::gui::GuiTheme;
 use crate::gui::app::CditorV2View;
-use crate::gui::image_loader::{RasterImageElement, load_render_image};
+use crate::gui::image_loader::{
+    RasterImageElement, gpui_image_source, is_svg_image_source, load_render_image_from_base,
+};
 use cditor_core::ids::BlockId;
 use cditor_core::layout::TABLE_HORIZONTAL_SCROLLBAR_CHROME_HEIGHT_PX;
 use cditor_core::rich_text::{ImagePayload, InlineSpan, TableCellAlign, plain_text_from_spans};
@@ -37,6 +41,7 @@ pub(crate) fn render_table_block(
     table_scroll_handle: Option<ScrollHandle>,
     view: Entity<CditorV2View>,
     focus: FocusHandle,
+    media_base_path: Option<&Path>,
     cx: &mut App,
 ) -> AnyElement {
     if table_view.visible_cells.is_empty() {
@@ -98,6 +103,7 @@ pub(crate) fn render_table_block(
                         focus.clone(),
                         cell.position,
                         cell.align,
+                        media_base_path,
                         cx,
                     );
                     render_table_cell(
@@ -155,6 +161,7 @@ fn render_table_cell_content(
     focus: FocusHandle,
     position: TableCellPosition,
     align: TableCellAlign,
+    media_base_path: Option<&Path>,
     cx: &mut App,
 ) -> AnyElement {
     let text = plain_text_from_spans(&spans);
@@ -197,15 +204,31 @@ fn render_table_cell_content(
         .children(
             images
                 .iter()
-                .map(|image| render_table_cell_image(image, theme, cx)),
+                .map(|image| render_table_cell_image(image, theme, media_base_path, cx)),
         )
         .child(text_element)
         .into_any_element()
 }
 
-fn render_table_cell_image(image: &ImagePayload, theme: GuiTheme, cx: &mut App) -> AnyElement {
+fn render_table_cell_image(
+    image: &ImagePayload,
+    theme: GuiTheme,
+    media_base_path: Option<&Path>,
+    cx: &mut App,
+) -> AnyElement {
     const PREVIEW_HEIGHT_PX: f32 = 72.0;
-    let loaded = load_render_image(&image.source, cx);
+    if is_svg_image_source(&image.source) {
+        return div()
+            .w_full()
+            .h(px(PREVIEW_HEIGHT_PX))
+            .child(
+                img(gpui_image_source(&image.source, media_base_path))
+                    .size_full()
+                    .object_fit(ObjectFit::Contain),
+            )
+            .into_any_element();
+    }
+    let loaded = load_render_image_from_base(&image.source, media_base_path, cx);
     div()
         .w_full()
         .h(px(PREVIEW_HEIGHT_PX))

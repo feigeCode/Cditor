@@ -1,15 +1,18 @@
 use std::collections::HashMap;
+use std::path::Path;
 use std::sync::{Mutex, OnceLock};
 
 use gpui::prelude::FluentBuilder;
 use gpui::{
     AnyElement, App, Entity, InteractiveElement, IntoElement, MouseButton, ObjectFit,
-    ParentElement, RenderImage, Styled, div, px, rgb,
+    ParentElement, RenderImage, Styled, StyledImage, div, img, px, rgb,
 };
 
 use crate::gui::GuiTheme;
 use crate::gui::app::CditorV2View;
-use crate::gui::image_loader::{RasterImageElement, load_render_image};
+use crate::gui::image_loader::{
+    RasterImageElement, gpui_image_source, is_svg_image_source, load_render_image_from_base,
+};
 use crate::gui::image_preview::open_image_preview;
 use cditor_core::ids::BlockId;
 use cditor_core::layout::COMPLEX_BLOCK_SHELL_CHROME_HEIGHT_PX;
@@ -34,9 +37,33 @@ pub fn render_image_block(
     theme: GuiTheme,
     view: Entity<CditorV2View>,
     image_resize_preview_width_px: Option<f32>,
+    media_base_path: Option<&Path>,
     cx: &mut App,
 ) -> AnyElement {
-    let loaded = load_render_image(&image.source, cx);
+    if is_svg_image_source(&image.source) {
+        return div()
+            .w_full()
+            .flex()
+            .flex_col()
+            .items_center()
+            .child(
+                img(gpui_image_source(&image.source, media_base_path))
+                    .max_w(px(NOTE_IMAGE_MAX_WIDTH_PX))
+                    .object_fit(ObjectFit::Contain),
+            )
+            .when(!image.caption.trim().is_empty(), |this| {
+                this.child(
+                    div()
+                        .mt(px(6.0))
+                        .text_center()
+                        .text_size(px(14.0))
+                        .text_color(rgb(theme.muted))
+                        .child(image.caption.clone()),
+                )
+            })
+            .into_any_element();
+    }
+    let loaded = load_render_image_from_base(&image.source, media_base_path, cx);
     let display_size = loaded.as_deref().map(|render_image| {
         display_image_size_px(render_image, image, image_resize_preview_width_px)
     });

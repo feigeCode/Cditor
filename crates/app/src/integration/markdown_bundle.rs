@@ -100,45 +100,55 @@ impl EditorDocument {
                 block.id
             );
             let preview_path = format!("{asset_directory}/whiteboard-{}.svg", block.id);
-            let source_bytes = whiteboard.scene_json.as_bytes().to_vec();
-            let manifest = WhiteboardManifest {
-                version: WHITEBOARD_FORMAT_VERSION,
-                block_id: block.id,
-                source: source_path.clone(),
-                preview: preview_path.clone(),
-                sha256: sha256_hex(&source_bytes),
-            };
-            let manifest_json = serde_json::to_string(&manifest)
-                .map_err(|error| EditorError::InvalidMarkdown(error.to_string()))?;
-            if manifest_json.contains("--") {
-                return Err(EditorError::InvalidMarkdown(
-                    "whiteboard manifest cannot be represented safely in an HTML comment"
-                        .to_owned(),
-                ));
-            }
-            let markdown = format!(
-                "{WHITEBOARD_COMMENT_PREFIX}{manifest_json}{WHITEBOARD_COMMENT_SUFFIX}\n![Whiteboard](<{preview_path}>)"
-            );
-
             assets.push(MarkdownAsset {
-                relative_path: source_path,
-                media_type: "application/vnd.cditor.whiteboard+json".to_owned(),
-                bytes: source_bytes,
-                block_id: block.id,
-                role: MarkdownAssetRole::WhiteboardSource,
-            });
-            assets.push(MarkdownAsset {
-                relative_path: preview_path,
+                relative_path: preview_path.clone(),
                 media_type: "image/svg+xml".to_owned(),
                 bytes: preview.svg.into_bytes(),
                 block_id: block.id,
                 role: MarkdownAssetRole::WhiteboardPreview,
             });
-            block.kind = RichBlockKind::RawMarkdown;
-            block.payload = BlockPayload::RichText {
-                spans: vec![InlineSpan::plain(markdown.clone())],
-            };
-            block.raw_fallback = Some(markdown);
+            if options.preserve_whiteboard_source {
+                let source_bytes = whiteboard.scene_json.as_bytes().to_vec();
+                let manifest = WhiteboardManifest {
+                    version: WHITEBOARD_FORMAT_VERSION,
+                    block_id: block.id,
+                    source: source_path.clone(),
+                    preview: preview_path.clone(),
+                    sha256: sha256_hex(&source_bytes),
+                };
+                let manifest_json = serde_json::to_string(&manifest)
+                    .map_err(|error| EditorError::InvalidMarkdown(error.to_string()))?;
+                if manifest_json.contains("--") {
+                    return Err(EditorError::InvalidMarkdown(
+                        "whiteboard manifest cannot be represented safely in an HTML comment"
+                            .to_owned(),
+                    ));
+                }
+                let markdown = format!(
+                    "{WHITEBOARD_COMMENT_PREFIX}{manifest_json}{WHITEBOARD_COMMENT_SUFFIX}\n![Whiteboard](<{preview_path}>)"
+                );
+                assets.push(MarkdownAsset {
+                    relative_path: source_path,
+                    media_type: "application/vnd.cditor.whiteboard+json".to_owned(),
+                    bytes: source_bytes,
+                    block_id: block.id,
+                    role: MarkdownAssetRole::WhiteboardSource,
+                });
+                block.kind = RichBlockKind::RawMarkdown;
+                block.payload = BlockPayload::RichText {
+                    spans: vec![InlineSpan::plain(markdown.clone())],
+                };
+                block.raw_fallback = Some(markdown);
+            } else {
+                block.kind = RichBlockKind::Image;
+                block.payload = BlockPayload::Image(cditor_core::rich_text::ImagePayload {
+                    source: preview_path,
+                    alt: "Whiteboard".to_owned(),
+                    caption: String::new(),
+                    display_width_ratio_milli: None,
+                });
+                block.raw_fallback = None;
+            }
         }
 
         let mut result = export_document_blocks(&document, mode);
@@ -483,6 +493,7 @@ mod tests {
                 &MarkdownBundleOptions {
                     asset_directory: "note.assets".to_owned(),
                     preview_padding: 24,
+                    ..Default::default()
                 },
             )
             .unwrap();
@@ -539,6 +550,31 @@ mod tests {
         assert_eq!(scene.camera.x, 1.0);
         assert_eq!(scene.camera.y, 2.0);
         assert!(whiteboard.scene_json.contains("future_field"));
+    }
+
+    #[test]
+    fn whiteboard_bundle_can_flatten_to_preview_image_only() {
+        let document =
+            document_with_whiteboard(r#"{"camera":{"x":0.0,"y":0.0,"zoom":1.0},"elements":[]}"#);
+        let bundle = document
+            .export_markdown_bundle(
+                MarkdownExportMode::Strict,
+                &MarkdownBundleOptions {
+                    asset_directory: "note.assets".to_owned(),
+                    preserve_whiteboard_source: false,
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+
+        assert_eq!(bundle.assets.len(), 1);
+        assert_eq!(bundle.assets[0].role, MarkdownAssetRole::WhiteboardPreview);
+        assert!(!bundle.markdown.contains("cditor:whiteboard"));
+        assert!(
+            bundle
+                .markdown
+                .contains("![Whiteboard](<note.assets/whiteboard-1.svg>)")
+        );
     }
 
     #[test]

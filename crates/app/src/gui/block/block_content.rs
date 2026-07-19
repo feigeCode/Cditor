@@ -1,5 +1,6 @@
 use gpui::{
-    AnyElement, App, Entity, FocusHandle, IntoElement, ParentElement, ScrollHandle, Styled, div, px,
+    AnyElement, App, Entity, FocusHandle, IntoElement, ObjectFit, ParentElement, ScrollHandle,
+    Styled, StyledImage, div, img, px, rgb,
 };
 
 use crate::gui::app::CditorV2View;
@@ -16,10 +17,16 @@ use crate::gui::block::{
     CodeHighlightCache, WhiteboardThumbnailCache, render_whiteboard_thumbnail,
 };
 use crate::gui::document::DEFAULT_DOCUMENT_CONTENT_WIDTH_PX;
+use crate::gui::image_loader::{
+    RasterImageElement, gpui_image_source, is_svg_image_source, load_render_image_from_base,
+};
 use crate::gui::text::{RichTextElement, RichTextLayoutInput};
 use crate::gui::{GuiTheme, rich_text::render_payload_text};
 use cditor_core::edit::SelectionRange;
-use cditor_core::rich_text::{BlockPayload, BlockPayloadView};
+use cditor_core::rich_text::{
+    BlockPayload, BlockPayloadView, InlineMediaFragment, parse_inline_media_fragments,
+    plain_text_from_spans,
+};
 use cditor_runtime::ViewBlockSnapshot;
 
 pub(crate) fn render_block_content(
@@ -42,6 +49,7 @@ pub(crate) fn render_block_content(
     match &block.payload {
         BlockPayloadView::Loaded(payload) => {
             if let Some(table_view) = &block.table_view {
+                let media_base_path = view.read(cx).media_base_path();
                 return render_table_block(
                     block.block_id,
                     payload.content_version,
@@ -55,6 +63,7 @@ pub(crate) fn render_block_content(
                     table_scroll_handle,
                     view.clone(),
                     focus.clone(),
+                    media_base_path.as_deref(),
                     cx,
                 );
             }
@@ -62,6 +71,7 @@ pub(crate) fn render_block_content(
                 return crate::gui::rich_text::render_payload_text(payload, theme);
             }
             if let BlockPayload::Image(image) = &payload.payload {
+                let media_base_path = view.read(cx).media_base_path();
                 return render_image_block(
                     block.block_id,
                     payload.content_version,
@@ -69,11 +79,19 @@ pub(crate) fn render_block_content(
                     theme,
                     view,
                     image_resize_preview_width_px,
+                    media_base_path.as_deref(),
                     cx,
                 );
             }
             if let BlockPayload::Html { html, .. } = &payload.payload {
-                return render_html_block(block.block_id, html, theme);
+                let media_base_path = view.read(cx).media_base_path();
+                return render_html_block(
+                    block.block_id,
+                    html,
+                    theme,
+                    media_base_path.as_deref(),
+                    cx,
+                );
             }
             if matches!(payload.payload, BlockPayload::Whiteboard(_)) {
                 return render_whiteboard_thumbnail(
@@ -82,6 +100,26 @@ pub(crate) fn render_block_content(
                     theme,
                     view,
                 );
+            }
+            if view.read(cx).is_readonly()
+                && let BlockPayload::RichText { spans } = &payload.payload
+            {
+                let source = plain_text_from_spans(spans);
+                if source.contains("![") {
+                    let fragments = parse_inline_media_fragments(&source);
+                    if fragments
+                        .iter()
+                        .any(|fragment| matches!(fragment, InlineMediaFragment::Image(_)))
+                    {
+                        let media_base_path = view.read(cx).media_base_path();
+                        return render_inline_media_fragments(
+                            fragments,
+                            theme,
+                            media_base_path.as_deref(),
+                            cx,
+                        );
+                    }
+                }
             }
             if let Some(mut input) = RichTextLayoutInput::from_snapshot(
                 block,
@@ -148,6 +186,67 @@ pub(crate) fn render_block_content(
         BlockPayloadView::Loading { .. } => render_loading(block, theme),
         BlockPayloadView::Error { message } => render_error(message, theme),
     }
+}
+
+fn render_inline_media_fragments(
+    fragments: Vec<InlineMediaFragment>,
+    theme: GuiTheme,
+    media_base_path: Option<&std::path::Path>,
+    cx: &mut App,
+) -> AnyElement {
+    div()
+        .w_full()
+        .min_w(px(0.0))
+        .flex()
+        .flex_wrap()
+        .items_center()
+        .gap(px(4.0))
+        .children(fragments.into_iter().map(|fragment| match fragment {
+            InlineMediaFragment::Text(spans) => {
+                crate::gui::rich_text::render_inline_spans(&spans, theme)
+            }
+            InlineMediaFragment::Image(image) => {
+                if is_svg_image_source(&image.source) {
+                    return img(gpui_image_source(&image.source, media_base_path))
+                        .h(px(24.0))
+                        .max_w(px(480.0))
+                        .object_fit(ObjectFit::Contain)
+                        .into_any_element();
+                }
+                if let Some(render_image) =
+                    load_render_image_from_base(&image.source, media_base_path, cx)
+                {
+                    let size = render_image.size(0);
+                    let aspect = (size.width.0 as f32 / size.height.0.max(1) as f32).max(0.1);
+                    let height = 24.0;
+                    div()
+                        .w(px((height * aspect).clamp(24.0, 480.0)))
+                        .h(px(height))
+                        .child(RasterImageElement::new(
+                            render_image,
+                            ObjectFit::Contain,
+                            px(0.0),
+                        ))
+                        .into_any_element()
+                } else {
+                    div()
+                        .h(px(24.0))
+                        .px(px(6.0))
+                        .flex()
+                        .items_center()
+                        .rounded(px(3.0))
+                        .bg(rgb(theme.hover_surface))
+                        .text_color(rgb(theme.muted))
+                        .child(if image.alt.trim().is_empty() {
+                            "Image".to_owned()
+                        } else {
+                            image.alt
+                        })
+                        .into_any_element()
+                }
+            }
+        }))
+        .into_any_element()
 }
 
 fn parse_block_hex_color(value: &str) -> Option<u32> {

@@ -1,5 +1,6 @@
 use std::{
     collections::HashMap,
+    path::PathBuf,
     sync::Arc,
     time::{Duration, Instant},
 };
@@ -113,6 +114,8 @@ pub struct CditorV2View {
     pub(in crate::gui::app) storage_persistence: StoragePersistenceState,
     pub(in crate::gui::app) payload_window_load_scheduler: PayloadWindowLoadScheduler,
     pub(in crate::gui::app) autosave_interval: Option<Duration>,
+    pub(in crate::gui::app) media_base_path: Option<PathBuf>,
+    pub(in crate::gui::app) markdown_native_blocks_only: bool,
     pub(in crate::gui::app) platform_input_target: Option<GuiPlatformInputTarget>,
     pub(in crate::gui::app) integration: Option<EditorIntegrationController>,
     pub(in crate::gui::app) integration_focus_requested: bool,

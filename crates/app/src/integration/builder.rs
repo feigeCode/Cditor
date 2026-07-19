@@ -1,3 +1,4 @@
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -37,6 +38,8 @@ pub struct EditorBuilder {
     syntax_highlighting_enabled: bool,
     document_renderer_provider: Option<Arc<dyn DocumentRendererProvider>>,
     theme_provider: Option<Arc<dyn ThemeProvider>>,
+    media_base_path: Option<PathBuf>,
+    markdown_native_blocks_only: bool,
 }
 
 impl Default for EditorBuilder {
@@ -55,6 +58,8 @@ impl Default for EditorBuilder {
             syntax_highlighting_enabled: true,
             document_renderer_provider: None,
             theme_provider: None,
+            media_base_path: None,
+            markdown_native_blocks_only: false,
         }
     }
 }
@@ -177,6 +182,16 @@ impl EditorBuilder {
         self
     }
 
+    pub fn media_base_path(mut self, path: impl Into<PathBuf>) -> Self {
+        self.media_base_path = Some(path.into());
+        self
+    }
+
+    pub fn markdown_native_blocks_only(mut self, enabled: bool) -> Self {
+        self.markdown_native_blocks_only = enabled;
+        self
+    }
+
     pub fn build<C: AppContext>(self, cx: &mut C) -> Result<EditorHandle, EditorError> {
         let initial_document = self.resolve_initial_document()?;
         let runtime = initial_document.clone().into_runtime(720.0)?;
@@ -190,6 +205,8 @@ impl EditorBuilder {
         let syntax_highlighting_enabled = self.syntax_highlighting_enabled;
         let document_renderer_provider = self.document_renderer_provider.clone();
         let theme_provider = self.theme_provider.clone();
+        let media_base_path = self.media_base_path.clone();
+        let markdown_native_blocks_only = self.markdown_native_blocks_only;
         let readonly = self.readonly;
         let debug_overlay = self.debug_overlay;
         let has_persistence = persistence.is_some();
@@ -204,6 +221,8 @@ impl EditorBuilder {
             );
             view.sdk_configure_document_rendering(document_renderer_provider);
             view.sdk_configure_theme(theme_provider);
+            view.sdk_configure_media_base_path(media_base_path);
+            view.sdk_configure_markdown_native_blocks_only(markdown_native_blocks_only);
             view.install_editor_integration(
                 document_id.clone(),
                 persistence,

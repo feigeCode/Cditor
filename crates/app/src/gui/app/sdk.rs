@@ -14,6 +14,25 @@ use crate::gui::persistence::{EditorSaveStatus, PersistenceBarrierKind};
 impl EventEmitter<CditorEvent> for CditorV2View {}
 
 impl CditorV2View {
+    pub(crate) fn sdk_configure_media_base_path(
+        &mut self,
+        media_base_path: Option<std::path::PathBuf>,
+    ) {
+        self.media_base_path = media_base_path;
+    }
+
+    pub(crate) fn media_base_path(&self) -> Option<std::path::PathBuf> {
+        self.media_base_path.clone()
+    }
+
+    pub(crate) fn is_readonly(&self) -> bool {
+        self.readonly
+    }
+
+    pub(crate) fn sdk_configure_markdown_native_blocks_only(&mut self, enabled: bool) {
+        self.markdown_native_blocks_only = enabled;
+    }
+
     pub(crate) fn sdk_configure_theme(
         &mut self,
         provider: Option<std::sync::Arc<dyn ThemeProvider>>,

@@ -27,7 +27,8 @@ impl CditorV2View {
             return;
         };
         let (x, y) = self.slash_menu_anchor(block_id, caret);
-        let mut next = SlashMenuState::new(block_id, trigger_start, query, x, y);
+        let mut next = SlashMenuState::new(block_id, trigger_start, query, x, y)
+            .with_markdown_native_blocks_only(self.markdown_native_blocks_only);
         if let Some(previous) = self
             .slash_menu
             .as_ref()

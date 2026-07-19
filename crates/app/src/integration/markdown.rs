@@ -41,6 +41,12 @@ pub struct MarkdownBundleExportResult {
 pub struct MarkdownBundleOptions {
     pub asset_directory: String,
     pub preview_padding: u32,
+    /// Keep the editable whiteboard scene alongside its preview image.
+    ///
+    /// Hosts that intentionally flatten rich-text content for a Markdown
+    /// document can disable this so the imported document contains only an
+    /// ordinary image block.
+    pub preserve_whiteboard_source: bool,
 }
 
 impl Default for MarkdownBundleOptions {
@@ -48,6 +54,7 @@ impl Default for MarkdownBundleOptions {
         Self {
             asset_directory: "document.assets".to_owned(),
             preview_padding: 32,
+            preserve_whiteboard_source: true,
         }
     }
 }

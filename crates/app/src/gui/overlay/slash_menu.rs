@@ -27,6 +27,7 @@ pub struct SlashMenuState {
     pub scroll_start: usize,
     pub x: f32,
     pub y: f32,
+    pub markdown_native_blocks_only: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -54,12 +55,19 @@ impl SlashMenuState {
             scroll_start: 0,
             x,
             y,
+            markdown_native_blocks_only: false,
         }
+    }
+
+    pub fn with_markdown_native_blocks_only(mut self, enabled: bool) -> Self {
+        self.markdown_native_blocks_only = enabled;
+        self
     }
 
     pub fn visible_items(&self) -> Vec<SlashMenuItem> {
         slash_menu_items()
             .into_iter()
+            .filter(|item| !self.markdown_native_blocks_only || markdown_native_slash_item(item))
             .filter(|item| slash_item_matches(item, &self.query))
             .collect()
     }
@@ -109,6 +117,23 @@ impl SlashMenuState {
             self.scroll_start = self.selected_index + 1 - SLASH_MENU_VISIBLE_ITEMS;
         }
     }
+}
+
+fn markdown_native_slash_item(item: &SlashMenuItem) -> bool {
+    item.command.is_some()
+        || !matches!(
+            item.kind,
+            RichBlockKind::Toggle
+                | RichBlockKind::File
+                | RichBlockKind::Attachment
+                | RichBlockKind::Whiteboard
+                | RichBlockKind::MindMap
+                | RichBlockKind::Embed
+                | RichBlockKind::Database
+                | RichBlockKind::Custom(_)
+                | RichBlockKind::FootnoteDefinition
+                | RichBlockKind::Comment
+        )
 }
 
 pub fn slash_menu_items() -> Vec<SlashMenuItem> {
@@ -629,6 +654,23 @@ mod tests {
                 .iter()
                 .all(|item| !item.icon.is_empty() && !item.description.is_empty())
         );
+    }
+
+    #[test]
+    fn markdown_native_slash_menu_hides_rich_document_only_blocks() {
+        let state = SlashMenuState::new(1, 0, String::new(), 0.0, 0.0)
+            .with_markdown_native_blocks_only(true);
+        let items = state.visible_items();
+
+        assert!(items.iter().any(|item| item.kind == RichBlockKind::Table));
+        assert!(items.iter().any(|item| item.kind == RichBlockKind::Html));
+        assert!(
+            items
+                .iter()
+                .all(|item| item.kind != RichBlockKind::Whiteboard)
+        );
+        assert!(items.iter().all(|item| item.kind != RichBlockKind::Toggle));
+        assert!(items.iter().all(|item| item.kind != RichBlockKind::Comment));
     }
 
     #[test]

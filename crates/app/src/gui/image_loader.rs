@@ -5,13 +5,13 @@
 //! use the same vertical crop positioning semantics as V1.
 
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, OnceLock};
 
 use gpui::{
-    App, Bounds, Corners, DevicePixels, Element, ElementId, GlobalElementId, InspectorElementId,
-    IntoElement, LayoutId, ObjectFit, Pixels, RenderImage, Size, Style, Window, point, px,
-    relative, size,
+    App, Bounds, Corners, DevicePixels, Element, ElementId, GlobalElementId, ImageSource,
+    InspectorElementId, IntoElement, LayoutId, ObjectFit, Pixels, RenderImage, Size, Style, Window,
+    point, px, relative, size,
 };
 
 #[derive(Clone)]
@@ -31,6 +31,15 @@ fn image_cache() -> &'static Mutex<HashMap<String, ImageState>> {
 /// Returns `Some` once the image is decoded and cached. While loading (or after a
 /// failure) it returns `None`, letting the caller render a stable placeholder.
 pub fn load_render_image(src: &str, cx: &mut App) -> Option<Arc<RenderImage>> {
+    load_render_image_from_base(src, None, cx)
+}
+
+pub fn load_render_image_from_base(
+    src: &str,
+    base_path: Option<&Path>,
+    cx: &mut App,
+) -> Option<Arc<RenderImage>> {
+    let src = resolve_render_image_source(src, base_path);
     if src.trim().is_empty() {
         return None;
     }
@@ -38,7 +47,7 @@ pub fn load_render_image(src: &str, cx: &mut App) -> Option<Arc<RenderImage>> {
     if let Some(state) = image_cache()
         .lock()
         .ok()
-        .and_then(|cache| cache.get(src).cloned())
+        .and_then(|cache| cache.get(&src).cloned())
     {
         return match state {
             ImageState::Ready(image) => Some(image),
@@ -47,10 +56,9 @@ pub fn load_render_image(src: &str, cx: &mut App) -> Option<Arc<RenderImage>> {
     }
 
     if let Ok(mut cache) = image_cache().lock() {
-        cache.insert(src.to_owned(), ImageState::Loading);
+        cache.insert(src.clone(), ImageState::Loading);
     }
 
-    let src = src.to_owned();
     let async_cx = cx.to_async();
     let executor = cx.background_executor().clone();
     cx.foreground_executor()
@@ -72,6 +80,44 @@ pub fn load_render_image(src: &str, cx: &mut App) -> Option<Arc<RenderImage>> {
         .detach();
 
     None
+}
+
+pub fn resolve_render_image_source(src: &str, base_path: Option<&Path>) -> String {
+    let src = src.trim();
+    if src.is_empty()
+        || src.starts_with("http://")
+        || src.starts_with("https://")
+        || src.starts_with("data:")
+        || src.starts_with("asset:")
+    {
+        return src.to_owned();
+    }
+
+    let path = parse_local_path(src);
+    if path.is_absolute() {
+        return path.to_string_lossy().into_owned();
+    }
+    base_path
+        .map(|base| base.join(&path).to_string_lossy().into_owned())
+        .unwrap_or_else(|| path.to_string_lossy().into_owned())
+}
+
+pub fn gpui_image_source(src: &str, base_path: Option<&Path>) -> ImageSource {
+    let resolved = resolve_render_image_source(src, base_path);
+    if resolved.starts_with("http://")
+        || resolved.starts_with("https://")
+        || resolved.starts_with("data:")
+    {
+        resolved.into()
+    } else {
+        PathBuf::from(resolved).into()
+    }
+}
+
+pub fn is_svg_image_source(src: &str) -> bool {
+    src.split(['?', '#'])
+        .next()
+        .is_some_and(|path| path.to_ascii_lowercase().ends_with(".svg"))
 }
 
 fn fetch_image_bytes(src: &str) -> Option<Vec<u8>> {
@@ -246,6 +292,24 @@ mod tests {
             PathBuf::from("/tmp/a.png")
         );
         assert_eq!(parse_local_path("/tmp/a.png"), PathBuf::from("/tmp/a.png"));
+    }
+
+    #[test]
+    fn relative_image_source_resolves_from_document_directory() {
+        assert_eq!(
+            resolve_render_image_source(
+                "resources/navop-icon.png",
+                Some(Path::new("/tmp/project"))
+            ),
+            "/tmp/project/resources/navop-icon.png"
+        );
+        assert_eq!(
+            resolve_render_image_source(
+                "https://example.com/badge.svg",
+                Some(Path::new("/tmp/project"))
+            ),
+            "https://example.com/badge.svg"
+        );
     }
 
     #[test]

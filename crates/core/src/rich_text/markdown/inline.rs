@@ -10,6 +10,46 @@ pub(super) fn parse_inline_markdown(markdown: &str) -> Vec<InlineSpan> {
     spans
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum InlineMediaFragment {
+    Text(Vec<InlineSpan>),
+    Image(ImagePayload),
+}
+
+pub fn parse_inline_media_fragments(markdown: &str) -> Vec<InlineMediaFragment> {
+    let atomics = find_atomic_spans(markdown);
+    let image_atomics = atomics
+        .iter()
+        .filter(|atomic| atomic.kind == AtomicKind::Image)
+        .collect::<Vec<_>>();
+    if image_atomics.is_empty() {
+        return vec![InlineMediaFragment::Text(parse_inline_markdown(markdown))];
+    }
+
+    let mut fragments = Vec::with_capacity(image_atomics.len().saturating_mul(2) + 1);
+    let mut cursor = 0;
+    for atomic in image_atomics {
+        if cursor < atomic.start {
+            fragments.push(InlineMediaFragment::Text(parse_inline_markdown(
+                &markdown[cursor..atomic.start],
+            )));
+        }
+        fragments.push(InlineMediaFragment::Image(ImagePayload {
+            source: atomic.href.clone(),
+            alt: atomic.label.clone(),
+            caption: String::new(),
+            display_width_ratio_milli: None,
+        }));
+        cursor = atomic.end;
+    }
+    if cursor < markdown.len() {
+        fragments.push(InlineMediaFragment::Text(parse_inline_markdown(
+            &markdown[cursor..],
+        )));
+    }
+    fragments
+}
+
 pub(super) fn parse_inline_markdown_with_images(
     markdown: &str,
 ) -> (Vec<InlineSpan>, Vec<ImagePayload>) {
@@ -726,6 +766,20 @@ mod tests {
         assert!(
             matches!(&result.spans[0].marks[..], [InlineMark::Link { href }] if href == "https://example.com")
         );
+    }
+
+    #[test]
+    fn inline_media_fragments_preserve_text_links_and_images() {
+        let fragments = parse_inline_media_fragments(
+            "Legacy: <https://example.com> · ![Stars](https://example.com/stars.svg)",
+        );
+
+        assert!(matches!(fragments[0], InlineMediaFragment::Text(_)));
+        assert!(matches!(
+            &fragments[1],
+            InlineMediaFragment::Image(image)
+                if image.alt == "Stars" && image.source == "https://example.com/stars.svg"
+        ));
     }
 
     #[test]

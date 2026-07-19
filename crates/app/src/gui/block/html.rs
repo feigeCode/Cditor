@@ -1,16 +1,27 @@
 use std::cell::RefCell;
+use std::path::Path;
 use std::rc::Rc;
 
-use gpui::{AnyElement, InteractiveElement, IntoElement, ParentElement, Styled, div, img, px, rgb};
+use gpui::{
+    AnyElement, App, InteractiveElement, IntoElement, ParentElement, Styled, StyledImage, div, img,
+    px, rgb,
+};
 use html5ever::tendril::TendrilSink;
 use html5ever::{LocalName, ParseOpts, parse_document};
 use markup5ever_rcdom::{Node, NodeData, RcDom};
 
 use crate::gui::GuiTheme;
+use crate::gui::image_loader::gpui_image_source;
 
 pub(crate) const HTML_PREVIEW_TEXT_SIZE_PX: f32 = 16.0;
 
-pub(crate) fn render_html_block(block_id: u64, html: &str, theme: GuiTheme) -> AnyElement {
+pub(crate) fn render_html_block(
+    block_id: u64,
+    html: &str,
+    theme: GuiTheme,
+    media_base_path: Option<&Path>,
+    cx: &mut App,
+) -> AnyElement {
     let sanitized = cditor_runtime::sanitize_external_html(
         html,
         cditor_runtime::ExternalContentPolicy {
@@ -20,7 +31,7 @@ pub(crate) fn render_html_block(block_id: u64, html: &str, theme: GuiTheme) -> A
         },
     );
     let dom = parse_html(&sanitized.html);
-    render_node(&dom.document, block_id, theme, 0)
+    render_node(&dom.document, block_id, theme, media_base_path, cx, 0)
 }
 
 fn parse_html(source: &str) -> RcDom {
@@ -30,7 +41,14 @@ fn parse_html(source: &str) -> RcDom {
         .unwrap_or_default()
 }
 
-fn render_node(node: &Rc<Node>, block_id: u64, theme: GuiTheme, depth: usize) -> AnyElement {
+fn render_node(
+    node: &Rc<Node>,
+    block_id: u64,
+    theme: GuiTheme,
+    media_base_path: Option<&Path>,
+    cx: &mut App,
+    depth: usize,
+) -> AnyElement {
     match &node.data {
         NodeData::Document => div()
             .id(("html", block_id))
@@ -45,7 +63,14 @@ fn render_node(node: &Rc<Node>, block_id: u64, theme: GuiTheme, depth: usize) ->
                     .iter()
                     .enumerate()
                     .map(|(index, child)| {
-                        render_node(child, block_id.wrapping_add(index as u64), theme, depth)
+                        render_node(
+                            child,
+                            block_id.wrapping_add(index as u64),
+                            theme,
+                            media_base_path,
+                            cx,
+                            depth,
+                        )
                     }),
             )
             .into_any_element(),
@@ -67,7 +92,14 @@ fn render_node(node: &Rc<Node>, block_id: u64, theme: GuiTheme, depth: usize) ->
                 .iter()
                 .enumerate()
                 .map(|(index, child)| {
-                    render_node(child, block_id.wrapping_add(index as u64), theme, depth + 1)
+                    render_node(
+                        child,
+                        block_id.wrapping_add(index as u64),
+                        theme,
+                        media_base_path,
+                        cx,
+                        depth + 1,
+                    )
                 })
                 .collect::<Vec<_>>();
             let tag = name.local.as_ref();
@@ -104,7 +136,27 @@ fn render_node(node: &Rc<Node>, block_id: u64, theme: GuiTheme, depth: usize) ->
                 "br" => div().h(px(10.0)),
                 "img" => {
                     let src = attr(attrs, "src").unwrap_or_default();
-                    return img(src).max_w(gpui::relative(1.0)).into_any_element();
+                    let alt = attr(attrs, "alt").unwrap_or_else(|| "Image".to_owned());
+                    let width = attr(attrs, "width")
+                        .and_then(|width| width.parse::<f32>().ok())
+                        .unwrap_or(120.0)
+                        .max(16.0);
+                    return img(gpui_image_source(&src, media_base_path))
+                        .w(px(width))
+                        .max_w(gpui::relative(1.0))
+                        .object_fit(gpui::ObjectFit::Contain)
+                        .with_fallback(move || {
+                            div()
+                                .w(px(width))
+                                .h(px(width))
+                                .flex()
+                                .items_center()
+                                .justify_center()
+                                .text_color(rgb(theme.muted))
+                                .child(alt.clone())
+                                .into_any_element()
+                        })
+                        .into_any_element();
                 }
                 "a" => div().text_color(rgb(theme.focused)),
                 "strong" | "b" => div().font_weight(gpui::FontWeight::BOLD),
