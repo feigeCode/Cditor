@@ -13,7 +13,7 @@ path = "src/main.rs"
 required-features = ["application"]
 
 [features]
-default = ["ai-openai", "application", "builtin-mermaid-rendering", "builtin-syntax-highlighting", "postgres", "remote-media", "sqlite"]
+default = ["ai-openai", "application", "builtin-mermaid-rendering", "builtin-syntax-highlighting", "postgres", "sqlite"]
 ai-openai = ["cditor-ai/openai"]
 application = ["dep:gpui_platform"]
 builtin-syntax-highlighting = ["dep:lumis"]
@@ -22,7 +22,6 @@ postgres = [
     "dep:cditor-storage-postgres",
     "dep:sqlx",
 ]
-remote-media = ["dep:reqwest"]
 sqlite = ["dep:cditor-storage-sqlite"]
 runtime-shaders = ["application", "gpui_platform/runtime_shaders"]
 
@@ -46,9 +45,9 @@ sqlx = { version = "0.8", optional = true, default-features = false, features = 
 tokio = { version = "1", features = ["sync", "time"] }
 unicode-segmentation = "1.12"
 image = "0.25.10"
+futures = "0.3"
 html5ever = "0.27"
 markup5ever_rcdom = "0.3.0"
-reqwest = { version = "0.12", optional = true, default-features = false, features = ["blocking", "rustls-tls"] }
 lumis = { version = "0.12.0", optional = true, default-features = false, features = [
     "lang-bash",
     "lang-c",

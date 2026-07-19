@@ -8,6 +8,7 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, OnceLock};
 
+use futures::AsyncReadExt;
 use gpui::{
     AnyElement, App, Bounds, Corners, DevicePixels, Element, ElementId, GlobalElementId,
     ImageSource, InspectorElementId, IntoElement, LayoutId, ObjectFit, ParentElement, Pixels,
@@ -209,18 +210,25 @@ pub fn load_render_image_state_from_base(
     }
 
     let async_cx = cx.to_async();
+    let http_client = cx.http_client();
     let executor = cx.background_executor().clone();
     cx.foreground_executor()
         .spawn(async move {
             let fetch_src = src.clone();
-            let state = executor
-                .spawn(async move {
-                    fetch_image_bytes(&fetch_src)
-                        .as_deref()
-                        .and_then(decode_render_image)
-                })
-                .await
-                .map_or(ImageState::Failed, ImageState::Ready);
+            let bytes = if fetch_src.starts_with("http://") || fetch_src.starts_with("https://") {
+                fetch_remote_image_bytes(&fetch_src, http_client).await
+            } else {
+                executor
+                    .spawn(async move { std::fs::read(parse_local_path(&fetch_src)).ok() })
+                    .await
+            };
+            let state = match bytes {
+                Some(bytes) => executor
+                    .spawn(async move { decode_render_image(&bytes) })
+                    .await
+                    .map_or(ImageState::Failed, ImageState::Ready),
+                None => ImageState::Failed,
+            };
             if let Ok(mut cache) = image_cache().lock() {
                 cache.insert(src, state);
             }
@@ -348,24 +356,21 @@ pub fn should_use_native_image_source(src: &str) -> bool {
     )
 }
 
-fn fetch_image_bytes(src: &str) -> Option<Vec<u8>> {
-    if src.starts_with("http://") || src.starts_with("https://") {
-        fetch_remote_image_bytes(src)
-    } else {
-        std::fs::read(parse_local_path(src)).ok()
+async fn fetch_remote_image_bytes(
+    src: &str,
+    http_client: Arc<dyn gpui::http_client::HttpClient>,
+) -> Option<Vec<u8>> {
+    let response = http_client
+        .get(src, gpui::http_client::AsyncBody::default(), true)
+        .await
+        .ok()?;
+    if !response.status().is_success() {
+        return None;
     }
-}
-
-#[cfg(feature = "remote-media")]
-fn fetch_remote_image_bytes(src: &str) -> Option<Vec<u8>> {
-    let response = reqwest::blocking::get(src).ok()?;
-    let bytes = response.bytes().ok()?;
-    Some(bytes.to_vec())
-}
-
-#[cfg(not(feature = "remote-media"))]
-fn fetch_remote_image_bytes(_src: &str) -> Option<Vec<u8>> {
-    None
+    let mut body = response.into_body();
+    let mut bytes = Vec::new();
+    body.read_to_end(&mut bytes).await.ok()?;
+    Some(bytes)
 }
 
 fn parse_local_path(src: &str) -> PathBuf {
