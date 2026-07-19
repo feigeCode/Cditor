@@ -91,8 +91,8 @@ pub(crate) fn render_table_block(
                             .rows
                             .get(cell.position.row)
                             .and_then(|row| row.cells.get(cell.position.col))
-                            .map(|cell| cell.images.clone())
-                            .unwrap_or_default(),
+                            .map(|cell| cell.images.as_slice())
+                            .unwrap_or(&[]),
                         active,
                         table_view.focused_cell_offset,
                         table_view.focused_cell_selection_range.clone(),
@@ -150,7 +150,7 @@ fn render_table_cell_content(
     block_id: BlockId,
     content_version: u64,
     spans: Vec<InlineSpan>,
-    images: Vec<ImagePayload>,
+    images: &[ImagePayload],
     active: bool,
     focused_cell_offset: Option<usize>,
     selected_range: Option<Range<usize>>,
@@ -216,11 +216,11 @@ fn render_table_cell_image(
     media_base_path: Option<&Path>,
     cx: &mut App,
 ) -> AnyElement {
-    const PREVIEW_HEIGHT_PX: f32 = 72.0;
+    let preview_height = table_cell_image_preview_height_px(&image.source);
     if is_svg_image_source(&image.source) {
         return div()
             .w_full()
-            .h(px(PREVIEW_HEIGHT_PX))
+            .h(px(preview_height))
             .child(
                 img(gpui_image_source(&image.source, media_base_path))
                     .size_full()
@@ -231,10 +231,8 @@ fn render_table_cell_image(
     let loaded = load_render_image_from_base(&image.source, media_base_path, cx);
     div()
         .w_full()
-        .h(px(PREVIEW_HEIGHT_PX))
-        .rounded(px(3.0))
+        .h(px(preview_height))
         .overflow_hidden()
-        .bg(rgb(theme.hover_surface))
         .child(if let Some(image) = loaded {
             RasterImageElement::new(image, ObjectFit::Contain, px(0.0)).into_any_element()
         } else {
@@ -253,6 +251,10 @@ fn render_table_cell_image(
                 .into_any_element()
         })
         .into_any_element()
+}
+
+fn table_cell_image_preview_height_px(source: &str) -> f32 {
+    is_svg_image_source(source).then_some(28.0).unwrap_or(72.0)
 }
 
 fn render_empty_table(theme: GuiTheme) -> AnyElement {

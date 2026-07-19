@@ -14,6 +14,7 @@ const TABLE_CELL_APPROX_ASCII_CHAR_WIDTH_PX: f32 = 7.0;
 const TABLE_CELL_APPROX_CJK_CHAR_WIDTH_PX: f32 = 14.0;
 const TABLE_CELL_APPROX_NON_ASCII_CHAR_WIDTH_PX: f32 = 11.0;
 const TABLE_CELL_IMAGE_PREVIEW_HEIGHT_PX: f32 = 72.0;
+const TABLE_CELL_SVG_PREVIEW_HEIGHT_PX: f32 = 28.0;
 const TABLE_CELL_IMAGE_GAP_PX: f32 = 6.0;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -137,7 +138,7 @@ fn grow_auto_table_rows_for_content(
         };
         let width = span_size(column_widths, col, col_span);
         let required_height =
-            table_cell_auto_content_height_px(&cell.spans, cell.images.len(), width, metrics);
+            table_cell_auto_content_height_px(&cell.spans, &cell.images, width, metrics);
         let current_height = span_size(row_heights, row, row_span);
         if required_height <= current_height {
             continue;
@@ -168,7 +169,7 @@ fn table_row_is_auto(table: &TablePayload, row: usize) -> bool {
 
 fn table_cell_auto_content_height_px(
     spans: &[InlineSpan],
-    image_count: usize,
+    images: &[cditor_core::rich_text::ImagePayload],
     cell_width_px: f32,
     metrics: TableLayoutMetrics,
 ) -> f32 {
@@ -180,7 +181,11 @@ fn table_cell_auto_content_height_px(
         .map(|line| table_cell_wrapped_line_count(line, content_width, metrics))
         .sum::<usize>()
         .max(1);
-    let image_height = image_count as f32 * TABLE_CELL_IMAGE_PREVIEW_HEIGHT_PX
+    let image_count = images.len();
+    let image_height = images
+        .iter()
+        .map(|image| table_cell_image_preview_height_px(&image.source))
+        .sum::<f32>()
         + image_count.saturating_sub(1) as f32 * TABLE_CELL_IMAGE_GAP_PX
         + (!text.trim().is_empty() && image_count > 0)
             .then_some(TABLE_CELL_IMAGE_GAP_PX)
@@ -189,6 +194,15 @@ fn table_cell_auto_content_height_px(
         + image_height
         + metrics.cell_padding_y_px * 2.0)
         .max(metrics.default_row_height_px)
+}
+
+fn table_cell_image_preview_height_px(source: &str) -> f32 {
+    source
+        .split(['?', '#'])
+        .next()
+        .is_some_and(|path| path.to_ascii_lowercase().ends_with(".svg"))
+        .then_some(TABLE_CELL_SVG_PREVIEW_HEIGHT_PX)
+        .unwrap_or(TABLE_CELL_IMAGE_PREVIEW_HEIGHT_PX)
 }
 
 fn table_cell_wrapped_line_count(
