@@ -80,6 +80,7 @@ pub struct CditorV2View {
     pub(in crate::gui::app) table_cell_layouts: HashMap<TableCellLayoutKey, RichTextPlatformLayout>,
     pub(in crate::gui::app) table_scroll_state: GuiTableScrollState,
     pub(in crate::gui::app) code_highlights: CodeHighlightCache,
+    pub(in crate::gui::app) code_highlight_refresh_scheduled: bool,
     pub(in crate::gui::app) document_renders: DocumentRenderCache,
     pub(in crate::gui::app) document_source_blocks: std::collections::HashSet<BlockId>,
     pub(in crate::gui::app) whiteboard_thumbnails: WhiteboardThumbnailCache,
@@ -119,6 +120,24 @@ pub struct CditorV2View {
     pub(in crate::gui::app) platform_input_target: Option<GuiPlatformInputTarget>,
     pub(in crate::gui::app) integration: Option<EditorIntegrationController>,
     pub(in crate::gui::app) integration_focus_requested: bool,
+}
+
+impl CditorV2View {
+    pub(in crate::gui) fn schedule_code_highlight_refresh(&mut self, cx: &mut Context<Self>) {
+        if self.code_highlight_refresh_scheduled {
+            return;
+        }
+        self.code_highlight_refresh_scheduled = true;
+        let delay = cx.background_executor().timer(Duration::from_millis(16));
+        cx.spawn(async move |view, cx| {
+            delay.await;
+            let _ = view.update(cx, |view, cx| {
+                view.code_highlight_refresh_scheduled = false;
+                cx.notify();
+            });
+        })
+        .detach();
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]

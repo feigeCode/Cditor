@@ -1,4 +1,4 @@
-//! Viewport-scoped code-block syntax highlighting.
+//! Viewport-triggered code-block syntax highlighting with a bounded offscreen cache.
 
 mod language;
 mod spans;
@@ -11,6 +11,7 @@ mod tests;
 
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, OnceLock};
+use std::time::Instant;
 
 use cditor_core::ids::BlockId;
 use cditor_core::rich_text::InlineSpan;
@@ -30,6 +31,7 @@ use language::visible_code_blocks;
 use spans::{highlight_with_provider, rebase_spans};
 
 type HighlightResult = Result<Arc<Vec<InlineSpan>>, Arc<str>>;
+const MAX_RETAINED_OFFSCREEN_ENTRIES: usize = 128;
 
 #[derive(Clone, Default)]
 enum HighlightEngine {
@@ -80,13 +82,13 @@ impl HighlightEngine {
 
 struct CodeHighlightEntry {
     content_version: u64,
-    source_hash: u64,
     language: Arc<str>,
     engine_revision: u64,
     theme_key: &'static str,
     source: Arc<str>,
     fallback: Arc<Vec<InlineSpan>>,
     result: Arc<OnceLock<HighlightResult>>,
+    last_used_tick: u64,
     _task: Task<()>,
 }
 
@@ -109,17 +111,17 @@ impl CodeHighlightEntry {
                 })
                 .await;
             let _ = task_result.set(highlighted);
-            let _ = view.update(cx, |_view, cx| cx.notify());
+            let _ = view.update(cx, |view, cx| view.schedule_code_highlight_refresh(cx));
         });
         Self {
             content_version: request.content_version,
-            source_hash: request.source_hash,
             language,
             engine_revision: request.engine_revision,
             theme_key: request.theme_key,
             source,
             fallback: Arc::new(request.fallback),
             result,
+            last_used_tick: 0,
             _task: task,
         }
     }
@@ -127,13 +129,11 @@ impl CodeHighlightEntry {
     fn matches(
         &self,
         content_version: u64,
-        source_hash: u64,
         language: &str,
         engine_revision: u64,
         theme_key: &str,
     ) -> bool {
         self.content_version == content_version
-            && self.source_hash == source_hash
             && self.language.as_ref() == language
             && self.engine_revision == engine_revision
             && self.theme_key == theme_key
@@ -150,7 +150,6 @@ impl CodeHighlightEntry {
 
 struct HighlightRequest {
     content_version: u64,
-    source_hash: u64,
     source: String,
     language: String,
     engine_revision: u64,
@@ -163,6 +162,7 @@ pub(crate) struct CodeHighlightCache {
     entries: HashMap<BlockId, CodeHighlightEntry>,
     engine: HighlightEngine,
     enabled: bool,
+    sync_tick: u64,
 }
 
 impl Default for CodeHighlightCache {
@@ -171,6 +171,7 @@ impl Default for CodeHighlightCache {
             entries: HashMap::new(),
             engine: HighlightEngine::default(),
             enabled: true,
+            sync_tick: 0,
         }
     }
 }
@@ -204,38 +205,75 @@ impl CodeHighlightCache {
         selected_theme: &'static str,
         cx: &mut Context<CditorV2View>,
     ) {
+        let trace = std::env::var_os("CDITOR_TRACE_SYNTAX_HIGHLIGHT").is_some();
+        let started = Instant::now();
         if !self.enabled || matches!(self.engine, HighlightEngine::Disabled) {
             self.clear();
             return;
         }
+        self.sync_tick = self.sync_tick.wrapping_add(1);
+        let tick = self.sync_tick;
         let visible = visible_code_blocks(projection);
         let visible_ids = visible.iter().map(|item| item.0).collect::<HashSet<_>>();
-        self.entries.retain(|id, _| visible_ids.contains(id));
-        for (block_id, content_version, hash, source, language) in visible {
-            let engine_revision = self.engine.revision();
-            let theme_key = self.engine.theme_key(selected_theme);
-            if self.entries.get(&block_id).is_some_and(|entry| {
-                entry.matches(content_version, hash, &language, engine_revision, theme_key)
-            }) {
+        let mut hits = 0usize;
+        let mut misses = 0usize;
+        let engine_revision = self.engine.revision();
+        let theme_key = self.engine.theme_key(selected_theme);
+        for (block_id, content_version, source, language) in visible {
+            if let Some(entry) = self.entries.get_mut(&block_id)
+                && entry.matches(content_version, &language, engine_revision, theme_key)
+            {
+                entry.last_used_tick = tick;
+                hits += 1;
                 continue;
             }
+            misses += 1;
             let fallback = self
                 .entries
                 .remove(&block_id)
                 .map(|entry| rebase_spans(&entry.source, entry.spans(), &source))
-                .unwrap_or_else(|| vec![InlineSpan::plain(&source)]);
+                .unwrap_or_else(|| vec![InlineSpan::plain(source)]);
             let request = HighlightRequest {
                 content_version,
-                source_hash: hash,
-                source,
+                source: source.to_owned(),
                 language,
                 engine_revision,
                 theme_key,
                 fallback,
                 engine: self.engine.clone(),
             };
-            self.entries
-                .insert(block_id, CodeHighlightEntry::new(request, cx));
+            let mut entry = CodeHighlightEntry::new(request, cx);
+            entry.last_used_tick = tick;
+            self.entries.insert(block_id, entry);
+        }
+
+        let mut evicted = 0usize;
+        let max_entries = visible_ids
+            .len()
+            .saturating_add(MAX_RETAINED_OFFSCREEN_ENTRIES);
+        while self.entries.len() > max_entries {
+            let Some(oldest_id) = self
+                .entries
+                .iter()
+                .filter(|(id, _)| !visible_ids.contains(id))
+                .min_by_key(|(_, entry)| entry.last_used_tick)
+                .map(|(id, _)| *id)
+            else {
+                break;
+            };
+            self.entries.remove(&oldest_id);
+            evicted += 1;
+        }
+        if trace {
+            eprintln!(
+                "[cditor][syntax-highlight] cache-sync visible={} hits={} misses={} evicted={} cached={} elapsed_us={}",
+                hits + misses,
+                hits,
+                misses,
+                evicted,
+                self.entries.len(),
+                started.elapsed().as_micros()
+            );
         }
     }
 

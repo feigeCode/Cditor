@@ -1,5 +1,4 @@
 use std::collections::HashSet;
-use std::hash::{DefaultHasher, Hash, Hasher};
 
 use cditor_core::ids::BlockId;
 use cditor_core::rich_text::{BlockPayload, BlockPayloadView, RichBlockKind};
@@ -36,7 +35,7 @@ pub(super) fn provider_language_items(
 
 pub(super) fn visible_code_blocks(
     projection: &EditorViewProjection,
-) -> Vec<(BlockId, u64, u64, String, String)> {
+) -> Vec<(BlockId, u64, &str, String)> {
     projection
         .blocks
         .iter()
@@ -58,8 +57,7 @@ pub(super) fn visible_code_blocks(
             Some((
                 block.block_id,
                 payload.content_version,
-                source_hash(text),
-                text.clone(),
+                text.as_str(),
                 language,
             ))
         })
@@ -86,10 +84,4 @@ pub(super) fn normalize_language(language: Option<&str>) -> Option<String> {
         "patch" => Some("diff".to_owned()),
         _ => Some(normalized),
     }
-}
-
-fn source_hash(source: &str) -> u64 {
-    let mut hasher = DefaultHasher::new();
-    source.hash(&mut hasher);
-    hasher.finish()
 }
