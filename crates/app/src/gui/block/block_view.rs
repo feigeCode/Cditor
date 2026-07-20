@@ -371,6 +371,7 @@ fn render_kind_content(
         RichBlockKind::RawMarkdown => {
             let source_content = host_source_content.take().unwrap_or(content);
             div()
+                .min_w(px(0.0))
                 .w_full()
                 .rounded(px(3.0))
                 .bg(rgb(theme.code_background))

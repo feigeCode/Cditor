@@ -46,6 +46,7 @@ pub(crate) fn render_code_block(
     };
     div()
         .relative()
+        .min_w(px(0.0))
         .w_full()
         .min_h(px(V1_CODE_BLOCK_MIN_HEIGHT_PX))
         .rounded(px(V1_CODE_BLOCK_RADIUS_PX))
@@ -84,6 +85,7 @@ fn blend_rgb(background: u32, accent: u32, accent_alpha: f32) -> u32 {
 
 fn render_code_content(content: AnyElement, text_color: u32) -> AnyElement {
     div()
+        .min_w(px(0.0))
         .w_full()
         .pt(px(V1_CODE_CONTENT_PADDING_TOP_PX))
         .px(px(V1_CODE_CONTENT_PADDING_X_PX))

@@ -91,6 +91,7 @@ pub(crate) fn render_mermaid_block(
     div()
         .id(("mermaid-block", block_id))
         .relative()
+        .min_w(px(0.0))
         .w_full()
         .h_full()
         .rounded(px(8.0))
@@ -126,11 +127,19 @@ pub(crate) fn render_mermaid_block(
         )
         .child(
             div()
+                .min_w(px(0.0))
                 .w_full()
                 .h(px(body_height))
                 .p(px(MERMAID_BODY_PADDING_PX))
                 .overflow_hidden()
-                .child(body),
+                .child(
+                    div()
+                        .min_w(px(0.0))
+                        .w_full()
+                        .h_full()
+                        .overflow_hidden()
+                        .child(body),
+                ),
         )
         .into_any_element()
 }
@@ -192,6 +201,7 @@ pub(crate) fn render_math_block(
     };
     div()
         .id(("math-block", block_id))
+        .min_w(px(0.0))
         .w_full()
         .rounded(px(8.0))
         .bg(rgb(theme.code_background))
@@ -224,11 +234,19 @@ pub(crate) fn render_math_block(
         )
         .child(
             div()
+                .min_w(px(0.0))
                 .w_full()
                 .h(px(height))
                 .p(px(MERMAID_BODY_PADDING_PX))
                 .overflow_hidden()
-                .child(body),
+                .child(
+                    div()
+                        .min_w(px(0.0))
+                        .w_full()
+                        .h_full()
+                        .overflow_hidden()
+                        .child(body),
+                ),
         )
         .into_any_element()
 }
