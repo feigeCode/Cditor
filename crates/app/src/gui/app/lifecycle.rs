@@ -407,6 +407,16 @@ impl CditorV2View {
         self.table_scroll_state.handle(block_id, offset_x)
     }
 
+    pub(crate) fn set_table_horizontal_scroll_offset_from_gui(
+        &mut self,
+        block_id: BlockId,
+        offset_x: f32,
+    ) {
+        if let Some(runtime) = self.ready_runtime() {
+            let _ = runtime.set_table_horizontal_scroll_offset_px(block_id, offset_x);
+        }
+    }
+
     pub(in crate::gui::app) fn stable_table_viewport_measurement(
         &mut self,
         block_id: BlockId,

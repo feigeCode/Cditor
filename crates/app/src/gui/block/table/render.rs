@@ -131,19 +131,35 @@ pub(crate) fn render_table_block(
     // Always wrap in a horizontally scrollable viewport that fills the available
     // content width. A narrow table sits at its natural width with no overflow;
     // a table wider than the viewport overflows and can be scrolled sideways.
+    let wheel_scroll_handle = table_scroll_handle.clone();
+    let wheel_view = view.clone();
     let mut viewport = div()
         .id(("table_scroll_container", block_id))
         .w_full()
         .min_w(px(0.0))
         .flex()
         .overflow_x_scroll()
-        .on_scroll_wheel(|event, _window, cx| {
-            if horizontal_table_scroll_intent(event) {
-                // The scrollable div applies delta_x to its tracked handle.
-                // Stop only the horizontal gesture from bubbling into the
-                // document's vertical virtual scroll controller.
-                cx.stop_propagation();
-            }
+        .on_scroll_wheel(move |event, _window, cx| {
+            let Some(delta_x) = horizontal_table_scroll_delta(event) else {
+                return;
+            };
+            let Some(handle) = wheel_scroll_handle.as_ref() else {
+                return;
+            };
+
+            // Apply trackpad motion explicitly. Relying on the scrollable div's
+            // internal listener makes behavior depend on listener ordering: a
+            // propagation stop can otherwise prevent the table from moving at
+            // all while the document still observes the gesture's Y noise.
+            let max_offset_x = f32::from(handle.max_offset().x).max(0.0);
+            let current_offset_x = f32::from(handle.offset().x);
+            let next_offset_x = (current_offset_x + delta_x).clamp(-max_offset_x, 0.0);
+            handle.set_offset(gpui::point(px(next_offset_x), handle.offset().y));
+            wheel_view.update(cx, |view, cx| {
+                view.set_table_horizontal_scroll_offset_from_gui(block_id, next_offset_x);
+                cx.notify();
+            });
+            cx.stop_propagation();
         });
     if let Some(handle) = &table_scroll_handle {
         viewport = viewport.track_scroll(handle);
@@ -163,11 +179,15 @@ pub(crate) fn render_table_block(
 }
 
 pub(super) fn horizontal_table_scroll_intent(event: &ScrollWheelEvent) -> bool {
+    horizontal_table_scroll_delta(event).is_some()
+}
+
+fn horizontal_table_scroll_delta(event: &ScrollWheelEvent) -> Option<f32> {
     let (x, y) = match event.delta {
         ScrollDelta::Pixels(delta) => (f32::from(delta.x), f32::from(delta.y)),
         ScrollDelta::Lines(delta) => (delta.x, delta.y),
     };
-    x.abs() > 0.01 && x.abs() >= y.abs()
+    (x.abs() > 0.01 && x.abs() >= y.abs()).then_some(x)
 }
 
 fn render_table_cell_content(
