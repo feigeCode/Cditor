@@ -606,17 +606,24 @@ fn compatibility_report_distinguishes_normalization_and_source_only() {
         );
     }
 
-    for malformed in [
+    for incomplete in [
         "```rust\nfn main() {}",
         "~~~rust\nfn main() {}",
         "$$\nx + y",
     ] {
         let result =
-            parse_markdown_document_with_report(malformed, MarkdownImportOptions::default());
+            parse_markdown_document_with_report(incomplete, MarkdownImportOptions::default());
         assert!(
-            matches!(result.compatibility, MarkdownCompatibility::SourceOnly(_)),
-            "expected malformed source to remain SourceOnly for {malformed:?}"
+            matches!(result.compatibility, MarkdownCompatibility::Editable),
+            "expected incomplete source to remain editable for {incomplete:?}"
         );
+        assert_eq!(result.document.blocks.len(), 1);
+        assert_eq!(result.document.blocks[0].kind, RichBlockKind::RawMarkdown);
+        let exported = export_document_blocks(
+            &document_from_parsed(result.document),
+            MarkdownExportMode::Strict,
+        );
+        assert_eq!(incomplete, exported.markdown);
     }
 
     let html = parse_markdown_document_with_report(

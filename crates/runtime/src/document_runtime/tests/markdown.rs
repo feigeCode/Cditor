@@ -204,3 +204,35 @@ fn markdown_paste_table_with_suffix_adds_trailing_paragraph() {
     assert_eq!(runtime.focused_block_id(), Some(3));
     assert_eq!(runtime.caret_offset_for_block(3), Some("after".len()));
 }
+
+#[test]
+fn incomplete_raw_fence_promotes_when_the_user_types_the_closing_fence() {
+    let source = "```rust\nfn main() {}";
+    let mut runtime = DocumentRuntime::from_payloads(
+        1,
+        vec![BlockPayloadRecord {
+            block_id: 1,
+            content_version: 1,
+            kind: RichBlockKind::RawMarkdown,
+            payload: BlockPayload::RichText {
+                spans: vec![InlineSpan::plain(source)],
+            },
+        }],
+        720.0,
+    );
+    runtime.focus_block_at_offset(1, source.len()).unwrap();
+
+    assert!(
+        runtime
+            .replace_text_in_focused_range(None, "\n```")
+            .unwrap()
+    );
+    let payload = runtime.payload_window.get(1).unwrap();
+    assert!(matches!(
+        payload.kind,
+        RichBlockKind::Code {
+            language: Some(ref language)
+        } if language == "rust"
+    ));
+    assert_eq!(payload.plain_text(), "fn main() {}");
+}

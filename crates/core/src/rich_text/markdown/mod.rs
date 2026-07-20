@@ -401,17 +401,17 @@ fn analyze_markdown_compatibility(markdown: &str) -> Vec<MarkdownDiagnostic> {
 
     if let Some((_, _, start)) = fence {
         diagnostics.push(MarkdownDiagnostic::source(
-            MarkdownDiagnosticSeverity::Error,
-            "markdown.source.unclosed_fence",
-            "An unclosed fenced block cannot be edited safely in WYSIWYG mode",
+            MarkdownDiagnosticSeverity::Info,
+            "markdown.source.unclosed_fence_editing",
+            "An incomplete fenced block is kept as editable raw Markdown until it is closed",
             start..markdown.len(),
         ));
     }
     if let Some(start) = math_fence {
         diagnostics.push(MarkdownDiagnostic::source(
-            MarkdownDiagnosticSeverity::Error,
-            "markdown.source.unclosed_math",
-            "An unclosed block math expression cannot be edited safely in WYSIWYG mode",
+            MarkdownDiagnosticSeverity::Info,
+            "markdown.source.unclosed_math_editing",
+            "An incomplete math block is kept as editable raw Markdown until it is closed",
             start..markdown.len(),
         ));
     }
@@ -767,6 +767,17 @@ impl MarkdownParser {
                 index = end;
                 continue;
             }
+            if line
+                .trim_start()
+                .chars()
+                .take_while(|ch| *ch == '~')
+                .count()
+                >= 3
+            {
+                list_stack.clear();
+                document.push_root_block(self.raw_markdown_block(lines[index..].join("\n")));
+                break;
+            }
 
             if is_footnote_definition(line.trim_start())
                 || is_reference_definition(line.trim_start())
@@ -802,7 +813,8 @@ impl MarkdownParser {
                     ));
                     continue;
                 }
-                index = start;
+                document.push_root_block(self.raw_markdown_block(lines[start..].join("\n")));
+                break;
             }
 
             if let Some(source) = standalone_math_source(line) {
@@ -852,17 +864,25 @@ impl MarkdownParser {
 
             if let Some((language, fence)) = parse_fence_start(line) {
                 list_stack.clear();
+                let region_start = index;
                 let mut content = String::new();
                 index += 1;
+                let mut closed = false;
                 while index < lines.len() {
                     let code_line = lines[index];
                     if is_closing_fence(code_line, fence) {
                         index += 1;
+                        closed = true;
                         break;
                     }
                     content.push_str(code_line);
                     content.push('\n');
                     index += 1;
+                }
+                if !closed {
+                    document
+                        .push_root_block(self.raw_markdown_block(lines[region_start..].join("\n")));
+                    break;
                 }
                 if content.ends_with('\n') {
                     content.pop();

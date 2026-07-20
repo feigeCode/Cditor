@@ -72,6 +72,7 @@ impl DocumentRuntime {
             (editing.content_version, model.len())
         };
         self.apply_inline_markdown_shortcut(block_id)?;
+        self.promote_completed_raw_markdown_block(block_id)?;
         trace_input(
             "replace_text_in_focused_range.end",
             format_args!(
@@ -79,6 +80,51 @@ impl DocumentRuntime {
                 self.caret_offset_for_block(block_id)
             ),
         );
+        Ok(true)
+    }
+
+    fn promote_completed_raw_markdown_block(&mut self, block_id: BlockId) -> Result<bool, String> {
+        if !matches!(self.block_kind(block_id), Some(RichBlockKind::RawMarkdown)) {
+            return Ok(false);
+        }
+        let Some(source) = self
+            .text_models
+            .get(&block_id)
+            .map(|model| model.text().to_owned())
+        else {
+            return Ok(false);
+        };
+        let parsed = parse_markdown_document_with_report(
+            &source,
+            MarkdownImportOptions {
+                document_id: self.document_id,
+                first_block_id: block_id,
+            },
+        );
+        if matches!(parsed.compatibility, MarkdownCompatibility::SourceOnly(_))
+            || parsed.document.blocks.len() != 1
+        {
+            return Ok(false);
+        }
+        let block = &parsed.document.blocks[0];
+        if !matches!(
+            block.kind,
+            RichBlockKind::Code { .. }
+                | RichBlockKind::Math
+                | RichBlockKind::Mermaid
+                | RichBlockKind::Html
+                | RichBlockKind::Table
+                | RichBlockKind::Image
+        ) {
+            return Ok(false);
+        }
+        let caret = self
+            .caret_offset_for_block(block_id)
+            .unwrap_or(source.len());
+        self.replace_block_kind_and_payload(block_id, block.kind.clone(), block.payload.clone())?;
+        if editable_text_for_payload(&block.payload).is_some() {
+            self.focus_block_at_offset(block_id, caret.min(block.payload.plain_text().len()))?;
+        }
         Ok(true)
     }
 

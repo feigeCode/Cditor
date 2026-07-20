@@ -77,12 +77,13 @@ use cditor_core::layout::{
 use cditor_core::rich_text::{
     BlockAttrs, BlockPayload, BlockPayloadRecord, BlockPayloadView, ClipboardBlock,
     ClipboardBlockFragment, ClipboardFragmentBoundary, ClipboardSelection, ImagePayload,
-    InlineColorTarget, InlineMark, InlineSpan, MarkdownImportOptions, ParsedMarkdownDocument,
-    RichBlockKind, RichBlockRecord, RichTextDocument, TableCellAlign, TableCellMerge, TableRange,
-    TableTrackSize, block_kind_shortcut_with_marker_len, code_fence_shortcut,
-    import_markdown_block_incremental, kind_tag_for_rich_block_kind, looks_like_markdown_paste,
-    markdown_inline_shortcut_spans, parse_callout_marker, parse_markdown_document,
-    plain_text_from_spans, rich_block_kind_from_tag,
+    InlineColorTarget, InlineMark, InlineSpan, MarkdownCompatibility, MarkdownImportOptions,
+    ParsedMarkdownDocument, RichBlockKind, RichBlockRecord, RichTextDocument, TableCellAlign,
+    TableCellMerge, TableRange, TableTrackSize, block_kind_shortcut_with_marker_len,
+    code_fence_shortcut, import_markdown_block_incremental, kind_tag_for_rich_block_kind,
+    looks_like_markdown_paste, markdown_inline_shortcut_spans, parse_callout_marker,
+    parse_markdown_document, parse_markdown_document_with_report, plain_text_from_spans,
+    rich_block_kind_from_tag,
 };
 use cditor_editor::debug_overlay::DebugOverlaySnapshot;
 use cditor_editor::scroll::{

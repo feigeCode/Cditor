@@ -620,11 +620,11 @@ mod tests {
         let editable = cx.update(|app| {
             handle.apply_markdown("```rust\nfn main() {}", MarkdownApplyMode::Editable, app)
         });
-        assert!(matches!(
-            editable,
-            Err(EditorError::MarkdownSourceOnly { .. })
-        ));
-        assert_eq!(cx.read(|app| handle.get_markdown(app).unwrap()), "Original");
+        assert!(editable.is_ok());
+        assert_eq!(
+            cx.read(|app| handle.get_markdown(app).unwrap()),
+            "```rust\nfn main() {}"
+        );
 
         let preview = cx
             .update(|app| {
@@ -638,7 +638,7 @@ mod tests {
         cx.run_until_parked();
         assert!(matches!(
             preview.compatibility,
-            MarkdownCompatibility::SourceOnly(_)
+            MarkdownCompatibility::Editable
         ));
         assert!(cx.read(|app| handle.is_readonly(app)));
         assert!(!cx.read(|app| handle.is_dirty(app)));
