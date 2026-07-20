@@ -43,6 +43,13 @@ impl DocumentSurface {
         self
     }
 
+    pub fn with_content_width(mut self, width_px: f32) -> Self {
+        let width_px = width_px.max(320.0);
+        self.page_width_px = width_px;
+        self.content_width_px = width_px;
+        self
+    }
+
     pub fn with_scroll(
         before_window_height: f64,
         placeholder_window_height: Option<f64>,
@@ -160,5 +167,13 @@ mod tests {
         assert_eq!(scrolled_surface.scroll_top, 128.0);
         assert_eq!(scrolled_surface.window_top_px(), -118.0);
         assert_eq!(scrolled_surface.overlay_top_px(), -128.0);
+    }
+
+    #[test]
+    fn document_surface_can_fill_host_available_width() {
+        let surface = DocumentSurface::new(0.0, 0.0).with_content_width(1480.0);
+
+        assert_eq!(surface.page_width_px, 1480.0);
+        assert_eq!(surface.content_width_px, 1480.0);
     }
 }

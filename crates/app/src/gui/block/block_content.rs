@@ -16,7 +16,6 @@ use crate::gui::block::table::{
 use crate::gui::block::{
     CodeHighlightCache, WhiteboardThumbnailCache, render_whiteboard_thumbnail,
 };
-use crate::gui::document::DEFAULT_DOCUMENT_CONTENT_WIDTH_PX;
 use crate::gui::image_loader::{
     ImagePlaceholder, ImagePlaceholderState, RasterImageElement, RenderImageLoadState,
     gpui_image_source, load_render_image_state_from_base, should_use_native_image_source,
@@ -51,15 +50,17 @@ pub(crate) fn render_block_content(
     code_highlights: &CodeHighlightCache,
     code_highlight_theme: &'static str,
     whiteboard_thumbnails: &WhiteboardThumbnailCache,
+    content_width_px: f32,
     cx: &mut App,
 ) -> AnyElement {
     match &block.payload {
         BlockPayloadView::Loaded(payload) => {
             if let Some(table_view) = &block.table_view {
+                let table_view = table_view_for_available_width(table_view, content_width_px);
                 return render_table_block(
                     block.block_id,
                     payload.content_version,
-                    table_view,
+                    &table_view,
                     theme,
                     block.marked_range.clone(),
                     table_selection,
@@ -113,12 +114,9 @@ pub(crate) fn render_block_content(
                     return render_inline_media_fragments(fragments, theme, media_base_path, cx);
                 }
             }
-            if let Some(mut input) = RichTextLayoutInput::from_snapshot(
-                block,
-                f64::from(DEFAULT_DOCUMENT_CONTENT_WIDTH_PX),
-                1,
-                1,
-            ) {
+            if let Some(mut input) =
+                RichTextLayoutInput::from_snapshot(block, f64::from(content_width_px), 1, 1)
+            {
                 if matches!(
                     block.kind,
                     cditor_core::rich_text::RichBlockKind::Code { .. }
@@ -180,6 +178,55 @@ pub(crate) fn render_block_content(
         BlockPayloadView::Loading { .. } => render_loading(block, theme),
         BlockPayloadView::Error { message } => render_error(message, theme),
     }
+}
+
+fn table_view_for_available_width(
+    table: &cditor_runtime::TableViewState,
+    available_width_px: f32,
+) -> cditor_runtime::TableViewState {
+    let target_width = available_width_px.max(table.width_px);
+    let extra = target_width - table.width_px;
+    if extra <= 0.5 || table.col_count == 0 {
+        return table.clone();
+    }
+    let auto_columns = (0..table.col_count)
+        .filter(|&index| {
+            table.table.columns.get(index).is_none_or(|column| {
+                matches!(column.width, cditor_core::rich_text::TableTrackSize::Auto)
+            })
+        })
+        .collect::<Vec<_>>();
+    if auto_columns.is_empty() {
+        return table.clone();
+    }
+    let mut adjusted = table.clone();
+    let extra_per_column = extra / auto_columns.len() as f32;
+    for column in auto_columns {
+        if let Some(width) = adjusted.column_widths_px.get_mut(column) {
+            *width += extra_per_column;
+        }
+    }
+    let column_offsets = adjusted
+        .column_widths_px
+        .iter()
+        .scan(0.0, |offset, width| {
+            let start = *offset;
+            *offset += *width;
+            Some(start)
+        })
+        .collect::<Vec<_>>();
+    for cell in &mut adjusted.visible_cells {
+        cell.x_px = column_offsets
+            .get(cell.position.col)
+            .copied()
+            .unwrap_or(0.0);
+        cell.width_px = adjusted.column_widths_px
+            [cell.position.col..(cell.position.col + cell.col_span).min(adjusted.col_count)]
+            .iter()
+            .sum();
+    }
+    adjusted.width_px = adjusted.column_widths_px.iter().sum();
+    adjusted
 }
 
 fn inline_media_preview_visible(readonly: bool, focused: bool) -> bool {
@@ -338,6 +385,7 @@ fn text_selection_range(
 
 #[cfg(test)]
 mod tests {
+    use crate::gui::document::DEFAULT_DOCUMENT_CONTENT_WIDTH_PX;
     use cditor_runtime::DocumentRuntime;
 
     use super::*;

@@ -19,7 +19,10 @@ use crate::gui::block::{
     table_toolbar_editor_origin,
 };
 use crate::gui::document::DocumentSurface;
-use crate::gui::document::{DEFAULT_DOCUMENT_CONTENT_WIDTH_PX, DEFAULT_DOCUMENT_TOP_INSET_PX};
+use crate::gui::document::{
+    DEFAULT_DOCUMENT_CONTENT_WIDTH_PX, DEFAULT_DOCUMENT_LEFT_INSET_PX,
+    DEFAULT_DOCUMENT_TOP_INSET_PX,
+};
 use crate::gui::input::CodeLanguageEditState;
 use crate::gui::menu_metrics::MenuViewportBounds;
 use crate::gui::overlay::render_editor_overlays;
@@ -130,6 +133,8 @@ impl DocumentEditorView {
         cx: &mut App,
     ) -> AnyElement {
         let block_view = BlockView::new(self.theme);
+        let content_width_px =
+            (editor_viewport_width_px - DEFAULT_DOCUMENT_LEFT_INSET_PX * 2.0).max(320.0);
         let menu_viewport = document_overlay_menu_viewport(
             editor_viewport_width_px,
             editor_viewport_height_px,
@@ -291,6 +296,7 @@ impl DocumentEditorView {
                             document_renders,
                             document_source_blocks.contains(&block.block_id),
                             whiteboard_thumbnails,
+                            content_width_px,
                             window,
                             cx,
                         )
@@ -331,6 +337,7 @@ impl DocumentEditorView {
             projection.scroll.global_scroll_top,
         )
         .with_placeholder_error(projection.placeholder_window_error.clone())
+        .with_content_width(content_width_px)
         .render(self.theme, block_elements, Some(overlay))
     }
 }

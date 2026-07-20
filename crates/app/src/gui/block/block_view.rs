@@ -63,6 +63,7 @@ impl BlockView {
         document_renders: &DocumentRenderCache,
         mermaid_show_source: bool,
         whiteboard_thumbnails: &WhiteboardThumbnailCache,
+        content_width_px: f32,
         window: &mut Window,
         cx: &mut App,
     ) -> AnyElement {
@@ -92,6 +93,7 @@ impl BlockView {
             document_renders,
             mermaid_show_source,
             whiteboard_thumbnails,
+            content_width_px,
             window,
             cx,
         );
@@ -194,6 +196,7 @@ fn render_kind_content(
     document_renders: &DocumentRenderCache,
     mermaid_show_source: bool,
     whiteboard_thumbnails: &WhiteboardThumbnailCache,
+    content_width_px: f32,
     window: &mut Window,
     cx: &mut App,
 ) -> AnyElement {
@@ -237,6 +240,7 @@ fn render_kind_content(
         code_highlights,
         code_highlight_theme,
         whiteboard_thumbnails,
+        content_width_px,
         cx,
     );
     match block.kind {
