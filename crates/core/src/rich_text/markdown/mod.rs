@@ -223,6 +223,7 @@ pub fn looks_like_markdown_paste(text: &str) -> bool {
             || trimmed == "___"
             || trimmed == "$$"
             || standalone_math_source(trimmed).is_some()
+            || math_environment_name(trimmed).is_some()
             || parse_numbered_item(trimmed).is_some()
             || parse_inline_markdown_extended(trimmed).changed
     })
@@ -848,6 +849,26 @@ impl MarkdownParser {
                 break;
             }
 
+            if let Some(environment) = math_environment_name(line) {
+                list_stack.clear();
+                let start = index;
+                let closing = format!("\\end{{{environment}}}");
+                index += 1;
+                while index < lines.len() && lines[index].trim() != closing {
+                    index += 1;
+                }
+                if index < lines.len() {
+                    index += 1;
+                    document.push_root_block(self.rich_text_block(
+                        RichBlockKind::Math,
+                        vec![InlineSpan::plain(lines[start..index].join("\n"))],
+                    ));
+                    continue;
+                }
+                document.push_root_block(self.raw_markdown_block(lines[start..].join("\n")));
+                break;
+            }
+
             if let Some(source) = standalone_math_source(line) {
                 list_stack.clear();
                 document.push_root_block(
@@ -1018,6 +1039,16 @@ impl MarkdownParser {
             return standalone_math_source(lines[0]).map(|source| {
                 self.rich_text_block(RichBlockKind::Math, vec![InlineSpan::plain(source)])
             });
+        }
+        if let Some(environment) = math_environment_name(lines.first()?) {
+            let closing = format!("\\end{{{environment}}}");
+            if lines.last()?.trim() == closing {
+                return Some(self.rich_text_block(
+                    RichBlockKind::Math,
+                    vec![InlineSpan::plain(markdown.to_owned())],
+                ));
+            }
+            return None;
         }
         if lines.len() < 3 || lines.first()?.trim() != "$$" || lines.last()?.trim() != "$$" {
             return None;
@@ -1201,6 +1232,42 @@ fn standalone_math_source(line: &str) -> Option<String> {
     (!source.is_empty()).then(|| source.to_owned())
 }
 
+fn math_environment_name(line: &str) -> Option<&str> {
+    const ENVIRONMENTS: &[&str] = &[
+        "align",
+        "align*",
+        "aligned",
+        "alignat",
+        "alignat*",
+        "alignedat",
+        "gather",
+        "gather*",
+        "gathered",
+        "equation",
+        "equation*",
+        "split",
+        "cases",
+        "array",
+        "matrix",
+        "matrix*",
+        "pmatrix",
+        "pmatrix*",
+        "bmatrix",
+        "bmatrix*",
+        "Bmatrix",
+        "Bmatrix*",
+        "vmatrix",
+        "vmatrix*",
+        "Vmatrix",
+        "Vmatrix*",
+        "smallmatrix",
+        "subarray",
+    ];
+    let trimmed = line.trim();
+    let name = trimmed.strip_prefix("\\begin{")?.strip_suffix('}')?;
+    ENVIRONMENTS.contains(&name).then_some(name)
+}
+
 fn is_plain_paragraph_line(line: &str) -> bool {
     let trimmed = line.trim_start();
     if trimmed.is_empty()
@@ -1210,6 +1277,7 @@ fn is_plain_paragraph_line(line: &str) -> bool {
         || trimmed.starts_with('>')
         || trimmed == "$$"
         || standalone_math_source(trimmed).is_some()
+        || math_environment_name(trimmed).is_some()
         || parse_fence_start(trimmed).is_some()
         || parse_heading(trimmed).is_some()
         || parse_block_image(trimmed).is_some()

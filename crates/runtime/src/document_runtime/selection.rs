@@ -253,6 +253,16 @@ impl DocumentRuntime {
             return self.select_focused_text_all();
         }
 
+        self.select_entire_document()
+    }
+
+    /// Selects all text across every block in the document in one invocation.
+    ///
+    /// This is used by the desktop editor's document-level Select All shortcut.
+    /// Embedded source editors handle their own Select All action while focused.
+    pub fn select_entire_document(&mut self) -> bool {
+        let focused_block_id = self.focused_block_id();
+
         let Some(first_block_id) = self.index.block_ids.first().copied() else {
             return false;
         };
@@ -288,9 +298,9 @@ impl DocumentRuntime {
             editing.set_collapsed_selection(caret);
         }
         trace_input(
-            "select_all_command.document",
+            "select_entire_document",
             format_args!(
-                "first={first_block_id}:0 last={last_block_id}:{last_offset} focused={block_id}"
+                "first={first_block_id}:0 last={last_block_id}:{last_offset} focused={focused_block_id:?}"
             ),
         );
         true

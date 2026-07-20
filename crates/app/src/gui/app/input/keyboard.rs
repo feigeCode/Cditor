@@ -45,7 +45,12 @@ impl CditorV2View {
             self.show_debug = !self.show_debug;
             return;
         }
-        if self.readonly && !matches!(command, GuiInputCommand::CopySelection) {
+        if self.readonly
+            && !matches!(
+                command,
+                GuiInputCommand::CopySelection | GuiInputCommand::SelectAllFocusedText
+            )
+        {
             return;
         }
         let mut should_scroll_focus = !matches!(
@@ -56,6 +61,32 @@ impl CditorV2View {
         );
         let selected_table_axis = self.projected_table_axis_selection();
         let html_source_block_id = self.html_source_block_id;
+        let keeps_vertical_navigation_in_source = self
+            .ready_runtime_ref()
+            .and_then(|runtime| {
+                let block_id = runtime.focused_block_id()?;
+                let payload = runtime.block_payload_record(block_id)?;
+                Some(match payload.kind {
+                    cditor_core::rich_text::RichBlockKind::Html => {
+                        html_source_block_id == Some(block_id)
+                    }
+                    cditor_core::rich_text::RichBlockKind::Math
+                    | cditor_core::rich_text::RichBlockKind::Mermaid => {
+                        self.document_source_blocks.contains(&block_id)
+                    }
+                    cditor_core::rich_text::RichBlockKind::Code { ref language }
+                        if crate::gui::block::mermaid::is_math_code_language(
+                            language.as_deref(),
+                        ) =>
+                    {
+                        !self.document_source_blocks.contains(&block_id)
+                    }
+                    cditor_core::rich_text::RichBlockKind::Code { .. }
+                    | cditor_core::rich_text::RichBlockKind::RawMarkdown => true,
+                    _ => false,
+                })
+            })
+            .unwrap_or(false);
         {
             let CditorViewState::Ready(runtime) = &mut self.state else {
                 return;
@@ -63,7 +94,7 @@ impl CditorV2View {
             match command {
                 GuiInputCommand::Ignore | GuiInputCommand::ToggleDebugOverlay => {}
                 GuiInputCommand::SelectAllFocusedText => {
-                    runtime.select_all_command();
+                    runtime.select_entire_document();
                 }
                 GuiInputCommand::CopySelection => {
                     if let Some((block_id, range)) =
@@ -225,10 +256,7 @@ impl CditorV2View {
                     let _ = runtime.move_caret_right(extend_selection);
                 }
                 GuiInputCommand::MoveCaretUp { extend_selection } => {
-                    if keeps_vertical_navigation_inside_html_source(
-                        html_source_block_id,
-                        runtime.focused_block_id(),
-                    ) {
+                    if keeps_vertical_navigation_in_source {
                         should_scroll_focus = false;
                     }
                     let moved_in_block = move_caret_vertically_in_focused_block(
@@ -242,21 +270,12 @@ impl CditorV2View {
                         && runtime
                             .move_focused_caret_to_adjacent_logical_line(-1, extend_selection)
                             .unwrap_or(false);
-                    if !moved_in_block
-                        && !moved_in_source
-                        && !keeps_vertical_navigation_inside_html_source(
-                            html_source_block_id,
-                            runtime.focused_block_id(),
-                        )
-                    {
+                    if !moved_in_block && !moved_in_source && !keeps_vertical_navigation_in_source {
                         let _ = runtime.move_caret_up(extend_selection);
                     }
                 }
                 GuiInputCommand::MoveCaretDown { extend_selection } => {
-                    if keeps_vertical_navigation_inside_html_source(
-                        html_source_block_id,
-                        runtime.focused_block_id(),
-                    ) {
+                    if keeps_vertical_navigation_in_source {
                         should_scroll_focus = false;
                     }
                     let moved_in_block = move_caret_vertically_in_focused_block(
@@ -270,13 +289,7 @@ impl CditorV2View {
                         && runtime
                             .move_focused_caret_to_adjacent_logical_line(1, extend_selection)
                             .unwrap_or(false);
-                    if !moved_in_block
-                        && !moved_in_source
-                        && !keeps_vertical_navigation_inside_html_source(
-                            html_source_block_id,
-                            runtime.focused_block_id(),
-                        )
-                    {
+                    if !moved_in_block && !moved_in_source && !keeps_vertical_navigation_in_source {
                         let _ = runtime.move_caret_down(extend_selection);
                     }
                 }

@@ -12,8 +12,15 @@ pub fn focus_block_from_mouse(
     cx: &mut App,
 ) {
     let position = event.position;
+    let extend_selection = event.modifiers.shift;
     view.update(cx, |view, cx| {
-        view.focus_block_from_gui_at_position(block_id, position, window, cx);
+        view.focus_block_from_gui_at_position_with_selection(
+            block_id,
+            position,
+            extend_selection,
+            window,
+            cx,
+        );
     });
 }
 

@@ -314,6 +314,47 @@ fn standalone_math_delimiters_import_as_math_blocks() {
 }
 
 #[test]
+fn align_environment_imports_as_an_editable_math_block() {
+    let source = "\\begin{align}\ny &= 2x + 1 \\\\\nz &= x^2 - 3\n\\end{align}";
+
+    assert!(looks_like_markdown_paste(source));
+    let document = parse_markdown_document(source, MarkdownImportOptions::default());
+
+    assert_eq!(1, document.blocks.len());
+    assert_eq!(RichBlockKind::Math, document.blocks[0].kind);
+    assert_eq!(source, document.blocks[0].payload.plain_text());
+}
+
+#[test]
+fn common_ams_math_environments_import_as_math_blocks() {
+    for environment in [
+        "align*",
+        "aligned",
+        "gather",
+        "gather*",
+        "gathered",
+        "equation",
+        "equation*",
+        "split",
+        "cases",
+        "matrix",
+        "pmatrix",
+        "bmatrix",
+    ] {
+        let source = format!("\\begin{{{environment}}}\nx &= 1\n\\end{{{environment}}}");
+        let document = parse_markdown_document(&source, MarkdownImportOptions::default());
+
+        assert_eq!(1, document.blocks.len(), "environment={environment}");
+        assert_eq!(
+            RichBlockKind::Math,
+            document.blocks[0].kind,
+            "environment={environment}"
+        );
+        assert_eq!(source, document.blocks[0].payload.plain_text());
+    }
+}
+
+#[test]
 fn display_math_after_prose_without_blank_line_imports_as_a_separate_block() {
     let source = "行间公式：\n$$\nE = mc^2\n$$\n$$\nx^2 + y^2 = z^2\n$$";
     let document = parse_markdown_document(source, MarkdownImportOptions::default());

@@ -115,6 +115,40 @@ fn select_all_command_expands_from_focused_block_to_entire_document() {
 }
 
 #[test]
+fn select_entire_document_selects_every_block_in_one_invocation() {
+    let mut runtime = DocumentRuntime::from_payloads(
+        1,
+        vec![
+            BlockPayloadRecord::rich_text(1, RichBlockKind::Paragraph, "first"),
+            BlockPayloadRecord::rich_text(2, RichBlockKind::Paragraph, "middle"),
+            BlockPayloadRecord::rich_text(3, RichBlockKind::Paragraph, "last"),
+        ],
+        720.0,
+    );
+    runtime.focus_block_at_offset(2, 3).unwrap();
+
+    assert!(runtime.select_entire_document());
+    assert_eq!(
+        runtime.document_text_selection_fragments().unwrap(),
+        vec![
+            DocumentTextSelectionFragment {
+                block_id: 1,
+                range: 0..5,
+            },
+            DocumentTextSelectionFragment {
+                block_id: 2,
+                range: 0..6,
+            },
+            DocumentTextSelectionFragment {
+                block_id: 3,
+                range: 0..4,
+            },
+        ]
+    );
+    assert!(runtime.has_entire_document_text_selection());
+}
+
+#[test]
 fn entire_document_selection_query_rejects_partial_cross_block_ranges() {
     let mut runtime = DocumentRuntime::from_payloads(
         1,

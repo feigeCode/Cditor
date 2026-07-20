@@ -169,10 +169,10 @@ impl CditorV2View {
             let Some(session) = self.source_editor_sessions.get(&block.id) else {
                 continue;
             };
-            if let cditor_core::rich_text::BlockPayload::Html { html, .. } =
-                &mut block.payload.payload
-            {
-                *html = session.value(cx);
+            if crate::integration::replace_source_editor_value(
+                &mut block.payload.payload,
+                session.value(cx),
+            ) {
                 block.payload.content_version = block.payload.content_version.saturating_add(1);
             }
         }

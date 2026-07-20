@@ -175,7 +175,23 @@ impl CditorV2View {
         if !self.document_source_blocks.remove(&block_id) {
             self.document_source_blocks.insert(block_id);
         }
+        if self.document_renderer_is_preview(block_id) {
+            self.sync_host_source_editor(block_id, cx);
+            self.source_editor_sessions.remove(&block_id);
+        }
         cx.notify();
+    }
+
+    pub(crate) fn toggle_document_source_with_host_editor(
+        &mut self,
+        block_id: BlockId,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.toggle_document_source_from_gui(block_id, cx);
+        if !self.document_renderer_is_preview(block_id) {
+            self.begin_document_source_with_host_editor(block_id, window, cx);
+        }
     }
 
     pub(crate) fn begin_document_source_from_gui(
@@ -194,7 +210,6 @@ impl CditorV2View {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        self.begin_document_source_from_gui(block_id, cx);
         if let Some(session) = self.source_editor_sessions.get(&block_id) {
             session.focus(window, cx);
             return;
@@ -202,35 +217,27 @@ impl CditorV2View {
         let Some(provider) = self.source_editor_provider.as_ref().cloned() else {
             return;
         };
-        if !provider.supports_language("html") {
+        let Some(config) = self.ready_runtime_ref().and_then(|runtime| {
+            runtime.block_payload_record(block_id).and_then(|block| {
+                crate::integration::source_editor_config_for_block(
+                    runtime.document_id.to_string(),
+                    &block,
+                    self.readonly,
+                )
+            })
+        }) else {
+            return;
+        };
+        if !provider.supports_language(&config.language) {
             return;
         }
-        let Some(runtime) = self.ready_runtime_ref() else {
-            return;
-        };
-        let Some(initial_value) =
-            runtime
-                .block_payload_record(block_id)
-                .and_then(|payload| match &payload.payload {
-                    cditor_core::rich_text::BlockPayload::Html { html, .. } => Some(html.clone()),
-                    _ => None,
-                })
-        else {
-            return;
-        };
-        let session = provider.create(
-            crate::integration::SourceEditorConfig {
-                document_id: runtime.document_id.to_string(),
-                block_id,
-                language: "html".to_owned(),
-                initial_value,
-                readonly: self.readonly,
-                line_numbers: true,
-                soft_wrap: true,
-            },
-            window,
-            cx,
-        );
+        if config.language.eq_ignore_ascii_case("html") {
+            self.begin_document_source_from_gui(block_id, cx);
+        }
+        if let Some(runtime) = self.ready_runtime() {
+            runtime.focus_block(block_id);
+        }
+        let session = provider.create(config, window, cx);
         self.source_editor_sessions.insert(block_id, session);
         if let Some(session) = self.source_editor_sessions.get(&block_id) {
             session.focus(window, cx);
@@ -242,7 +249,7 @@ impl CditorV2View {
         block_id: BlockId,
         cx: &mut Context<Self>,
     ) {
-        self.sync_host_html_source(block_id, cx);
+        self.sync_host_source_editor(block_id, cx);
         if close_html_source(&mut self.html_source_block_id, block_id) {
             self.source_editor_sessions.remove(&block_id);
             cx.notify();
@@ -251,14 +258,36 @@ impl CditorV2View {
 
     pub(crate) fn end_html_source_from_gui(&mut self, cx: &mut Context<Self>) {
         if let Some(block_id) = self.html_source_block_id.take() {
-            self.sync_host_html_source(block_id, cx);
+            self.sync_host_source_editor(block_id, cx);
             self.source_editor_sessions.remove(&block_id);
             cx.notify();
         }
     }
 
+    pub(crate) fn end_source_editors_except(
+        &mut self,
+        keep: Option<BlockId>,
+        cx: &mut Context<Self>,
+    ) {
+        let block_ids = self
+            .source_editor_sessions
+            .keys()
+            .copied()
+            .filter(|block_id| Some(*block_id) != keep)
+            .collect::<Vec<_>>();
+        let changed = !block_ids.is_empty();
+        for block_id in block_ids {
+            self.sync_host_source_editor(block_id, cx);
+            self.source_editor_sessions.remove(&block_id);
+            let _ = close_html_source(&mut self.html_source_block_id, block_id);
+        }
+        if changed {
+            cx.notify();
+        }
+    }
+
     pub(crate) fn save_html_block_from_gui(&mut self, block_id: BlockId, cx: &mut Context<Self>) {
-        self.sync_host_html_source(block_id, cx);
+        self.sync_host_source_editor(block_id, cx);
         if close_html_source(&mut self.html_source_block_id, block_id) {
             self.source_editor_sessions.remove(&block_id);
             self.flush_storage_persistence(cx);
@@ -266,7 +295,7 @@ impl CditorV2View {
         }
     }
 
-    fn sync_host_html_source(&mut self, block_id: BlockId, cx: &mut Context<Self>) {
+    fn sync_host_source_editor(&mut self, block_id: BlockId, cx: &mut Context<Self>) {
         let Some(value) = self
             .source_editor_sessions
             .get(&block_id)
@@ -417,6 +446,17 @@ impl CditorV2View {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        self.focus_block_from_gui_at_position_with_selection(block_id, position, false, window, cx);
+    }
+
+    pub(crate) fn focus_block_from_gui_at_position_with_selection(
+        &mut self,
+        block_id: cditor_core::ids::BlockId,
+        position: impl Into<Option<Point<Pixels>>>,
+        extend_selection: bool,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         window.focus(&self.focus, cx);
         if self.table_interaction_mode.block_id().is_some() {
             self.table_interaction_mode = GuiTableInteractionMode::Idle;
@@ -428,25 +468,39 @@ impl CditorV2View {
             .and_then(|position| self.text_offset_for_block_at_position(block_id, position));
         trace_input(
             "focus_block_from_gui_at_position",
-            format_args!("block={block_id} position={position:?} resolved_offset={offset:?}"),
+            format_args!(
+                "block={block_id} position={position:?} resolved_offset={offset:?} extend={extend_selection}"
+            ),
         );
         if let CditorViewState::Ready(runtime) = &mut self.state {
-            if let Some(offset) = offset {
-                let _ = runtime.focus_block_at_offset(block_id, offset);
-                self.text_drag_selection = Some(GuiTextDragSelection {
-                    anchor_block_id: block_id,
-                    anchor_offset: offset,
-                });
-            } else {
-                let anchor_offset = block_focus_offset_after_missed_hit_test(
+            let focus_offset = offset.unwrap_or_else(|| {
+                block_focus_offset_after_missed_hit_test(
                     runtime.focused_block_id(),
                     block_id,
                     runtime.caret_offset_for_block(block_id),
-                );
-                let _ = runtime.focus_block_at_offset(block_id, anchor_offset);
+                )
+            });
+            if extend_selection {
+                let anchor = runtime
+                    .document_selection_snapshot()
+                    .map(|selection| selection.anchor);
+                if let Some(anchor) = anchor {
+                    let _ = runtime.set_document_text_selection(
+                        anchor.block_id,
+                        anchor.offset,
+                        block_id,
+                        focus_offset,
+                    );
+                    self.text_drag_selection = Some(GuiTextDragSelection {
+                        anchor_block_id: anchor.block_id,
+                        anchor_offset: anchor.offset,
+                    });
+                }
+            } else {
+                let _ = runtime.focus_block_at_offset(block_id, focus_offset);
                 self.text_drag_selection = Some(GuiTextDragSelection {
                     anchor_block_id: block_id,
-                    anchor_offset,
+                    anchor_offset: focus_offset,
                 });
             }
         }

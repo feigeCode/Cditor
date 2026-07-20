@@ -99,9 +99,14 @@ impl BlockView {
             window,
             cx,
         );
+        let source_editor_on_click = !readonly
+            && source_editor_visible_for_block(
+                &block.kind,
+                mermaid_show_source,
+                html_source_active,
+            );
         let focus_view = view.clone();
-        let html_edit_view = view.clone();
-        let begins_html_edit = matches!(block.kind, RichBlockKind::Html) && !readonly;
+        let source_edit_view = view.clone();
         let hover_view = view.clone();
         let add_view = view.clone();
         let gutter_view = view.clone();
@@ -144,15 +149,14 @@ impl BlockView {
             action,
             move |event, window, cx| {
                 focus_block_from_mouse(&focus_view, block_id, event, window, cx);
-                if begins_html_edit {
-                    let _ = html_edit_view.update(cx, |view, cx| {
+                let _ = source_edit_view.update(cx, |view, cx| {
+                    view.end_source_editors_except(source_editor_on_click.then_some(block_id), cx);
+                    if source_editor_on_click {
                         view.begin_document_source_with_host_editor(block_id, window, cx);
-                    });
-                } else {
-                    let _ = html_edit_view.update(cx, |view, cx| {
+                    } else {
                         view.end_html_source_from_gui(cx);
-                    });
-                }
+                    }
+                });
                 cx.stop_propagation();
             },
             Some(Box::new(move |event, _window, cx| {
@@ -246,11 +250,18 @@ fn render_kind_content(
         content_width_px,
         cx,
     );
+    let source_editor_height = source_editor_session.and_then(|session| session.preferred_height());
+    let mut host_source_content = source_editor_session.map(|session| session.render(window, cx));
     match block.kind {
         RichBlockKind::Heading { level } => render_heading(level, content),
         RichBlockKind::Quote => content,
         RichBlockKind::Code { ref language } => {
             if let Some(language) = math_code_language {
+                let source_content = if show_document_source {
+                    host_source_content.take().unwrap_or(content)
+                } else {
+                    content
+                };
                 return render_math_block(
                     block.block_id,
                     match &block.payload {
@@ -259,8 +270,9 @@ fn render_kind_content(
                         }
                         _ => 0,
                     },
-                    content,
+                    source_content,
                     show_document_source,
+                    source_editor_height,
                     Some(language),
                     document_renders,
                     theme,
@@ -269,9 +281,10 @@ fn render_kind_content(
                 );
             }
             let language_edit = code_language_edit.filter(|edit| edit.block_id == block.block_id);
+            let source_content = host_source_content.take().unwrap_or(content);
             render_code_block(
                 block.block_id,
-                content,
+                source_content,
                 theme,
                 language.as_deref(),
                 language_edit,
@@ -289,37 +302,53 @@ fn render_kind_content(
             render_paragraph(content)
         }
         RichBlockKind::Table => content,
-        RichBlockKind::Math => render_math_block(
-            block.block_id,
-            match &block.payload {
-                cditor_core::rich_text::BlockPayloadView::Loaded(payload) => {
-                    payload.content_version
-                }
-                _ => 0,
-            },
-            content,
-            show_document_source,
-            None,
-            document_renders,
-            theme,
-            view,
-            cx,
-        ),
-        RichBlockKind::Mermaid => render_mermaid_block(
-            block.block_id,
-            match &block.payload {
-                cditor_core::rich_text::BlockPayloadView::Loaded(payload) => {
-                    payload.content_version
-                }
-                _ => 0,
-            },
-            content,
-            mermaid_show_source,
-            document_renders,
-            theme,
-            view,
-            cx,
-        ),
+        RichBlockKind::Math => {
+            let source_content = if show_document_source {
+                host_source_content.take().unwrap_or(content)
+            } else {
+                content
+            };
+            render_math_block(
+                block.block_id,
+                match &block.payload {
+                    cditor_core::rich_text::BlockPayloadView::Loaded(payload) => {
+                        payload.content_version
+                    }
+                    _ => 0,
+                },
+                source_content,
+                show_document_source,
+                source_editor_height,
+                None,
+                document_renders,
+                theme,
+                view,
+                cx,
+            )
+        }
+        RichBlockKind::Mermaid => {
+            let source_content = if mermaid_show_source {
+                host_source_content.take().unwrap_or(content)
+            } else {
+                content
+            };
+            render_mermaid_block(
+                block.block_id,
+                match &block.payload {
+                    cditor_core::rich_text::BlockPayloadView::Loaded(payload) => {
+                        payload.content_version
+                    }
+                    _ => 0,
+                },
+                source_content,
+                mermaid_show_source,
+                source_editor_height,
+                document_renders,
+                theme,
+                view,
+                cx,
+            )
+        }
         RichBlockKind::Html => {
             let content_version = match &block.payload {
                 cditor_core::rich_text::BlockPayloadView::Loaded(payload) => {
@@ -332,23 +361,24 @@ fn render_kind_content(
                 readonly,
                 suppress_document_text_input,
             ) {
-                let source_content = source_editor_session
-                    .map(|session| session.render(window, cx))
-                    .unwrap_or(content);
+                let source_content = host_source_content.take().unwrap_or(content);
                 render_html_source_editor(block.block_id, source_content, theme, view.clone())
             } else {
                 content
             };
             render_html_height_reporter(html_content, block.block_id, content_version, view)
         }
-        RichBlockKind::RawMarkdown => div()
-            .w_full()
-            .rounded(px(3.0))
-            .bg(rgb(theme.code_background))
-            .font_family(EDITOR_MONO_FONT_FAMILY)
-            .text_size(px(13.0))
-            .child(content)
-            .into_any_element(),
+        RichBlockKind::RawMarkdown => {
+            let source_content = host_source_content.take().unwrap_or(content);
+            div()
+                .w_full()
+                .rounded(px(3.0))
+                .bg(rgb(theme.code_background))
+                .font_family(EDITOR_MONO_FONT_FAMILY)
+                .text_size(px(13.0))
+                .child(source_content)
+                .into_any_element()
+        }
         RichBlockKind::Divider | RichBlockKind::Separator => div()
             .w_full()
             .my(px(11.0))
@@ -356,6 +386,24 @@ fn render_kind_content(
             .bg(rgb(theme.border))
             .into_any_element(),
         _ => render_paragraph(content),
+    }
+}
+
+fn source_editor_visible_for_block(
+    kind: &RichBlockKind,
+    document_source_enabled: bool,
+    _html_source_active: bool,
+) -> bool {
+    match kind {
+        RichBlockKind::Html => true,
+        RichBlockKind::Math | RichBlockKind::Mermaid => document_source_enabled,
+        RichBlockKind::Code { language }
+            if crate::gui::block::mermaid::is_math_code_language(language.as_deref()) =>
+        {
+            !document_source_enabled
+        }
+        RichBlockKind::Code { .. } | RichBlockKind::RawMarkdown => true,
+        _ => false,
     }
 }
 
@@ -398,6 +446,46 @@ mod tests {
     use cditor_runtime::DocumentRuntime;
 
     use super::*;
+
+    #[test]
+    fn host_source_editor_visibility_matches_block_presentation() {
+        assert!(source_editor_visible_for_block(
+            &RichBlockKind::Code {
+                language: Some("rust".to_owned())
+            },
+            false,
+            false
+        ));
+        assert!(source_editor_visible_for_block(
+            &RichBlockKind::Math,
+            true,
+            false
+        ));
+        assert!(!source_editor_visible_for_block(
+            &RichBlockKind::Math,
+            false,
+            false
+        ));
+        assert!(source_editor_visible_for_block(
+            &RichBlockKind::Code {
+                language: Some("math".to_owned())
+            },
+            false,
+            false
+        ));
+        assert!(!source_editor_visible_for_block(
+            &RichBlockKind::Code {
+                language: Some("math".to_owned())
+            },
+            true,
+            false
+        ));
+        assert!(source_editor_visible_for_block(
+            &RichBlockKind::Html,
+            false,
+            false
+        ));
+    }
 
     #[test]
     fn block_view_can_classify_demo_block_kind() {

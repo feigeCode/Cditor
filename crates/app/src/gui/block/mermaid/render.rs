@@ -40,6 +40,7 @@ pub(crate) fn render_mermaid_block(
     content_version: u64,
     source_content: AnyElement,
     show_source: bool,
+    source_editor_height: Option<f32>,
     cache: &DocumentRenderCache,
     theme: GuiTheme,
     view: Entity<CditorV2View>,
@@ -50,17 +51,27 @@ pub(crate) fn render_mermaid_block(
     let geometry = (!show_source)
         .then(|| status.as_ref().and_then(preview_geometry_for_status))
         .flatten();
+    let source_body_height = source_editor_height.map(source_editor_body_height);
     schedule_rendered_media_height_report(
         view.clone(),
         block_id,
         content_version,
-        geometry
-            .map(|geometry| geometry.block_height_px)
-            .unwrap_or_else(default_mermaid_block_height_px),
+        if show_source {
+            source_body_height
+                .map(source_editor_block_height)
+                .unwrap_or_else(default_mermaid_block_height_px)
+        } else {
+            geometry
+                .map(|geometry| geometry.block_height_px)
+                .unwrap_or_else(default_mermaid_block_height_px)
+        },
         cx,
     );
     let (body, body_height) = if show_source {
-        (source_content, MERMAID_LOADING_BODY_HEIGHT_PX)
+        (
+            source_content,
+            source_body_height.unwrap_or(MERMAID_LOADING_BODY_HEIGHT_PX),
+        )
     } else {
         (
             render_preview(
@@ -105,9 +116,9 @@ pub(crate) fn render_mermaid_block(
                         .rounded(px(3.0))
                         .hover(|style| style.bg(rgb(theme.hover_surface)))
                         .child(if show_source { "预览" } else { "源码" })
-                        .on_mouse_down(gpui::MouseButton::Left, move |_event, _window, cx| {
+                        .on_mouse_down(gpui::MouseButton::Left, move |_event, window, cx| {
                             let _ = toggle_view.update(cx, |view, cx| {
-                                view.toggle_document_source_from_gui(block_id, cx);
+                                view.toggle_document_source_with_host_editor(block_id, window, cx);
                             });
                             cx.stop_propagation();
                         }),
@@ -129,6 +140,7 @@ pub(crate) fn render_math_block(
     content_version: u64,
     source_content: AnyElement,
     show_source: bool,
+    source_editor_height: Option<f32>,
     source_language: Option<&str>,
     cache: &DocumentRenderCache,
     theme: GuiTheme,
@@ -142,18 +154,29 @@ pub(crate) fn render_math_block(
     let geometry = (!show_source)
         .then(|| status.as_ref().and_then(preview_geometry_for_status))
         .flatten();
+    let source_body_height = source_editor_height.map(source_editor_body_height);
     schedule_rendered_media_height_report(
         view.clone(),
         block_id,
         content_version,
-        geometry
-            .map(|value| value.block_height_px)
-            .unwrap_or_else(default_mermaid_block_height_px),
+        if show_source {
+            source_body_height
+                .map(source_editor_block_height)
+                .unwrap_or_else(default_mermaid_block_height_px)
+        } else {
+            geometry
+                .map(|value| value.block_height_px)
+                .unwrap_or_else(default_mermaid_block_height_px)
+        },
         cx,
     );
-    let height = geometry
-        .map(|value| value.body_height_px)
-        .unwrap_or(MERMAID_LOADING_BODY_HEIGHT_PX);
+    let height = if show_source {
+        source_body_height.unwrap_or(MERMAID_LOADING_BODY_HEIGHT_PX)
+    } else {
+        geometry
+            .map(|value| value.body_height_px)
+            .unwrap_or(MERMAID_LOADING_BODY_HEIGHT_PX)
+    };
     let toggle_view = view;
     let body = if show_source {
         source_content
@@ -191,9 +214,9 @@ pub(crate) fn render_math_block(
                         .rounded(px(3.0))
                         .hover(|style| style.bg(rgb(theme.hover_surface)))
                         .child(if show_source { "预览" } else { "源码" })
-                        .on_mouse_down(gpui::MouseButton::Left, move |_event, _window, cx| {
+                        .on_mouse_down(gpui::MouseButton::Left, move |_event, window, cx| {
                             let _ = toggle_view.update(cx, |view, cx| {
-                                view.toggle_document_source_from_gui(block_id, cx);
+                                view.toggle_document_source_with_host_editor(block_id, window, cx);
                             });
                             cx.stop_propagation();
                         }),
@@ -333,6 +356,14 @@ fn default_mermaid_block_height_px() -> f64 {
     )
 }
 
+fn source_editor_body_height(editor_height: f32) -> f32 {
+    editor_height.max(0.0) + MERMAID_BODY_PADDING_PX * 2.0
+}
+
+fn source_editor_block_height(body_height: f32) -> f64 {
+    f64::from(MERMAID_TOOLBAR_HEIGHT_PX + body_height + COMPLEX_BLOCK_SHELL_CHROME_HEIGHT_PX as f32)
+}
+
 fn concise_error(message: &str) -> &str {
     message.lines().next().unwrap_or("未知错误")
 }
@@ -391,5 +422,12 @@ mod tests {
     #[test]
     fn loading_preview_height_matches_the_rendered_fixed_box() {
         assert_eq!(default_mermaid_block_height_px(), 232.0);
+    }
+
+    #[test]
+    fn injected_source_editor_height_is_not_clipped_by_the_preview_box() {
+        let body_height = source_editor_body_height(640.0);
+        assert_eq!(body_height, 656.0);
+        assert_eq!(source_editor_block_height(body_height), 700.0);
     }
 }

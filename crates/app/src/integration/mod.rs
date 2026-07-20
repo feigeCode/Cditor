@@ -24,6 +24,7 @@ pub use persistence::{
     EditorPersistence, EditorPersistenceError, EditorSaveReason, EditorSaveRequest, EditorSaveState,
 };
 pub use source_editor::{SourceEditorConfig, SourceEditorProvider, SourceEditorSession};
+pub(crate) use source_editor::{replace_source_editor_value, source_editor_config_for_block};
 
 #[cfg(test)]
 mod tests {

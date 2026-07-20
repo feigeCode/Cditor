@@ -335,6 +335,7 @@ impl CditorV2View {
         self.document_renders.clear();
         self.document_source_blocks.clear();
         self.html_source_block_id = None;
+        self.source_editor_sessions.clear();
         self.whiteboard_thumbnails.clear();
         self.whiteboard_editor = None;
         self.payload_window_load_scheduler.reset();
@@ -380,6 +381,7 @@ impl CditorV2View {
         self.document_renders.clear();
         self.document_source_blocks.clear();
         self.html_source_block_id = None;
+        self.source_editor_sessions.clear();
         self.text_drag_selection = None;
         self.block_drag_selection = BlockDragSelectionController::default();
         self.code_language_edit = None;
