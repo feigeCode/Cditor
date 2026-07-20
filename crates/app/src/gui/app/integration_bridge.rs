@@ -158,10 +158,25 @@ impl CditorV2View {
         }
     }
 
-    pub(crate) fn integration_document(&self) -> Result<EditorDocument, EditorError> {
+    pub(crate) fn integration_document(
+        &self,
+        cx: &gpui::App,
+    ) -> Result<EditorDocument, EditorError> {
         let integration = self.integration.as_ref().ok_or(EditorError::NotReady)?;
         let runtime = self.ready_runtime_ref().ok_or(EditorError::NotReady)?;
-        EditorDocument::from_runtime(integration.document_id.clone(), runtime)
+        let mut document = EditorDocument::from_runtime(integration.document_id.clone(), runtime)?;
+        for block in &mut document.blocks {
+            let Some(session) = self.source_editor_sessions.get(&block.id) else {
+                continue;
+            };
+            if let cditor_core::rich_text::BlockPayload::Html { html, .. } =
+                &mut block.payload.payload
+            {
+                *html = session.value(cx);
+                block.payload.content_version = block.payload.content_version.saturating_add(1);
+            }
+        }
+        Ok(document)
     }
 
     pub(crate) fn replace_integration_document(
@@ -258,7 +273,7 @@ impl CditorV2View {
         reason: EditorSaveReason,
         cx: &mut Context<Self>,
     ) -> Result<(), EditorError> {
-        let document = self.integration_document()?;
+        let document = self.integration_document(cx)?;
         let (persistence, callback, document_id, version, state) = {
             let integration = self.integration.as_mut().ok_or(EditorError::NotReady)?;
             let persistence = integration

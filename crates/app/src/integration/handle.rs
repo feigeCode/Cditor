@@ -155,7 +155,7 @@ impl EditorHandle {
 
     pub fn get_document<C: AppContext>(&self, cx: &C) -> Result<EditorDocument, EditorError> {
         self.entity
-            .read_with(cx, |view, _| view.integration_document())
+            .read_with(cx, |view, cx| view.integration_document(cx))
     }
 
     pub fn save<C: AppContext>(&self, cx: &mut C) -> Result<(), EditorError> {
