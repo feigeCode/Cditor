@@ -325,10 +325,10 @@ fn render_kind_content(
                 readonly,
                 suppress_document_text_input,
             ) {
-                render_host_html_source_editor(block, view.clone(), readonly, window, cx)
-                    .unwrap_or_else(|| {
-                        render_html_source_editor(block.block_id, content, theme, view.clone())
-                    })
+                let source_content =
+                    render_host_html_source_editor(block, view.clone(), readonly, window, cx)
+                        .unwrap_or(content);
+                render_html_source_editor(block.block_id, source_content, theme, view.clone())
             } else {
                 content
             };
