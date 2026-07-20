@@ -188,6 +188,51 @@ impl CditorV2View {
         }
     }
 
+    pub(crate) fn begin_document_source_with_host_editor(
+        &mut self,
+        block_id: BlockId,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.begin_document_source_from_gui(block_id, cx);
+        if self.source_editor_sessions.contains_key(&block_id) {
+            return;
+        }
+        let Some(provider) = self.source_editor_provider.as_ref().cloned() else {
+            return;
+        };
+        if !provider.supports_language("html") {
+            return;
+        }
+        let Some(runtime) = self.ready_runtime_ref() else {
+            return;
+        };
+        let Some(initial_value) =
+            runtime
+                .block_payload_record(block_id)
+                .and_then(|payload| match &payload.payload {
+                    cditor_core::rich_text::BlockPayload::Html { html, .. } => Some(html.clone()),
+                    _ => None,
+                })
+        else {
+            return;
+        };
+        let session = provider.create(
+            crate::integration::SourceEditorConfig {
+                document_id: runtime.document_id.to_string(),
+                block_id,
+                language: "html".to_owned(),
+                initial_value,
+                readonly: self.readonly,
+                line_numbers: true,
+                soft_wrap: true,
+            },
+            window,
+            cx,
+        );
+        self.source_editor_sessions.insert(block_id, session);
+    }
+
     pub(crate) fn preview_html_block_from_gui(
         &mut self,
         block_id: BlockId,

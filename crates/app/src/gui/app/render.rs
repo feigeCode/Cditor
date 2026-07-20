@@ -447,6 +447,7 @@ impl Render for CditorV2View {
                         &self.document_renders,
                         &document_source_blocks,
                         html_source_block_id,
+                        &self.source_editor_sessions,
                         &self.whiteboard_thumbnails,
                         window,
                         cx,

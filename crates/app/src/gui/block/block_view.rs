@@ -57,6 +57,7 @@ impl BlockView {
         suppress_document_text_input: bool,
         table_scroll_handle: Option<ScrollHandle>,
         html_source_active: bool,
+        source_editor_session: Option<&crate::integration::SourceEditorSession>,
         readonly: bool,
         media_base_path: Option<&std::path::Path>,
         code_highlights: &CodeHighlightCache,
@@ -87,6 +88,7 @@ impl BlockView {
             suppress_document_text_input,
             table_scroll_handle,
             html_source_active,
+            source_editor_session,
             readonly,
             media_base_path,
             code_highlights,
@@ -144,7 +146,7 @@ impl BlockView {
                 focus_block_from_mouse(&focus_view, block_id, event, window, cx);
                 if begins_html_edit {
                     let _ = html_edit_view.update(cx, |view, cx| {
-                        view.begin_document_source_from_gui(block_id, cx);
+                        view.begin_document_source_with_host_editor(block_id, window, cx);
                     });
                 } else {
                     let _ = html_edit_view.update(cx, |view, cx| {
@@ -190,6 +192,7 @@ fn render_kind_content(
     suppress_document_text_input: bool,
     table_scroll_handle: Option<ScrollHandle>,
     html_source_active: bool,
+    source_editor_session: Option<&crate::integration::SourceEditorSession>,
     readonly: bool,
     media_base_path: Option<&std::path::Path>,
     code_highlights: &CodeHighlightCache,
@@ -329,9 +332,9 @@ fn render_kind_content(
                 readonly,
                 suppress_document_text_input,
             ) {
-                let source_content =
-                    render_host_html_source_editor(block, view.clone(), readonly, window, cx)
-                        .unwrap_or(content);
+                let source_content = source_editor_session
+                    .map(|session| session.render(window, cx))
+                    .unwrap_or(content);
                 render_html_source_editor(block.block_id, source_content, theme, view.clone())
             } else {
                 content
@@ -354,51 +357,6 @@ fn render_kind_content(
             .into_any_element(),
         _ => render_paragraph(content),
     }
-}
-
-fn render_host_html_source_editor(
-    block: &ViewBlockSnapshot,
-    view: Entity<CditorV2View>,
-    readonly: bool,
-    window: &mut Window,
-    cx: &mut App,
-) -> Option<AnyElement> {
-    let html = match &block.payload {
-        cditor_core::rich_text::BlockPayloadView::Loaded(payload) => match &payload.payload {
-            cditor_core::rich_text::BlockPayload::Html { html, .. } => html.clone(),
-            _ => return None,
-        },
-        _ => return None,
-    };
-    view.update(cx, |view, cx| {
-        if !view.source_editor_sessions.contains_key(&block.block_id) {
-            let provider = view.source_editor_provider.as_ref()?.clone();
-            if !provider.supports_language("html") {
-                return None;
-            }
-            let document_id = view
-                .ready_runtime_ref()
-                .map(|runtime| runtime.document_id.to_string())
-                .unwrap_or_default();
-            let session = provider.create(
-                crate::integration::SourceEditorConfig {
-                    document_id,
-                    block_id: block.block_id,
-                    language: "html".to_owned(),
-                    initial_value: html,
-                    readonly,
-                    line_numbers: true,
-                    soft_wrap: true,
-                },
-                window,
-                cx,
-            );
-            view.source_editor_sessions.insert(block.block_id, session);
-        }
-        view.source_editor_sessions
-            .get(&block.block_id)
-            .map(|session| session.render(window, cx))
-    })
 }
 
 fn render_html_height_reporter(

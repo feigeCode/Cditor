@@ -128,6 +128,7 @@ impl DocumentEditorView {
         document_renders: &DocumentRenderCache,
         document_source_blocks: &std::collections::HashSet<BlockId>,
         html_source_block_id: Option<BlockId>,
+        source_editor_sessions: &HashMap<BlockId, crate::integration::SourceEditorSession>,
         whiteboard_thumbnails: &WhiteboardThumbnailCache,
         window: &mut Window,
         cx: &mut App,
@@ -290,6 +291,7 @@ impl DocumentEditorView {
                                 .get(&block.block_id)
                                 .map(|snapshot| snapshot.handle.clone()),
                             html_source_block_id == Some(block.block_id),
+                            source_editor_sessions.get(&block.block_id),
                             readonly,
                             media_base_path,
                             code_highlights,
