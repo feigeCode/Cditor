@@ -465,7 +465,7 @@ impl CditorV2View {
         }
         let runtime = self.ready_runtime().ok_or(CditorError::NotReady)?;
         let changed = match command {
-            CditorCommand::SelectAll => runtime.select_all_command(),
+            CditorCommand::SelectAll => runtime.select_entire_document(),
             CditorCommand::DeleteSelection => runtime
                 .delete_active_selection()
                 .map_err(CditorError::Internal)?,

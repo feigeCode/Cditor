@@ -250,7 +250,8 @@ fn render_kind_content(
         content_width_px,
         cx,
     );
-    let source_editor_height = source_editor_session.and_then(|session| session.preferred_height());
+    let source_editor_height =
+        source_editor_session.and_then(|session| session.preferred_height(cx));
     let mut host_source_content = source_editor_session.map(|session| session.render(window, cx));
     match block.kind {
         RichBlockKind::Heading { level } => render_heading(level, content),

@@ -18,7 +18,7 @@ pub struct SourceEditorSession {
     value: Arc<dyn Fn(&App) -> String>,
     focus: Arc<dyn Fn(&mut Window, &mut App)>,
     render: Arc<dyn Fn(&mut Window, &mut App) -> AnyElement>,
-    preferred_height: Option<f32>,
+    preferred_height: Arc<dyn Fn(&App) -> Option<f32>>,
 }
 
 impl SourceEditorSession {
@@ -31,17 +31,25 @@ impl SourceEditorSession {
             value: Arc::new(value),
             focus: Arc::new(focus),
             render: Arc::new(render),
-            preferred_height: None,
+            preferred_height: Arc::new(|_| None),
         }
     }
 
     pub fn with_preferred_height(mut self, height: f32) -> Self {
-        self.preferred_height = Some(height.max(0.0));
+        self.preferred_height = Arc::new(move |_| Some(height.max(0.0)));
         self
     }
 
-    pub fn preferred_height(&self) -> Option<f32> {
-        self.preferred_height
+    pub fn with_preferred_height_provider(
+        mut self,
+        preferred_height: impl Fn(&App) -> f32 + 'static,
+    ) -> Self {
+        self.preferred_height = Arc::new(move |cx| Some(preferred_height(cx).max(0.0)));
+        self
+    }
+
+    pub fn preferred_height(&self, cx: &App) -> Option<f32> {
+        (self.preferred_height)(cx)
     }
 
     pub fn value(&self, cx: &App) -> String {
