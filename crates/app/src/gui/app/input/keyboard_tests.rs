@@ -15,6 +15,9 @@ fn mermaid_preview_blocks_hidden_source_mutations() {
         GuiInputCommand::HandleEnter
     ));
     assert!(!mermaid_preview_blocks_command(
+        GuiInputCommand::SelectAllFocusedText
+    ));
+    assert!(!mermaid_preview_blocks_command(
         GuiInputCommand::MoveCaretDown {
             extend_selection: false
         }

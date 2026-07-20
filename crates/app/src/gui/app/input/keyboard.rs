@@ -355,8 +355,7 @@ pub(crate) fn keeps_vertical_navigation_inside_html_source(
 pub(super) fn mermaid_preview_blocks_command(command: GuiInputCommand) -> bool {
     matches!(
         command,
-        GuiInputCommand::SelectAllFocusedText
-            | GuiInputCommand::CutSelection
+        GuiInputCommand::CutSelection
             | GuiInputCommand::PasteClipboard
             | GuiInputCommand::InsertSoftLineBreak
             | GuiInputCommand::InsertSpaceOrMarkdownShortcut
