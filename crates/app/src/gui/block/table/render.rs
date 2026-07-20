@@ -3,8 +3,8 @@ use std::path::Path;
 
 use gpui::{
     AnyElement, App, Entity, FocusHandle, InteractiveElement, IntoElement, ObjectFit,
-    ParentElement, ScrollHandle, StatefulInteractiveElement, Styled, StyledImage, div, img, px,
-    rgb,
+    ParentElement, ScrollDelta, ScrollHandle, ScrollWheelEvent, StatefulInteractiveElement, Styled,
+    StyledImage, div, img, px, rgb,
 };
 
 use crate::gui::GuiTheme;
@@ -136,7 +136,15 @@ pub(crate) fn render_table_block(
         .w_full()
         .min_w(px(0.0))
         .flex()
-        .overflow_x_scroll();
+        .overflow_x_scroll()
+        .on_scroll_wheel(|event, _window, cx| {
+            if horizontal_table_scroll_intent(event) {
+                // The scrollable div applies delta_x to its tracked handle.
+                // Stop only the horizontal gesture from bubbling into the
+                // document's vertical virtual scroll controller.
+                cx.stop_propagation();
+            }
+        });
     if let Some(handle) = &table_scroll_handle {
         viewport = viewport.track_scroll(handle);
     }
@@ -152,6 +160,14 @@ pub(crate) fn render_table_block(
         .pb(px(TABLE_HORIZONTAL_SCROLLBAR_CHROME_HEIGHT_PX as f32))
         .child(viewport)
         .into_any_element()
+}
+
+pub(super) fn horizontal_table_scroll_intent(event: &ScrollWheelEvent) -> bool {
+    let (x, y) = match event.delta {
+        ScrollDelta::Pixels(delta) => (f32::from(delta.x), f32::from(delta.y)),
+        ScrollDelta::Lines(delta) => (delta.x, delta.y),
+    };
+    x.abs() > 0.01 && x.abs() >= y.abs()
 }
 
 fn render_table_cell_content(

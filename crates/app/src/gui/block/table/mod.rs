@@ -276,4 +276,23 @@ mod tests {
 
         assert_eq!(table_hscroll_block_height(144.0), 158.0);
     }
+
+    #[test]
+    fn table_trackpad_routes_horizontal_gestures_without_swallowing_vertical_scroll() {
+        let horizontal = gpui::ScrollWheelEvent {
+            position: gpui::point(gpui::px(0.0), gpui::px(0.0)),
+            delta: gpui::ScrollDelta::Pixels(gpui::point(gpui::px(-48.0), gpui::px(6.0))),
+            modifiers: gpui::Modifiers::default(),
+            touch_phase: gpui::TouchPhase::Moved,
+        };
+        let vertical = gpui::ScrollWheelEvent {
+            position: gpui::point(gpui::px(0.0), gpui::px(0.0)),
+            delta: gpui::ScrollDelta::Pixels(gpui::point(gpui::px(4.0), gpui::px(-42.0))),
+            modifiers: gpui::Modifiers::default(),
+            touch_phase: gpui::TouchPhase::Moved,
+        };
+
+        assert!(super::render::horizontal_table_scroll_intent(&horizontal));
+        assert!(!super::render::horizontal_table_scroll_intent(&vertical));
+    }
 }
