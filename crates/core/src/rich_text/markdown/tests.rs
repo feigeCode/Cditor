@@ -18,6 +18,8 @@ fn records_markdown_parse_stats_like_v1() {
 fn markdown_paste_detection_includes_inline_syntax() {
     assert!(looks_like_markdown_paste("**bold** and `code`"));
     assert!(looks_like_markdown_paste("[link](https://example.com)"));
+    assert!(looks_like_markdown_paste("$$\nE = mc^2\n$$"));
+    assert!(looks_like_markdown_paste("行间公式：\n$$\nE = mc^2\n$$"));
     assert!(looks_like_markdown_paste(
         "\\```mermaid\nflowchart TD\nA --> B\n\\```"
     ));
@@ -309,6 +311,20 @@ fn standalone_math_delimiters_import_as_math_blocks() {
         assert_eq!(RichBlockKind::Math, document.blocks[0].kind);
         assert_eq!("E = mc^2", document.blocks[0].payload.plain_text());
     }
+}
+
+#[test]
+fn display_math_after_prose_without_blank_line_imports_as_a_separate_block() {
+    let source = "行间公式：\n$$\nE = mc^2\n$$\n$$\nx^2 + y^2 = z^2\n$$";
+    let document = parse_markdown_document(source, MarkdownImportOptions::default());
+
+    assert_eq!(3, document.blocks.len());
+    assert_eq!(RichBlockKind::Paragraph, document.blocks[0].kind);
+    assert_eq!("行间公式：", document.blocks[0].payload.plain_text());
+    assert_eq!(RichBlockKind::Math, document.blocks[1].kind);
+    assert_eq!("E = mc^2", document.blocks[1].payload.plain_text());
+    assert_eq!(RichBlockKind::Math, document.blocks[2].kind);
+    assert_eq!("x^2 + y^2 = z^2", document.blocks[2].payload.plain_text());
 }
 
 #[test]

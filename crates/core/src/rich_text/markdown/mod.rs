@@ -221,6 +221,8 @@ pub fn looks_like_markdown_paste(text: &str) -> bool {
             || trimmed == "---"
             || trimmed == "***"
             || trimmed == "___"
+            || trimmed == "$$"
+            || standalone_math_source(trimmed).is_some()
             || parse_numbered_item(trimmed).is_some()
             || parse_inline_markdown_extended(trimmed).changed
     })
@@ -1206,6 +1208,8 @@ fn is_plain_paragraph_line(line: &str) -> bool {
         || trimmed == "***"
         || trimmed == "___"
         || trimmed.starts_with('>')
+        || trimmed == "$$"
+        || standalone_math_source(trimmed).is_some()
         || parse_fence_start(trimmed).is_some()
         || parse_heading(trimmed).is_some()
         || parse_block_image(trimmed).is_some()

@@ -74,6 +74,48 @@ fn markdown_paste_detection_scans_all_lines_like_v1() {
 }
 
 #[test]
+fn math_markdown_paste_replaces_a_formula_source_block_with_structured_blocks() {
+    let mut runtime = runtime_with_kind_depths_and_text(vec![(RichBlockKind::Math, 0, None, "")]);
+    runtime.focus_block_at_offset(1, 0).unwrap();
+
+    assert!(
+        runtime
+            .insert_markdown_paste("行间公式：\n$$\nE = mc^2\n$$\n$$\nx^2 + y^2 = z^2\n$$")
+            .unwrap()
+    );
+
+    assert_eq!(runtime.index.total_count(), 3);
+    assert_eq!(runtime.kind_at_index(0), RichBlockKind::Paragraph);
+    assert_eq!(runtime.kind_at_index(1), RichBlockKind::Math);
+    assert_eq!(runtime.kind_at_index(2), RichBlockKind::Math);
+    let block_ids = runtime.index.block_ids.clone();
+    assert_eq!(
+        runtime
+            .payload_window
+            .get(block_ids[0])
+            .unwrap()
+            .plain_text(),
+        "行间公式："
+    );
+    assert_eq!(
+        runtime
+            .payload_window
+            .get(block_ids[1])
+            .unwrap()
+            .plain_text(),
+        "E = mc^2"
+    );
+    assert_eq!(
+        runtime
+            .payload_window
+            .get(block_ids[2])
+            .unwrap()
+            .plain_text(),
+        "x^2 + y^2 = z^2"
+    );
+}
+
+#[test]
 fn markdown_paste_parses_inline_only_formatting() {
     let mut runtime =
         runtime_with_kind_depths_and_text(vec![(RichBlockKind::Paragraph, 0, None, "")]);
