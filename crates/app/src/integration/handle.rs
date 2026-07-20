@@ -618,11 +618,7 @@ mod tests {
         events.lock().unwrap().clear();
 
         let editable = cx.update(|app| {
-            handle.apply_markdown(
-                "[^1]: unsupported footnote",
-                MarkdownApplyMode::Editable,
-                app,
-            )
+            handle.apply_markdown("```rust\nfn main() {}", MarkdownApplyMode::Editable, app)
         });
         assert!(matches!(
             editable,
@@ -633,7 +629,7 @@ mod tests {
         let preview = cx
             .update(|app| {
                 handle.apply_markdown(
-                    "[^1]: unsupported footnote",
+                    "```rust\nfn main() {}",
                     MarkdownApplyMode::ReadOnlyPreview,
                     app,
                 )

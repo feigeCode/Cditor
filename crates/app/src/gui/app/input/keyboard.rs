@@ -55,6 +55,7 @@ impl CditorV2View {
                 | GuiInputCommand::CopySelection
         );
         let selected_table_axis = self.projected_table_axis_selection();
+        let html_source_block_id = self.html_source_block_id;
         {
             let CditorViewState::Ready(runtime) = &mut self.state else {
                 return;
@@ -235,7 +236,13 @@ impl CditorV2View {
                         && runtime
                             .move_focused_caret_to_adjacent_logical_line(-1, extend_selection)
                             .unwrap_or(false);
-                    if !moved_in_block && !moved_in_source {
+                    if !moved_in_block
+                        && !moved_in_source
+                        && !keeps_vertical_navigation_inside_html_source(
+                            html_source_block_id,
+                            runtime.focused_block_id(),
+                        )
+                    {
                         let _ = runtime.move_caret_up(extend_selection);
                     }
                 }
@@ -251,7 +258,13 @@ impl CditorV2View {
                         && runtime
                             .move_focused_caret_to_adjacent_logical_line(1, extend_selection)
                             .unwrap_or(false);
-                    if !moved_in_block && !moved_in_source {
+                    if !moved_in_block
+                        && !moved_in_source
+                        && !keeps_vertical_navigation_inside_html_source(
+                            html_source_block_id,
+                            runtime.focused_block_id(),
+                        )
+                    {
                         let _ = runtime.move_caret_down(extend_selection);
                     }
                 }
@@ -305,6 +318,13 @@ impl CditorV2View {
             let _ = runtime.scroll_focused_block_into_view();
         }
     }
+}
+
+fn keeps_vertical_navigation_inside_html_source(
+    html_source_block_id: Option<BlockId>,
+    focused_block_id: Option<BlockId>,
+) -> bool {
+    html_source_block_id.is_some() && html_source_block_id == focused_block_id
 }
 
 pub(super) fn mermaid_preview_blocks_command(command: GuiInputCommand) -> bool {

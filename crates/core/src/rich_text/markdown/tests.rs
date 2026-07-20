@@ -590,12 +590,32 @@ fn compatibility_report_distinguishes_normalization_and_source_only() {
         "++underline++",
         "**`code`**",
         "| A | B |\n| not | alignment |",
-        "```rust\nfn main() {}",
     ] {
         let result = parse_markdown_document_with_report(source, MarkdownImportOptions::default());
         assert!(
+            matches!(result.compatibility, MarkdownCompatibility::Editable),
+            "expected editable compatibility for {source:?}"
+        );
+        let exported = export_document_blocks(
+            &document_from_parsed(result.document),
+            MarkdownExportMode::Strict,
+        );
+        assert_eq!(
+            source, exported.markdown,
+            "expected exact round trip for {source:?}"
+        );
+    }
+
+    for malformed in [
+        "```rust\nfn main() {}",
+        "~~~rust\nfn main() {}",
+        "$$\nx + y",
+    ] {
+        let result =
+            parse_markdown_document_with_report(malformed, MarkdownImportOptions::default());
+        assert!(
             matches!(result.compatibility, MarkdownCompatibility::SourceOnly(_)),
-            "expected SourceOnly for {source:?}"
+            "expected malformed source to remain SourceOnly for {malformed:?}"
         );
     }
 
@@ -607,6 +627,21 @@ fn compatibility_report_distinguishes_normalization_and_source_only() {
         html.compatibility,
         MarkdownCompatibility::Editable
     ));
+}
+
+#[test]
+fn raw_markdown_edits_export_verbatim_without_using_stale_import_fallback() {
+    let source = "[^1]: original footnote";
+    let parsed = parse_markdown_document_with_report(source, MarkdownImportOptions::default());
+    assert_eq!(parsed.document.blocks[0].kind, RichBlockKind::RawMarkdown);
+
+    let mut document = document_from_parsed(parsed.document);
+    document.blocks[0].payload = BlockPayload::RichText {
+        spans: vec![InlineSpan::plain("[^1]: edited **without escaping**")],
+    };
+    let exported = export_document_blocks(&document, MarkdownExportMode::Strict);
+    assert_eq!("[^1]: edited **without escaping**", exported.markdown);
+    assert!(!exported.markdown.contains("\\*"));
 }
 
 #[test]

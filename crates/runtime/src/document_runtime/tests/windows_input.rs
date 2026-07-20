@@ -132,3 +132,25 @@ fn html_source_moves_between_logical_lines_before_leaving_the_block() {
     );
     assert_eq!(runtime.caret_offset_for_block(1), Some(10));
 }
+
+#[test]
+fn html_source_reports_vertical_boundaries_without_moving_focus() {
+    let mut runtime = html_runtime("<div>\ntext\n</div>", 0);
+    assert!(
+        !runtime
+            .move_focused_caret_to_adjacent_logical_line(-1, false)
+            .unwrap()
+    );
+    assert_eq!(runtime.focused_block_id(), Some(1));
+    assert_eq!(runtime.caret_offset_for_block(1), Some(0));
+
+    let end = "<div>\ntext\n</div>".len();
+    runtime.focus_block_at_offset(1, end).unwrap();
+    assert!(
+        !runtime
+            .move_focused_caret_to_adjacent_logical_line(1, false)
+            .unwrap()
+    );
+    assert_eq!(runtime.focused_block_id(), Some(1));
+    assert_eq!(runtime.caret_offset_for_block(1), Some(end));
+}

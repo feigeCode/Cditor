@@ -20,6 +20,19 @@ fn mermaid_preview_blocks_hidden_source_mutations() {
         }
     ));
 }
+
+#[test]
+fn html_source_consumes_vertical_navigation_at_first_and_last_line() {
+    assert!(keeps_vertical_navigation_inside_html_source(
+        Some(7),
+        Some(7)
+    ));
+    assert!(!keeps_vertical_navigation_inside_html_source(
+        Some(7),
+        Some(8)
+    ));
+    assert!(!keeps_vertical_navigation_inside_html_source(None, Some(7)));
+}
 use cditor_core::rich_text::{
     BlockPayload, BlockPayloadRecord, InlineMark, InlineSpan, RichBlockKind, TableCellPayload,
     TablePayload, TableRowPayload,

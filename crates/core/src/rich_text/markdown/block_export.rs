@@ -208,17 +208,10 @@ impl<'a> BlockExporter<'a> {
             RichBlockKind::Code { language } => self.render_code(block, language.as_deref()),
             RichBlockKind::Table => self.render_table(block),
             RichBlockKind::Divider | RichBlockKind::Separator => "---".to_owned(),
-            RichBlockKind::RawMarkdown => match &block.raw_fallback {
-                Some(raw) => raw.clone(),
-                None => {
-                    self.unsupported(
-                        block.id,
-                        "markdown.block.raw_fallback_missing",
-                        "Raw Markdown block no longer has its original source",
-                    );
-                    block.payload.plain_text()
-                }
-            },
+            // Raw Markdown is an explicit source-editing island. Always export
+            // the current payload verbatim: `raw_fallback` is only an import
+            // snapshot and must never overwrite edits or escape their syntax.
+            RichBlockKind::RawMarkdown => block.payload.plain_text(),
             RichBlockKind::Mermaid => {
                 let source = self.render_raw_source(block, "Mermaid");
                 fenced_block(&source, Some("mermaid"))

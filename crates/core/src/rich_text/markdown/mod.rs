@@ -292,12 +292,15 @@ fn analyze_markdown_compatibility(markdown: &str) -> Vec<MarkdownDiagnostic> {
                 {
                     fence = None;
                 }
-                None if marker == '~' => diagnostics.push(MarkdownDiagnostic::source(
-                    MarkdownDiagnosticSeverity::Error,
-                    "markdown.source.tilde_fence_unsupported",
-                    "Tilde fenced blocks are not supported by the editable Markdown parser",
-                    offset..offset + line.len(),
-                )),
+                None if marker == '~' => {
+                    diagnostics.push(MarkdownDiagnostic::source(
+                        MarkdownDiagnosticSeverity::Info,
+                        "markdown.source.tilde_fence_preserved",
+                        "Tilde fenced blocks are preserved as editable raw Markdown blocks",
+                        offset..offset + line.len(),
+                    ));
+                    fence = Some((marker, length, offset));
+                }
                 None => fence = Some((marker, length, offset)),
                 _ => {}
             }
@@ -325,9 +328,9 @@ fn analyze_markdown_compatibility(markdown: &str) -> Vec<MarkdownDiagnostic> {
                 if parse_table_region(&table_lines).is_none() {
                     let end = lines[index - 1].0 + lines[index - 1].1.len();
                     diagnostics.push(MarkdownDiagnostic::source(
-                        MarkdownDiagnosticSeverity::Error,
-                        "markdown.source.table_fallback_unsupported",
-                        "A table-like region could not be parsed safely and would fall back to paragraphs",
+                        MarkdownDiagnosticSeverity::Info,
+                        "markdown.source.table_fallback_preserved",
+                        "An unrecognized table-like region is preserved as an editable raw Markdown block",
                         offset..end,
                     ));
                 }
@@ -339,30 +342,30 @@ fn analyze_markdown_compatibility(markdown: &str) -> Vec<MarkdownDiagnostic> {
 
         if trimmed.starts_with("[^") && trimmed.contains("]:") {
             diagnostics.push(MarkdownDiagnostic::source(
-                MarkdownDiagnosticSeverity::Error,
-                "markdown.source.footnote_unsupported",
-                "Footnote definitions are SourceOnly in the first round-trip version",
+                MarkdownDiagnosticSeverity::Info,
+                "markdown.source.footnote_preserved",
+                "Footnote definitions are preserved as editable raw Markdown blocks",
                 offset..offset + line.len(),
             ));
         } else if is_reference_definition(trimmed) || contains_reference_link(trimmed) {
             diagnostics.push(MarkdownDiagnostic::source(
-                MarkdownDiagnosticSeverity::Error,
-                "markdown.source.reference_link_unsupported",
-                "Reference-style links are not supported by the editable Markdown parser",
+                MarkdownDiagnosticSeverity::Info,
+                "markdown.source.reference_link_preserved",
+                "Reference-style links are preserved as editable raw Markdown blocks",
                 offset..offset + line.len(),
             ));
         } else if trimmed.starts_with("$$") {
             diagnostics.push(MarkdownDiagnostic::source(
-                MarkdownDiagnosticSeverity::Error,
-                "markdown.source.math_unsupported",
-                "Block math source is not yet supported by the editable Markdown parser",
+                MarkdownDiagnosticSeverity::Info,
+                "markdown.source.math_preserved",
+                "Block math source is preserved by the editable Markdown parser",
                 offset..offset + line.len(),
             ));
         } else if trimmed.starts_with(":::") || trimmed.contains("{{") {
             diagnostics.push(MarkdownDiagnostic::source(
-                MarkdownDiagnosticSeverity::Error,
-                "markdown.source.custom_extension_unsupported",
-                "Custom Markdown extensions are SourceOnly",
+                MarkdownDiagnosticSeverity::Info,
+                "markdown.source.custom_extension_preserved",
+                "Custom Markdown extensions are preserved as editable raw Markdown blocks",
                 offset..offset + line.len(),
             ));
         }
@@ -525,9 +528,9 @@ fn detect_frontmatter(lines: &[(usize, &str)], diagnostics: &mut Vec<MarkdownDia
     }
     let end = lines[end_index].0 + lines[end_index].1.len();
     diagnostics.push(MarkdownDiagnostic::source(
-        MarkdownDiagnosticSeverity::Error,
-        "markdown.source.frontmatter_unsupported",
-        "Frontmatter is SourceOnly and must not be rewritten by the rich-text editor",
+        MarkdownDiagnosticSeverity::Info,
+        "markdown.source.frontmatter_preserved",
+        "Frontmatter is preserved as an editable raw Markdown block",
         0..end,
     ));
 }
@@ -545,6 +548,78 @@ fn is_reference_definition(line: &str) -> bool {
     line.starts_with('[')
         && !line.starts_with("[^")
         && line.find("]:").is_some_and(|index| index > 1)
+}
+
+fn is_footnote_definition(line: &str) -> bool {
+    line.starts_with("[^") && line.contains("]:")
+}
+
+fn frontmatter_region_end(lines: &[&str]) -> Option<usize> {
+    if lines.first().is_none_or(|line| line.trim() != "---") {
+        return None;
+    }
+    let mut end = lines
+        .iter()
+        .enumerate()
+        .skip(1)
+        .find_map(|(index, line)| (line.trim() == "---").then_some(index + 1))?;
+    if !lines[1..end - 1].iter().any(|line| line.contains(':')) {
+        return None;
+    }
+    while end < lines.len() && !lines[end].trim().is_empty() {
+        end += 1;
+    }
+    Some(end)
+}
+
+fn tilde_fence_region_end(lines: &[&str], start: usize) -> Option<usize> {
+    let opening = lines.get(start)?.trim_start();
+    let length = opening.chars().take_while(|ch| *ch == '~').count();
+    if length < 3 {
+        return None;
+    }
+    lines
+        .iter()
+        .enumerate()
+        .skip(start + 1)
+        .find_map(|(index, line)| {
+            let trimmed = line.trim();
+            (trimmed.chars().take_while(|ch| *ch == '~').count() >= length
+                && trimmed.chars().all(|ch| ch == '~'))
+            .then_some(index + 1)
+        })
+}
+
+fn custom_container_region_end(lines: &[&str], start: usize) -> usize {
+    lines
+        .iter()
+        .enumerate()
+        .skip(start + 1)
+        .find_map(|(index, line)| (line.trim() == ":::").then_some(index + 1))
+        .unwrap_or(start + 1)
+}
+
+fn source_requires_raw_markdown_block(source: &str) -> bool {
+    contains_reference_link(source)
+        || source.contains("{{")
+        || contains_unescaped_token(source, "++")
+}
+
+fn contains_unescaped_token(source: &str, token: &str) -> bool {
+    let mut search = 0usize;
+    while let Some(relative) = source[search..].find(token) {
+        let position = search + relative;
+        let backslashes = source[..position]
+            .bytes()
+            .rev()
+            .take_while(|byte| *byte == b'\\')
+            .count();
+        if backslashes % 2 == 0 {
+            return true;
+        }
+        search = position + token.len();
+    }
+    false
 }
 
 fn contains_reference_link(line: &str) -> bool {
@@ -649,6 +724,17 @@ impl MarkdownParser {
         self.new_block(kind, BlockPayload::RichText { spans })
     }
 
+    fn raw_markdown_block(&mut self, source: String) -> RichBlockRecord {
+        let mut block = self.new_block(
+            RichBlockKind::RawMarkdown,
+            BlockPayload::RichText {
+                spans: vec![InlineSpan::plain(source.clone())],
+            },
+        );
+        block.raw_fallback = Some(source);
+        block
+    }
+
     fn parse_document(&mut self, markdown: &str) -> ParsedMarkdownDocument {
         let mut document = ParsedMarkdownDocument::default();
         let lines = markdown.lines().collect::<Vec<_>>();
@@ -660,6 +746,42 @@ impl MarkdownParser {
             if line.trim().is_empty() {
                 list_stack.clear();
                 index += 1;
+                continue;
+            }
+
+            if index == 0
+                && line.trim() == "---"
+                && let Some(end) = frontmatter_region_end(&lines)
+            {
+                list_stack.clear();
+                let source = lines[..end].join("\n");
+                document.push_root_block(self.raw_markdown_block(source));
+                index = end;
+                continue;
+            }
+
+            if let Some(end) = tilde_fence_region_end(&lines, index) {
+                list_stack.clear();
+                let source = lines[index..end].join("\n");
+                document.push_root_block(self.raw_markdown_block(source));
+                index = end;
+                continue;
+            }
+
+            if is_footnote_definition(line.trim_start())
+                || is_reference_definition(line.trim_start())
+            {
+                list_stack.clear();
+                document.push_root_block(self.raw_markdown_block(line.to_owned()));
+                index += 1;
+                continue;
+            }
+
+            if line.trim_start().starts_with(":::") {
+                list_stack.clear();
+                let end = custom_container_region_end(&lines, index);
+                document.push_root_block(self.raw_markdown_block(lines[index..end].join("\n")));
+                index = end;
                 continue;
             }
 
@@ -700,6 +822,14 @@ impl MarkdownParser {
                     list_stack.clear();
                     document.push_root_block(
                         self.new_block(RichBlockKind::Table, BlockPayload::Table(table)),
+                    );
+                    index = region_end;
+                    continue;
+                }
+                if region_end > index + 1 {
+                    list_stack.clear();
+                    document.push_root_block(
+                        self.raw_markdown_block(lines[index..region_end].join("\n")),
                     );
                     index = region_end;
                     continue;
@@ -783,9 +913,16 @@ impl MarkdownParser {
                     .map(|line| line.trim_start())
                     .collect::<Vec<_>>()
                     .join("\n");
-                document.push_root_block(
-                    self.rich_text_block(RichBlockKind::Paragraph, parse_inline_markdown(&source)),
-                );
+                let spans = parse_inline_markdown(&source);
+                if source_requires_raw_markdown_block(&source)
+                    || spans
+                        .iter()
+                        .any(|span| span.marks.contains(&InlineMark::Code) && span.marks.len() > 1)
+                {
+                    document.push_root_block(self.raw_markdown_block(source));
+                } else {
+                    document.push_root_block(self.rich_text_block(RichBlockKind::Paragraph, spans));
+                }
                 continue;
             } else {
                 list_stack.clear();
