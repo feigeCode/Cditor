@@ -42,7 +42,8 @@ pub use error::CditorError;
 pub use event::{CditorEvent, ChangeOrigin};
 pub use handle::CditorHandle;
 pub use import_export::{
-    AttachmentExportMode, ExportFormat, ExportReport, ExportWarning, ImportReport, ImportWarning,
+    AttachmentExportMode, EditorBlockExportPresentation, EditorBlockExportState,
+    EditorViewExportState, ExportFormat, ExportReport, ExportWarning, ImportReport, ImportWarning,
     MarkdownExportOptions, MarkdownImportOptions,
 };
 pub use options::{CditorBackend, CditorOptions, WorkspaceId};

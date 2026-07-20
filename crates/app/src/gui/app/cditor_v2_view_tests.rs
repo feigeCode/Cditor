@@ -38,6 +38,51 @@ fn html_source_mode_moves_between_individual_blocks() {
 }
 
 #[gpui::test]
+fn export_state_tracks_each_renderable_blocks_current_presentation(cx: &mut TestAppContext) {
+    let runtime = DocumentRuntime::from_payloads(
+        1,
+        vec![
+            BlockPayloadRecord::rich_text(1, RichBlockKind::Math, "x^2"),
+            BlockPayloadRecord::rich_text(2, RichBlockKind::Mermaid, "flowchart TD\nA-->B"),
+            BlockPayloadRecord {
+                block_id: 3,
+                content_version: 1,
+                kind: RichBlockKind::Html,
+                payload: BlockPayload::Html {
+                    html: "<strong>hello</strong>".to_owned(),
+                    sanitized: false,
+                },
+            },
+        ],
+        720.0,
+    );
+    let view = cx.new(|cx| CditorV2View::from_runtime_with_options(runtime, false, false, cx));
+    view.update(cx, |view, _| {
+        view.document_source_blocks.insert(2);
+        view.html_source_block_id = Some(3);
+    });
+
+    let state = view.read_with(cx, |view, _| view.view_export_state());
+    assert_eq!(
+        state.blocks,
+        vec![
+            crate::api::EditorBlockExportState {
+                block_id: 1,
+                presentation: crate::api::EditorBlockExportPresentation::Preview,
+            },
+            crate::api::EditorBlockExportState {
+                block_id: 2,
+                presentation: crate::api::EditorBlockExportPresentation::Source,
+            },
+            crate::api::EditorBlockExportState {
+                block_id: 3,
+                presentation: crate::api::EditorBlockExportPresentation::Source,
+            },
+        ]
+    );
+}
+
+#[gpui::test]
 fn html_blocks_survive_preview_edit_save_and_reload_independently(cx: &mut TestAppContext) {
     let first = "<section>first</section>";
     let second = "<aside>second</aside>";

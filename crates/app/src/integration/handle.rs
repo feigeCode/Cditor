@@ -4,7 +4,7 @@ use gpui::{AppContext, Entity};
 
 use crate::api::{
     AiModelDescriptor, AiProvider, CditorCommand, CommandDescriptor, CommandOutcome, CommandState,
-    DocumentRendererProvider, SyntaxHighlightProvider,
+    DocumentRendererProvider, EditorViewExportState, SyntaxHighlightProvider,
 };
 use crate::gui::CditorV2View;
 
@@ -58,6 +58,11 @@ impl EditorHandle {
         cx: &C,
     ) -> Result<MarkdownBundleExportResult, EditorError> {
         self.get_document(cx)?.export_markdown_bundle(mode, options)
+    }
+
+    pub fn view_export_state<C: AppContext>(&self, cx: &C) -> EditorViewExportState {
+        self.entity
+            .read_with(cx, |view, _| view.view_export_state())
     }
 
     pub fn apply_markdown<C: AppContext>(

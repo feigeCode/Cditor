@@ -14,6 +14,57 @@ use crate::gui::persistence::{EditorSaveStatus, PersistenceBarrierKind};
 impl EventEmitter<CditorEvent> for CditorV2View {}
 
 impl CditorV2View {
+    pub(crate) fn view_export_state(&self) -> crate::api::EditorViewExportState {
+        use crate::api::{
+            EditorBlockExportPresentation, EditorBlockExportState, EditorViewExportState,
+        };
+
+        let Some(runtime) = self.ready_runtime_ref() else {
+            return EditorViewExportState::default();
+        };
+        let blocks = runtime
+            .complete_document_snapshot()
+            .map(|(_, payloads)| payloads)
+            .unwrap_or_default()
+            .into_iter()
+            .filter_map(|payload| {
+                let presentation = match &payload.kind {
+                    cditor_core::rich_text::RichBlockKind::Html => {
+                        if self.html_source_block_id == Some(payload.block_id) {
+                            EditorBlockExportPresentation::Source
+                        } else {
+                            EditorBlockExportPresentation::Preview
+                        }
+                    }
+                    cditor_core::rich_text::RichBlockKind::Math
+                    | cditor_core::rich_text::RichBlockKind::Mermaid
+                    | cditor_core::rich_text::RichBlockKind::Code { .. }
+                        if self.document_renderer_is_preview(payload.block_id) =>
+                    {
+                        EditorBlockExportPresentation::Preview
+                    }
+                    cditor_core::rich_text::RichBlockKind::Math
+                    | cditor_core::rich_text::RichBlockKind::Mermaid => {
+                        EditorBlockExportPresentation::Source
+                    }
+                    cditor_core::rich_text::RichBlockKind::Code { language }
+                        if crate::gui::block::mermaid::is_math_code_language(
+                            language.as_deref(),
+                        ) =>
+                    {
+                        EditorBlockExportPresentation::Source
+                    }
+                    _ => return None,
+                };
+                Some(EditorBlockExportState {
+                    block_id: payload.block_id,
+                    presentation,
+                })
+            })
+            .collect();
+        EditorViewExportState { blocks }
+    }
+
     pub(crate) fn sdk_configure_media_base_path(
         &mut self,
         media_base_path: Option<std::path::PathBuf>,

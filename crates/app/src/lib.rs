@@ -12,6 +12,7 @@ pub use api::{
     SyntaxHighlightPalette, SyntaxHighlightProvider, SyntaxHighlightRun, SyntaxHighlightStyle,
     ThemeProvider, WorkspaceId,
 };
+pub use api::{EditorBlockExportPresentation, EditorBlockExportState, EditorViewExportState};
 #[cfg(feature = "sqlite")]
 pub use api::{SqliteDurability, SqliteStorageOptions};
 pub use cditor_ai as ai;

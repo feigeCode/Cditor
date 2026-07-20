@@ -67,3 +67,20 @@ pub struct ExportReport {
     pub bytes: u64,
     pub warnings: Vec<ExportWarning>,
 }
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum EditorBlockExportPresentation {
+    Preview,
+    Source,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct EditorBlockExportState {
+    pub block_id: u64,
+    pub presentation: EditorBlockExportPresentation,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct EditorViewExportState {
+    pub blocks: Vec<EditorBlockExportState>,
+}
