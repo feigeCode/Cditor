@@ -12,7 +12,10 @@ use crate::gui::app::interaction::geometry::{
 };
 use crate::gui::app::interaction::gutter_drag_metrics::gutter_drag_auto_scroll_delta;
 use crate::gui::block::code::{V1_CODE_CONTENT_PADDING_TOP_PX, V1_CODE_CONTENT_PADDING_X_PX};
+use crate::integration::EditorDocument;
 use cditor_core::block::BlockDropTarget;
+use cditor_core::rich_text::{BlockPayload, BlockPayloadRecord, RichBlockKind};
+use gpui::TestAppContext;
 
 #[test]
 fn save_status_for_mode_respects_readonly() {
@@ -32,6 +35,91 @@ fn html_source_mode_moves_between_individual_blocks() {
     assert!(!close_html_source(&mut active, 7));
     assert!(close_html_source(&mut active, 9));
     assert_eq!(active, None);
+}
+
+#[gpui::test]
+fn html_blocks_survive_preview_edit_save_and_reload_independently(cx: &mut TestAppContext) {
+    let first = "<section>first</section>";
+    let second = "<aside>second</aside>";
+    let runtime = DocumentRuntime::from_payloads(
+        1,
+        vec![
+            BlockPayloadRecord {
+                block_id: 1,
+                content_version: 1,
+                kind: RichBlockKind::Html,
+                payload: BlockPayload::Html {
+                    html: first.to_owned(),
+                    sanitized: false,
+                },
+            },
+            BlockPayloadRecord {
+                block_id: 2,
+                content_version: 1,
+                kind: RichBlockKind::Html,
+                payload: BlockPayload::Html {
+                    html: second.to_owned(),
+                    sanitized: false,
+                },
+            },
+        ],
+        720.0,
+    );
+    let view = cx.new(|cx| CditorV2View::from_runtime_with_options(runtime, false, false, cx));
+
+    let previewed = "<section>first preview</section>";
+    view.update(cx, |view, cx| {
+        view.begin_document_source_from_gui(1, cx);
+        let runtime = view.ready_runtime().unwrap();
+        runtime.focus_block_at_offset(1, first.len()).unwrap();
+        assert!(
+            runtime
+                .replace_text_in_focused_range(Some(0..first.len()), previewed)
+                .unwrap()
+        );
+        view.preview_html_block_from_gui(1, cx);
+    });
+    assert_eq!(
+        view.read_with(cx, |view, _| view.html_source_block_id),
+        None
+    );
+
+    let saved = "<section>first saved</section>";
+    view.update(cx, |view, cx| {
+        view.begin_document_source_from_gui(1, cx);
+        let runtime = view.ready_runtime().unwrap();
+        runtime.focus_block_at_offset(1, previewed.len()).unwrap();
+        assert!(
+            runtime
+                .replace_text_in_focused_range(Some(0..previewed.len()), saved)
+                .unwrap()
+        );
+        view.save_html_block_from_gui(1, cx);
+    });
+
+    let document = view.read_with(cx, |view, _| {
+        let runtime = view.ready_runtime_ref().unwrap();
+        assert_eq!(runtime.block_payload_record(1).unwrap().plain_text(), saved);
+        assert_eq!(
+            runtime.block_payload_record(2).unwrap().plain_text(),
+            second
+        );
+        EditorDocument::from_runtime("html-blocks", runtime).unwrap()
+    });
+    let json = document.to_json().unwrap();
+    let reloaded = EditorDocument::from_json(&json)
+        .unwrap()
+        .into_runtime(720.0)
+        .unwrap();
+
+    assert_eq!(
+        reloaded.block_payload_record(1).unwrap().plain_text(),
+        saved
+    );
+    assert_eq!(
+        reloaded.block_payload_record(2).unwrap().plain_text(),
+        second
+    );
 }
 
 #[test]
