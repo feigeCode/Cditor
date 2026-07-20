@@ -8,6 +8,7 @@ use gpui::{
 use crate::gui::GuiTheme;
 use crate::gui::app::CditorV2View;
 use crate::gui::app::cditor_v2_view::TableScrollSnapshot;
+use crate::gui::block::chrome::block_content_left_px;
 use crate::gui::block::table::menu::TableMenuUiState;
 use crate::gui::block::{
     BlockActionState, BlockDragOverlaySnapshot, BlockView, CodeHighlightCache, DocumentRenderCache,
@@ -134,8 +135,7 @@ impl DocumentEditorView {
         cx: &mut App,
     ) -> AnyElement {
         let block_view = BlockView::new(self.theme);
-        let content_width_px =
-            (editor_viewport_width_px - DEFAULT_DOCUMENT_LEFT_INSET_PX * 2.0).max(320.0);
+        let content_width_px = embedded_document_page_width(editor_viewport_width_px);
         let menu_viewport = document_overlay_menu_viewport(
             editor_viewport_width_px,
             editor_viewport_height_px,
@@ -344,6 +344,11 @@ impl DocumentEditorView {
     }
 }
 
+fn embedded_document_page_width(viewport_width_px: f32) -> f32 {
+    (viewport_width_px - DEFAULT_DOCUMENT_LEFT_INSET_PX * 2.0 - block_content_left_px(0.0))
+        .max(320.0)
+}
+
 fn document_overlay_menu_viewport(
     editor_width_px: f32,
     editor_height_px: f32,
@@ -357,6 +362,16 @@ fn document_overlay_menu_viewport(
         top,
         right: left + editor_width_px,
         bottom: top + editor_height_px,
+    }
+}
+
+#[cfg(test)]
+mod responsive_width_tests {
+    use super::embedded_document_page_width;
+
+    #[test]
+    fn embedded_page_balances_gutter_with_right_whitespace() {
+        assert_eq!(embedded_document_page_width(1600.0), 1488.0);
     }
 }
 
