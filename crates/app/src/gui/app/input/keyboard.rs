@@ -48,7 +48,7 @@ impl CditorV2View {
         if self.readonly && !matches!(command, GuiInputCommand::CopySelection) {
             return;
         }
-        let should_scroll_focus = !matches!(
+        let mut should_scroll_focus = !matches!(
             command,
             GuiInputCommand::Ignore
                 | GuiInputCommand::ToggleDebugOverlay
@@ -225,6 +225,12 @@ impl CditorV2View {
                     let _ = runtime.move_caret_right(extend_selection);
                 }
                 GuiInputCommand::MoveCaretUp { extend_selection } => {
+                    if keeps_vertical_navigation_inside_html_source(
+                        html_source_block_id,
+                        runtime.focused_block_id(),
+                    ) {
+                        should_scroll_focus = false;
+                    }
                     let moved_in_block = move_caret_vertically_in_focused_block(
                         &self.text_layouts,
                         runtime,
@@ -247,6 +253,12 @@ impl CditorV2View {
                     }
                 }
                 GuiInputCommand::MoveCaretDown { extend_selection } => {
+                    if keeps_vertical_navigation_inside_html_source(
+                        html_source_block_id,
+                        runtime.focused_block_id(),
+                    ) {
+                        should_scroll_focus = false;
+                    }
                     let moved_in_block = move_caret_vertically_in_focused_block(
                         &self.text_layouts,
                         runtime,
@@ -320,7 +332,7 @@ impl CditorV2View {
     }
 }
 
-fn keeps_vertical_navigation_inside_html_source(
+pub(crate) fn keeps_vertical_navigation_inside_html_source(
     html_source_block_id: Option<BlockId>,
     focused_block_id: Option<BlockId>,
 ) -> bool {

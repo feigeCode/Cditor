@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use gpui::{
     AnyElement, App, Entity, FocusHandle, InteractiveElement, IntoElement, MouseButton,
-    ParentElement, Styled, div, prelude::FluentBuilder, px,
+    ParentElement, Styled, Window, div, prelude::FluentBuilder, px,
 };
 
 use crate::gui::GuiTheme;
@@ -126,6 +126,7 @@ impl DocumentEditorView {
         document_source_blocks: &std::collections::HashSet<BlockId>,
         html_source_block_id: Option<BlockId>,
         whiteboard_thumbnails: &WhiteboardThumbnailCache,
+        window: &mut Window,
         cx: &mut App,
     ) -> AnyElement {
         let block_view = BlockView::new(self.theme);
@@ -290,6 +291,7 @@ impl DocumentEditorView {
                             document_renders,
                             document_source_blocks.contains(&block.block_id),
                             whiteboard_thumbnails,
+                            window,
                             cx,
                         )
                     })

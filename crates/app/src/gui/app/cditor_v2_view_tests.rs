@@ -6,6 +6,7 @@ use crate::gui::app::input::ime::{
     platform_selected_text_range,
 };
 use crate::gui::app::input::keyboard::ensure_runtime_focus_for_insert_char;
+use crate::gui::app::input::keyboard::keeps_vertical_navigation_inside_html_source;
 use crate::gui::app::interaction::geometry::{
     ParentDropTarget, drop_target_for_document_y_from_rects, fallback_text_metrics_for_block,
     parent_drop_target_from_rects,
@@ -35,6 +36,18 @@ fn html_source_mode_moves_between_individual_blocks() {
     assert!(!close_html_source(&mut active, 7));
     assert!(close_html_source(&mut active, 9));
     assert_eq!(active, None);
+}
+
+#[test]
+fn html_source_keeps_vertical_navigation_local() {
+    assert!(keeps_vertical_navigation_inside_html_source(
+        Some(7),
+        Some(7),
+    ));
+    assert!(!keeps_vertical_navigation_inside_html_source(
+        Some(7),
+        Some(9),
+    ));
 }
 
 #[gpui::test]

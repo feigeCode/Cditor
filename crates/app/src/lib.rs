@@ -28,7 +28,8 @@ pub use integration::{
     EditorSaveRequest, EditorSaveState, MarkdownApplyMode, MarkdownAsset, MarkdownAssetError,
     MarkdownAssetResolver, MarkdownAssetRole, MarkdownBundleExportResult, MarkdownBundleOptions,
     MarkdownCompatibility, MarkdownDiagnostic, MarkdownDiagnosticSeverity, MarkdownExportMode,
-    MarkdownExportResult, MarkdownFidelity, MarkdownImportResult,
+    MarkdownExportResult, MarkdownFidelity, MarkdownImportResult, SourceEditorConfig,
+    SourceEditorProvider, SourceEditorSession,
 };
 
 /// Installs Cditor's application-level key bindings for embedded editors.

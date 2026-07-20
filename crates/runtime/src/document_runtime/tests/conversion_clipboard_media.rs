@@ -54,6 +54,31 @@ fn slash_menu_html_conversion_creates_an_editable_html_source_payload() {
 }
 
 #[test]
+fn html_soft_line_break_preserves_source_without_markdown_escaping() {
+    let source = "<p><a href=\"https://example.com\"><img src=\"badge.png\" /></a></p>";
+    let mut runtime =
+        runtime_with_kind_depths_and_text(vec![(RichBlockKind::Paragraph, 0, None, source)]);
+    runtime.focus_block_at_offset(1, source.len()).unwrap();
+    runtime
+        .convert_focused_block_kind(RichBlockKind::Html)
+        .unwrap();
+    runtime
+        .focus_block_at_offset(1, source.find("<img").unwrap())
+        .unwrap();
+
+    runtime.insert_soft_line_break().unwrap();
+
+    let expected = source.replacen("<img", "\n<img", 1);
+    let payload = runtime.block_payload_record(1).expect("html payload");
+    assert_eq!(payload.kind, RichBlockKind::Html);
+    let BlockPayload::Html { ref html, .. } = payload.payload else {
+        panic!("expected html payload");
+    };
+    assert_eq!(html, &expected);
+    assert!(!payload.payload.plain_text().contains("\\<"));
+}
+
+#[test]
 fn convert_focused_block_kind_to_table_creates_default_3_by_3_grid() {
     let mut runtime =
         runtime_with_kind_depths_and_text(vec![(RichBlockKind::Paragraph, 0, None, "hello")]);

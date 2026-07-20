@@ -6,6 +6,7 @@ mod handle;
 mod markdown;
 mod markdown_bundle;
 mod persistence;
+mod source_editor;
 
 pub use builder::{Editor, EditorBuilder};
 pub use document::{EditorBlock, EditorDocument};
@@ -22,6 +23,7 @@ pub(crate) use persistence::IntegrationPersistenceState;
 pub use persistence::{
     EditorPersistence, EditorPersistenceError, EditorSaveReason, EditorSaveRequest, EditorSaveState,
 };
+pub use source_editor::{SourceEditorConfig, SourceEditorProvider, SourceEditorSession};
 
 #[cfg(test)]
 mod tests {

@@ -196,7 +196,13 @@ impl CditorV2View {
         }
 
         let command = command_for_bound_action(action);
-        if self.focused_document_renderer_is_preview() {
+        let focused_html_source = self.html_source_block_id.is_some_and(|block_id| {
+            self.ready_runtime()
+                .is_some_and(|runtime| runtime.focused_block_id() == Some(block_id))
+        });
+        if focused_html_source && matches!(command, GuiInputCommand::HandleEnter) {
+            self.apply_input_command(GuiInputCommand::InsertSoftLineBreak, cx);
+        } else if self.focused_document_renderer_is_preview() {
             if matches!(command, GuiInputCommand::HandleEnter) {
                 self.apply_input_command(GuiInputCommand::InsertParagraphAfterFocused, cx);
             } else if !mermaid_preview_blocks_command(command) {

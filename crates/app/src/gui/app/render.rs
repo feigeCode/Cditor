@@ -448,6 +448,7 @@ impl Render for CditorV2View {
                         &document_source_blocks,
                         html_source_block_id,
                         &self.whiteboard_thumbnails,
+                        window,
                         cx,
                     ))
                     .child(render_scrollbar(

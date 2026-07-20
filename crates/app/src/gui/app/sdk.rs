@@ -76,6 +76,14 @@ impl CditorV2View {
         self.markdown_native_blocks_only = enabled;
     }
 
+    pub(crate) fn sdk_configure_source_editor(
+        &mut self,
+        provider: Option<std::sync::Arc<dyn crate::integration::SourceEditorProvider>>,
+    ) {
+        self.source_editor_provider = provider;
+        self.source_editor_sessions.clear();
+    }
+
     pub(crate) fn sdk_configure_theme(
         &mut self,
         provider: Option<std::sync::Arc<dyn ThemeProvider>>,

@@ -8,7 +8,7 @@ use crate::api::{AiProvider, DocumentRendererProvider, SyntaxHighlightProvider, 
 use crate::gui::CditorV2View;
 
 use super::handle::EditorHandle;
-use super::{EditorDocument, EditorError, EditorEvent, EditorPersistence};
+use super::{EditorDocument, EditorError, EditorEvent, EditorPersistence, SourceEditorProvider};
 
 pub struct Editor;
 
@@ -40,6 +40,7 @@ pub struct EditorBuilder {
     theme_provider: Option<Arc<dyn ThemeProvider>>,
     media_base_path: Option<PathBuf>,
     markdown_native_blocks_only: bool,
+    source_editor_provider: Option<Arc<dyn SourceEditorProvider>>,
 }
 
 impl Default for EditorBuilder {
@@ -60,6 +61,7 @@ impl Default for EditorBuilder {
             theme_provider: None,
             media_base_path: None,
             markdown_native_blocks_only: false,
+            source_editor_provider: None,
         }
     }
 }
@@ -192,6 +194,11 @@ impl EditorBuilder {
         self
     }
 
+    pub fn source_editor_provider_arc(mut self, provider: Arc<dyn SourceEditorProvider>) -> Self {
+        self.source_editor_provider = Some(provider);
+        self
+    }
+
     pub fn build<C: AppContext>(self, cx: &mut C) -> Result<EditorHandle, EditorError> {
         let initial_document = self.resolve_initial_document()?;
         let runtime = initial_document.clone().into_runtime(720.0)?;
@@ -207,6 +214,7 @@ impl EditorBuilder {
         let theme_provider = self.theme_provider.clone();
         let media_base_path = self.media_base_path.clone();
         let markdown_native_blocks_only = self.markdown_native_blocks_only;
+        let source_editor_provider = self.source_editor_provider.clone();
         let readonly = self.readonly;
         let debug_overlay = self.debug_overlay;
         let has_persistence = persistence.is_some();
@@ -223,6 +231,7 @@ impl EditorBuilder {
             view.sdk_configure_theme(theme_provider);
             view.sdk_configure_media_base_path(media_base_path);
             view.sdk_configure_markdown_native_blocks_only(markdown_native_blocks_only);
+            view.sdk_configure_source_editor(source_editor_provider);
             view.install_editor_integration(
                 document_id.clone(),
                 persistence,

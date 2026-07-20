@@ -1,6 +1,6 @@
 use gpui::{
-    AnyElement, App, Entity, FocusHandle, IntoElement, ParentElement, ScrollHandle, Styled, canvas,
-    div, px, rgb,
+    AnyElement, App, Entity, FocusHandle, IntoElement, ParentElement, ScrollHandle, Styled, Window,
+    canvas, div, px, rgb,
 };
 
 use crate::gui::GuiTheme;
@@ -63,6 +63,7 @@ impl BlockView {
         document_renders: &DocumentRenderCache,
         mermaid_show_source: bool,
         whiteboard_thumbnails: &WhiteboardThumbnailCache,
+        window: &mut Window,
         cx: &mut App,
     ) -> AnyElement {
         let theme = self.theme;
@@ -91,6 +92,7 @@ impl BlockView {
             document_renders,
             mermaid_show_source,
             whiteboard_thumbnails,
+            window,
             cx,
         );
         let focus_view = view.clone();
@@ -192,6 +194,7 @@ fn render_kind_content(
     document_renders: &DocumentRenderCache,
     mermaid_show_source: bool,
     whiteboard_thumbnails: &WhiteboardThumbnailCache,
+    window: &mut Window,
     cx: &mut App,
 ) -> AnyElement {
     let math_code_language = match &block.kind {
@@ -322,7 +325,10 @@ fn render_kind_content(
                 readonly,
                 suppress_document_text_input,
             ) {
-                render_html_source_editor(block.block_id, content, theme, view.clone())
+                render_host_html_source_editor(block, view.clone(), readonly, window, cx)
+                    .unwrap_or_else(|| {
+                        render_html_source_editor(block.block_id, content, theme, view.clone())
+                    })
             } else {
                 content
             };
@@ -344,6 +350,51 @@ fn render_kind_content(
             .into_any_element(),
         _ => render_paragraph(content),
     }
+}
+
+fn render_host_html_source_editor(
+    block: &ViewBlockSnapshot,
+    view: Entity<CditorV2View>,
+    readonly: bool,
+    window: &mut Window,
+    cx: &mut App,
+) -> Option<AnyElement> {
+    let html = match &block.payload {
+        cditor_core::rich_text::BlockPayloadView::Loaded(payload) => match &payload.payload {
+            cditor_core::rich_text::BlockPayload::Html { html, .. } => html.clone(),
+            _ => return None,
+        },
+        _ => return None,
+    };
+    view.update(cx, |view, cx| {
+        if !view.source_editor_sessions.contains_key(&block.block_id) {
+            let provider = view.source_editor_provider.as_ref()?.clone();
+            if !provider.supports_language("html") {
+                return None;
+            }
+            let document_id = view
+                .ready_runtime_ref()
+                .map(|runtime| runtime.document_id.to_string())
+                .unwrap_or_default();
+            let session = provider.create(
+                crate::integration::SourceEditorConfig {
+                    document_id,
+                    block_id: block.block_id,
+                    language: "html".to_owned(),
+                    initial_value: html,
+                    readonly,
+                    line_numbers: true,
+                    soft_wrap: true,
+                },
+                window,
+                cx,
+            );
+            view.source_editor_sessions.insert(block.block_id, session);
+        }
+        view.source_editor_sessions
+            .get(&block.block_id)
+            .map(|session| session.render(window, cx))
+    })
 }
 
 fn render_html_height_reporter(

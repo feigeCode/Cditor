@@ -84,6 +84,8 @@ pub struct CditorV2View {
     pub(in crate::gui::app) document_renders: DocumentRenderCache,
     pub(in crate::gui::app) document_source_blocks: std::collections::HashSet<BlockId>,
     pub(in crate::gui::app) html_source_block_id: Option<BlockId>,
+    pub(crate) source_editor_provider: Option<Arc<dyn crate::integration::SourceEditorProvider>>,
+    pub(crate) source_editor_sessions: HashMap<BlockId, crate::integration::SourceEditorSession>,
     pub(in crate::gui::app) whiteboard_thumbnails: WhiteboardThumbnailCache,
     pub(in crate::gui::app) whiteboard_editor: Option<WhiteboardEditorSession>,
     pub(in crate::gui::app) scrollbar_drag: Option<GuiScrollbarDrag>,
@@ -191,21 +193,56 @@ impl CditorV2View {
         block_id: BlockId,
         cx: &mut Context<Self>,
     ) {
+        self.sync_host_html_source(block_id, cx);
         if close_html_source(&mut self.html_source_block_id, block_id) {
+            self.source_editor_sessions.remove(&block_id);
             cx.notify();
         }
     }
 
     pub(crate) fn end_html_source_from_gui(&mut self, cx: &mut Context<Self>) {
-        if self.html_source_block_id.take().is_some() {
+        if let Some(block_id) = self.html_source_block_id.take() {
+            self.sync_host_html_source(block_id, cx);
+            self.source_editor_sessions.remove(&block_id);
             cx.notify();
         }
     }
 
     pub(crate) fn save_html_block_from_gui(&mut self, block_id: BlockId, cx: &mut Context<Self>) {
+        self.sync_host_html_source(block_id, cx);
         if close_html_source(&mut self.html_source_block_id, block_id) {
+            self.source_editor_sessions.remove(&block_id);
             self.flush_storage_persistence(cx);
             cx.notify();
+        }
+    }
+
+    fn sync_host_html_source(&mut self, block_id: BlockId, cx: &mut Context<Self>) {
+        let Some(value) = self
+            .source_editor_sessions
+            .get(&block_id)
+            .map(|session| session.value(cx))
+        else {
+            return;
+        };
+        let Some(runtime) = self.ready_runtime() else {
+            return;
+        };
+        let current = runtime
+            .block_payload_record(block_id)
+            .map(|payload| payload.plain_text())
+            .unwrap_or_default();
+        if current == value {
+            return;
+        }
+        if runtime
+            .focus_block_at_offset(block_id, current.len())
+            .is_ok()
+            && runtime
+                .replace_text_in_focused_range(Some(0..current.len()), &value)
+                .unwrap_or(false)
+        {
+            self.mark_dirty(cx);
         }
     }
 
@@ -317,7 +354,7 @@ impl CditorV2View {
         }
     }
 
-    pub(in crate::gui::app) fn ready_runtime_ref(&self) -> Option<&DocumentRuntime> {
+    pub(crate) fn ready_runtime_ref(&self) -> Option<&DocumentRuntime> {
         match &self.state {
             CditorViewState::Ready(runtime) => Some(runtime),
             CditorViewState::Loading { .. } | CditorViewState::LoadFailed { .. } => None,
