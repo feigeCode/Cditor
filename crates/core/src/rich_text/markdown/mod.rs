@@ -216,6 +216,7 @@ pub fn looks_like_markdown_paste(text: &str) -> bool {
             || trimmed.starts_with("- [X] ")
             || trimmed.starts_with("```")
             || trimmed.starts_with("···")
+            || parse_escaped_fence_start(trimmed).is_some()
             || trimmed.starts_with('|')
             || trimmed == "---"
             || trimmed == "***"
@@ -599,6 +600,27 @@ fn custom_container_region_end(lines: &[&str], start: usize) -> usize {
         .unwrap_or(start + 1)
 }
 
+fn parse_escaped_fence_start(line: &str) -> Option<&str> {
+    let escaped = line.trim_start().strip_prefix('\\')?;
+    let (_, fence) = parse_fence_start(escaped)?;
+    Some(fence)
+}
+
+fn escaped_fence_region_end(lines: &[&str], start: usize) -> Option<usize> {
+    let opening_fence = parse_escaped_fence_start(lines.get(start)?)?;
+    Some(
+        lines
+            .iter()
+            .enumerate()
+            .skip(start + 1)
+            .find_map(|(index, line)| {
+                let escaped = line.trim().strip_prefix('\\')?;
+                is_closing_fence(escaped, opening_fence).then_some(index + 1)
+            })
+            .unwrap_or(lines.len()),
+    )
+}
+
 fn source_requires_raw_markdown_block(source: &str) -> bool {
     contains_reference_link(source)
         || source.contains("{{")
@@ -756,6 +778,13 @@ impl MarkdownParser {
                 list_stack.clear();
                 let source = lines[..end].join("\n");
                 document.push_root_block(self.raw_markdown_block(source));
+                index = end;
+                continue;
+            }
+
+            if let Some(end) = escaped_fence_region_end(&lines, index) {
+                list_stack.clear();
+                document.push_root_block(self.raw_markdown_block(lines[index..end].join("\n")));
                 index = end;
                 continue;
             }
@@ -963,10 +992,22 @@ impl MarkdownParser {
     }
 
     fn parse_incremental_multiline_block(&mut self, markdown: &str) -> Option<RichBlockRecord> {
-        self.parse_math_block(markdown)
+        self.parse_escaped_fenced_block(markdown)
+            .or_else(|| self.parse_math_block(markdown))
             .or_else(|| self.parse_fenced_code_block(markdown))
             .or_else(|| self.parse_incremental_table_block(markdown))
             .or_else(|| self.parse_incremental_quote_or_callout_block(markdown))
+    }
+
+    fn parse_escaped_fenced_block(&mut self, markdown: &str) -> Option<RichBlockRecord> {
+        let lines = markdown.lines().collect::<Vec<_>>();
+        if lines.len() < 2 {
+            return None;
+        }
+        let opening_fence = parse_escaped_fence_start(lines.first()?)?;
+        let escaped_closing = lines.last()?.trim().strip_prefix('\\')?;
+        is_closing_fence(escaped_closing, opening_fence)
+            .then(|| self.raw_markdown_block(markdown.to_owned()))
     }
 
     fn parse_math_block(&mut self, markdown: &str) -> Option<RichBlockRecord> {

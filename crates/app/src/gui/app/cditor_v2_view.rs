@@ -195,7 +195,8 @@ impl CditorV2View {
         cx: &mut Context<Self>,
     ) {
         self.begin_document_source_from_gui(block_id, cx);
-        if self.source_editor_sessions.contains_key(&block_id) {
+        if let Some(session) = self.source_editor_sessions.get(&block_id) {
+            session.focus(window, cx);
             return;
         }
         let Some(provider) = self.source_editor_provider.as_ref().cloned() else {
@@ -231,6 +232,9 @@ impl CditorV2View {
             cx,
         );
         self.source_editor_sessions.insert(block_id, session);
+        if let Some(session) = self.source_editor_sessions.get(&block_id) {
+            session.focus(window, cx);
+        }
     }
 
     pub(crate) fn preview_html_block_from_gui(

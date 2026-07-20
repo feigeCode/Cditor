@@ -18,6 +18,9 @@ fn records_markdown_parse_stats_like_v1() {
 fn markdown_paste_detection_includes_inline_syntax() {
     assert!(looks_like_markdown_paste("**bold** and `code`"));
     assert!(looks_like_markdown_paste("[link](https://example.com)"));
+    assert!(looks_like_markdown_paste(
+        "\\```mermaid\nflowchart TD\nA --> B\n\\```"
+    ));
     assert!(!looks_like_markdown_paste("plain text"));
 }
 
@@ -35,6 +38,47 @@ fn outer_markdown_fence_is_unwrapped_before_block_parsing() {
     assert!(matches!(
         parsed.blocks.get(1).map(|block| &block.kind),
         Some(RichBlockKind::BulletedList)
+    ));
+}
+
+#[test]
+fn escaped_fenced_blocks_remain_verbatim_and_do_not_become_renderable_blocks() {
+    for source in [
+        "\\```mermaid\nflowchart TD\nA --> B\n\\```",
+        "\\```math\nx^2 + y^2\n\\```",
+    ] {
+        let parsed = parse_markdown_document(source, MarkdownImportOptions::default());
+
+        assert_eq!(1, parsed.blocks.len(), "source={source:?}");
+        assert_eq!(RichBlockKind::RawMarkdown, parsed.blocks[0].kind);
+        assert_eq!(source, parsed.blocks[0].payload.plain_text());
+
+        let incremental =
+            import_markdown_block_incremental(source, MarkdownImportOptions::default())
+                .expect("escaped fenced paste should import as one raw block");
+        assert_eq!(RichBlockKind::RawMarkdown, incremental.kind);
+        assert_eq!(source, incremental.payload.plain_text());
+
+        let exported =
+            export_document_blocks(&document_from_parsed(parsed), MarkdownExportMode::Strict);
+        assert_eq!(source, exported.markdown);
+    }
+}
+
+#[test]
+fn unescaped_renderable_fences_keep_their_existing_block_kinds() {
+    let mermaid = parse_markdown_document(
+        "```mermaid\nflowchart TD\nA --> B\n```",
+        MarkdownImportOptions::default(),
+    );
+    assert_eq!(RichBlockKind::Mermaid, mermaid.blocks[0].kind);
+
+    let math = parse_markdown_document("```math\nx^2 + y^2\n```", MarkdownImportOptions::default());
+    assert!(matches!(
+        math.blocks[0].kind,
+        RichBlockKind::Code {
+            language: Some(ref language)
+        } if language == "math"
     ));
 }
 
