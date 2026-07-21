@@ -66,7 +66,7 @@ mod tests {
         .unwrap();
         assert!(matches!(
             imported.compatibility,
-            MarkdownCompatibility::Editable
+            MarkdownCompatibility::SourceOnly(_)
         ));
         let exported = imported
             .document

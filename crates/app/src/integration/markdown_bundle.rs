@@ -210,6 +210,9 @@ impl EditorDocument {
             });
             block.raw_fallback = None;
         }
+        parsed
+            .diagnostics
+            .retain(|diagnostic| diagnostic.code != "markdown.source.non_lossless_round_trip");
         parsed.diagnostics.extend(preprocessed.diagnostics);
         parsed.compatibility = MarkdownCompatibility::from_diagnostics(&parsed.diagnostics);
 

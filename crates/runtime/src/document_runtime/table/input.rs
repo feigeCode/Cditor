@@ -109,7 +109,7 @@ impl DocumentRuntime {
         };
         let caret = normalized_grapheme_offset(&text, focused.offset);
         if caret == 0 {
-            return Ok(false);
+            return self.clear_images_from_empty_focused_table_cell(&text);
         }
         let previous = previous_grapheme_boundary(&text, caret);
         self.replace_text_in_focused_range(Some(previous..caret), "")
@@ -128,9 +128,37 @@ impl DocumentRuntime {
         let caret = normalized_grapheme_offset(&text, focused.offset);
         let next = next_grapheme_boundary(&text, caret);
         if caret == next {
-            return Ok(false);
+            return self.clear_images_from_empty_focused_table_cell(&text);
         }
         self.replace_text_in_focused_range(Some(caret..next), "")
+    }
+
+    fn clear_images_from_empty_focused_table_cell(&mut self, text: &str) -> Result<bool, String> {
+        let Some(focused) = self.focused_table_cell.filter(|_| text.is_empty()) else {
+            return Ok(false);
+        };
+        self.push_undo_snapshot(focused.block_id)?;
+        let next_table_payload = {
+            let runtime = self
+                .table_runtime_mut(focused.block_id)
+                .ok_or_else(|| format!("missing table runtime for block {}", focused.block_id))?;
+            if !runtime
+                .clear_cell_images(focused.row, focused.col)
+                .unwrap_or(false)
+            {
+                return Ok(false);
+            }
+            runtime.payload()
+        };
+        let payload = self
+            .payload_window
+            .payloads
+            .get_mut(&focused.block_id)
+            .ok_or_else(|| format!("missing payload for block {}", focused.block_id))?;
+        payload.payload = next_table_payload;
+        payload.content_version = payload.content_version.saturating_add(1);
+        let _ = self.refresh_table_block_height(focused.block_id)?;
+        Ok(true)
     }
 
     pub(in crate::document_runtime) fn table_cell_plain_text(

@@ -90,11 +90,35 @@ pub fn parse_markdown_document_with_report(
     let document = parse_markdown_document(markdown, options);
     let mut diagnostics = analyze_markdown_compatibility(markdown);
     diagnostics.extend(analyze_parsed_document_compatibility(&document));
+    let round_trip = parsed_document_for_export(&document, options.document_id);
+    let exported = export_document_blocks(&round_trip, MarkdownExportMode::BestEffort);
+    if exported.markdown != markdown {
+        diagnostics.push(MarkdownDiagnostic::source(
+            MarkdownDiagnosticSeverity::Error,
+            "markdown.source.non_lossless_round_trip",
+            "Rich-text editing would rewrite Markdown syntax; preserving source is required",
+            0..markdown.len(),
+        ));
+    }
     let compatibility = MarkdownCompatibility::from_diagnostics(&diagnostics);
     MarkdownParseResult {
         document,
         compatibility,
         diagnostics,
+    }
+}
+
+fn parsed_document_for_export(
+    parsed: &ParsedMarkdownDocument,
+    document_id: DocumentId,
+) -> RichTextDocument {
+    RichTextDocument {
+        id: document_id,
+        version: super::document::CURRENT_RICH_TEXT_FORMAT_VERSION,
+        metadata: Default::default(),
+        root_blocks: parsed.root_blocks.clone(),
+        blocks: parsed.blocks.clone(),
+        structure_version: 1,
     }
 }
 

@@ -35,7 +35,12 @@ impl TableRuntime {
         row: usize,
         col: usize,
     ) -> Option<String> {
-        self.table.cell_plain_text(row, col)
+        let (row, col) = self.table.cell_origin(row, col)?;
+        self.table
+            .rows
+            .get(row)
+            .and_then(|row| row.cells.get(col))
+            .map(|cell| plain_text_from_spans(&cell.spans))
     }
 
     pub(in crate::document_runtime) fn set_cell_plain_text(
@@ -48,6 +53,22 @@ impl TableRuntime {
         self.revision = self.revision.saturating_add(1);
         self.dirty = true;
         Some(self.revision)
+    }
+
+    pub(in crate::document_runtime) fn clear_cell_images(
+        &mut self,
+        row: usize,
+        col: usize,
+    ) -> Option<bool> {
+        let (row, col) = self.table.cell_origin(row, col)?;
+        let cell = self.table.rows.get_mut(row)?.cells.get_mut(col)?;
+        if cell.images.is_empty() {
+            return Some(false);
+        }
+        cell.images.clear();
+        self.revision = self.revision.saturating_add(1);
+        self.dirty = true;
+        Some(true)
     }
 
     pub(in crate::document_runtime) fn replace_cell_spans(

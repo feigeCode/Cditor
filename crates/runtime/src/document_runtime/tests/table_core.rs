@@ -128,6 +128,40 @@ fn delete_backward_and_forward_update_focused_table_cell_payload() {
 }
 
 #[test]
+fn backspace_and_delete_clear_images_from_an_image_only_table_cell() {
+    for delete_forward in [false, true] {
+        let mut payload = sample_table_payload();
+        let BlockPayload::Table(table) = &mut payload.payload else {
+            panic!("expected table payload");
+        };
+        let cell = &mut table.rows[0].cells[0];
+        cell.spans = vec![InlineSpan::plain("")];
+        cell.images = vec![ImagePayload {
+            source: "database.png".to_owned(),
+            alt: "Database".to_owned(),
+            caption: String::new(),
+            display_width_ratio_milli: None,
+        }];
+        let mut runtime = DocumentRuntime::from_payloads(1, vec![payload], 720.0);
+        runtime.focus_table_cell_at_offset(10, 0, 0, 0).unwrap();
+
+        let changed = if delete_forward {
+            runtime.delete_forward().unwrap()
+        } else {
+            runtime.delete_backward().unwrap()
+        };
+
+        assert!(changed);
+        let payload = runtime.block_payload_record(10).unwrap();
+        let BlockPayload::Table(table) = payload.payload else {
+            panic!("expected table payload");
+        };
+        assert!(table.rows[0].cells[0].images.is_empty());
+        assert_eq!(table.cell_plain_text(0, 0).as_deref(), Some(""));
+    }
+}
+
+#[test]
 fn table_cell_arrow_navigation_updates_focus_and_input_session() {
     let mut runtime = DocumentRuntime::from_payloads(1, vec![sample_table_payload()], 720.0);
 

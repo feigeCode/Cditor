@@ -167,6 +167,22 @@ fn markdown_table_cells_preserve_images_as_media() {
 }
 
 #[test]
+fn syntax_that_would_be_escaped_or_normalized_is_source_only() {
+    for source in [
+        "> <https://example.com/path_(item)>",
+        "Use snake_case(value)",
+        "2. second",
+        "| Image |\n| --- |\n| [![Database](database.png)](database.png) |",
+    ] {
+        let result = parse_markdown_document_with_report(source, MarkdownImportOptions::default());
+        assert!(
+            matches!(result.compatibility, MarkdownCompatibility::SourceOnly(_)),
+            "source must remain byte-stable: {source:?}"
+        );
+    }
+}
+
+#[test]
 fn markdown_table_cells_render_plain_relative_images() {
     let source =
         "| Database | SSH |\n| --- | --- |\n| ![Database](database.png) | ![SSH](ssh.png) |";
@@ -194,7 +210,7 @@ fn markdown_table_cells_render_self_linked_relative_images() {
     let result = parse_markdown_document_with_report(source, MarkdownImportOptions::default());
     assert!(matches!(
         result.compatibility,
-        MarkdownCompatibility::Editable
+        MarkdownCompatibility::SourceOnly(_)
     ));
     let BlockPayload::Table(table) = &result.document.blocks[0].payload else {
         panic!("expected table payload");
@@ -680,7 +696,7 @@ fn compatibility_report_distinguishes_normalization_and_source_only() {
     );
     assert!(matches!(
         normalized.compatibility,
-        MarkdownCompatibility::Editable
+        MarkdownCompatibility::SourceOnly(_)
     ));
 
     for source in [
