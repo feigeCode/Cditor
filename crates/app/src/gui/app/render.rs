@@ -11,9 +11,10 @@ use crate::gui::app::interaction::geometry::{
     fallback_text_metrics_for_block, projected_block_rects_from_projection,
 };
 use crate::gui::app::interaction::scrollbar::{render_scrollbar, scrollbar_policy};
-use crate::gui::app::interaction::table_scroll::TableScrollSnapshot;
+use crate::gui::block::table::{table_content_viewport_width, table_view_for_available_width};
 use crate::gui::document::DEFAULT_DOCUMENT_LEFT_INSET_PX;
 use crate::gui::document::DEFAULT_DOCUMENT_TOP_INSET_PX;
+use crate::gui::document::document_editor_view::embedded_document_page_width;
 use crate::gui::document::{DocumentBlockActionProjection, DocumentEditorView};
 use crate::gui::image_preview::render_image_preview_overlay;
 use crate::gui::input::GuiInputCommand;
@@ -25,7 +26,6 @@ use crate::gui::input::actions::{
     Undo,
 };
 use crate::gui::menu_metrics::EditorViewport;
-use crate::gui::overlay::table::{table_hscroll_scroll_max, table_hscroll_track_width};
 use crate::gui::overlay::{
     render_ai_preview_overlay, render_ai_prompt, render_floating_toolbar, render_slash_menu,
     render_toast, render_whiteboard_editor,
@@ -368,52 +368,27 @@ impl Render for CditorV2View {
                 };
                 let document_editor = DocumentEditorView::new(theme);
                 let scrollbar_dragging = self.scrollbar_drag.is_some();
-                // Pre-create persistent measurement handles for every table block in
-                // the current window, then pass a read-only snapshot down the render
-                // chain so the content and scrollbar use the same runtime offset.
-                let table_blocks = projection
-                    .blocks
-                    .iter()
-                    .filter(|block| {
-                        matches!(block.kind, cditor_core::rich_text::RichBlockKind::Table)
-                    })
-                    .filter_map(|block| {
-                        block.table_view.as_ref().map(|table_view| {
-                            (
-                                block.block_id,
-                                table_view.width_px,
-                                table_view.horizontal_scroll_offset_px,
-                            )
-                        })
-                    })
-                    .collect::<Vec<_>>();
-                let mut table_scroll_snapshots = std::collections::HashMap::new();
-                for (block_id, table_width_px, offset_x) in table_blocks {
-                    let handle = self.table_scroll_handle(block_id);
-                    let viewport_measurement =
-                        self.stable_table_viewport_measurement(block_id, &handle);
-                    let mut projected_offset_x = offset_x;
-                    if let Some(measurement) = viewport_measurement {
-                        let track_width_px =
-                            table_hscroll_track_width(measurement.viewport_width_px, 0.0);
-                        let max_offset_x = table_hscroll_scroll_max(table_width_px, track_width_px);
-                        projected_offset_x =
-                            crate::gui::app::interaction::table_scroll::clamped_table_scroll_offset_x(
-                                offset_x,
-                                max_offset_x,
-                            );
-                        if projected_offset_x != offset_x {
-                            pending_table_scroll_offsets.push((block_id, projected_offset_x));
-                        }
+                // Clamp table offsets against the document's known content width.
+                // GPUI layout handles are intentionally excluded from scroll state.
+                let document_content_width_px = embedded_document_page_width(editor_viewport.width);
+                for block in &projection.blocks {
+                    let Some(table_view) = block.table_view.as_ref() else {
+                        continue;
+                    };
+                    let table_viewport_width_px =
+                        table_content_viewport_width(block, document_content_width_px, theme);
+                    let table_view =
+                        table_view_for_available_width(table_view, table_viewport_width_px);
+                    let offset_x = table_view.horizontal_scroll_offset_px;
+                    let projected_offset_x =
+                        crate::gui::app::interaction::table_scroll::projected_table_scroll_offset_x(
+                            table_view.width_px,
+                            table_viewport_width_px,
+                            offset_x,
+                        );
+                    if projected_offset_x != offset_x {
+                        pending_table_scroll_offsets.push((block.block_id, projected_offset_x));
                     }
-                    table_scroll_snapshots.insert(
-                        block_id,
-                        TableScrollSnapshot {
-                            handle,
-                            viewport_measurement,
-                            offset_x: projected_offset_x,
-                        },
-                    );
                 }
                 root = root
                     .child(document_editor.render(
@@ -440,7 +415,6 @@ impl Render for CditorV2View {
                         code_theme_menu_block_id,
                         code_highlight_theme,
                         self.ai_prompt.is_some(),
-                        &table_scroll_snapshots,
                         &self.code_highlights,
                         &self.document_renders,
                         &document_source_blocks,

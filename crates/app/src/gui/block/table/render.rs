@@ -3,8 +3,8 @@ use std::path::Path;
 
 use gpui::{
     AnyElement, App, Entity, FocusHandle, InteractiveElement, IntoElement, ObjectFit,
-    ParentElement, ScrollDelta, ScrollHandle, ScrollWheelEvent, StatefulInteractiveElement, Styled,
-    StyledImage, div, img, px, rgb,
+    ParentElement, ScrollDelta, ScrollWheelEvent, StatefulInteractiveElement, Styled, StyledImage,
+    div, img, px, rgb,
 };
 
 use crate::gui::GuiTheme;
@@ -45,7 +45,7 @@ pub(crate) fn render_table_block(
     table_range_selection: Option<TableCellRangeSelection>,
     _table_resize_preview: Option<TableResizePreview>,
     _table_reorder_preview: Option<TableReorderPreview>,
-    table_scroll_handle: Option<ScrollHandle>,
+    viewport_width_px: f32,
     view: Entity<CditorV2View>,
     focus: FocusHandle,
     media_base_path: Option<&Path>,
@@ -131,12 +131,11 @@ pub(crate) fn render_table_block(
                 .child(render_table_grid(table_view, theme)),
         );
 
-    // Clip the table to the available content width. Horizontal position is applied
-    // explicitly from runtime state above; the handle only measures this viewport.
-    let wheel_scroll_handle = table_scroll_handle.clone();
+    // Clip the table to the known document content width. Runtime state owns the
+    // horizontal offset; GPUI does not maintain a second scroll position.
     let wheel_view = view.clone();
     let wheel_content_width_px = table_view.width_px;
-    let mut viewport = div()
+    let viewport = div()
         .id(("table_scroll_container", block_id))
         .w_full()
         .min_w(px(0.0))
@@ -146,10 +145,6 @@ pub(crate) fn render_table_block(
             let Some(delta_x) = horizontal_table_scroll_delta(event) else {
                 return;
             };
-            let Some(handle) = wheel_scroll_handle.as_ref() else {
-                return;
-            };
-            let viewport_width_px = f32::from(handle.bounds().size.width);
             let max_offset_x = (wheel_content_width_px - viewport_width_px).max(0.0);
             wheel_view.update(cx, |view, cx| {
                 view.scroll_table_horizontal_from_gui(block_id, delta_x, max_offset_x);
@@ -157,9 +152,6 @@ pub(crate) fn render_table_block(
             });
             cx.stop_propagation();
         });
-    if let Some(handle) = &table_scroll_handle {
-        viewport = viewport.track_scroll(handle);
-    }
     let viewport = viewport.child(table_content);
 
     // The custom horizontal scrollbar is rendered by the editor overlay layer.

@@ -7,7 +7,6 @@ use gpui::{
 
 use crate::gui::GuiTheme;
 use crate::gui::app::CditorV2View;
-use crate::gui::app::cditor_v2_view::TableScrollSnapshot;
 use crate::gui::block::chrome::block_content_left_px;
 use crate::gui::block::table::menu::TableMenuUiState;
 use crate::gui::block::{
@@ -17,7 +16,7 @@ use crate::gui::block::{
     render_block_drag_overlay, render_table_axis_overlays, render_table_axis_toolbar,
     render_table_cell_menu, render_table_chrome_viewport, render_table_resize_overlays,
     table_axis_track_sizes, table_chrome_viewport_origins, table_content_editor_origin,
-    table_toolbar_editor_origin, table_view_for_available_width,
+    table_content_viewport_width, table_toolbar_editor_origin, table_view_for_available_width,
 };
 use crate::gui::document::DocumentSurface;
 use crate::gui::document::{
@@ -124,7 +123,6 @@ impl DocumentEditorView {
         code_theme_menu_block_id: Option<BlockId>,
         code_highlight_theme: &'static str,
         suppress_document_text_input: bool,
-        table_scroll_snapshots: &HashMap<BlockId, TableScrollSnapshot>,
         code_highlights: &CodeHighlightCache,
         document_renders: &DocumentRenderCache,
         document_source_blocks: &std::collections::HashSet<BlockId>,
@@ -152,8 +150,10 @@ impl DocumentEditorView {
                 let height = block.layout.effective_height();
                 block_y += height;
                 if let Some(table_view) = &block.table_view {
+                    let viewport_width_px =
+                        table_content_viewport_width(block, content_width_px, self.theme);
                     let projected_table_view =
-                        table_view_for_available_width(table_view, content_width_px);
+                        table_view_for_available_width(table_view, viewport_width_px);
                     let table_view = &projected_table_view;
                     let content_origin =
                         table_content_editor_origin(block, document_top as f32, self.theme);
@@ -161,24 +161,16 @@ impl DocumentEditorView {
                         table_toolbar_editor_origin(block, document_top as f32, self.theme);
                     let row_track_sizes = table_axis_track_sizes(table_view, TableAxis::Row);
                     let column_track_sizes = table_axis_track_sizes(table_view, TableAxis::Column);
-                    let scroll_snapshot = table_scroll_snapshots.get(&block.block_id);
-                    let viewport_width_px = scroll_snapshot
-                        .and_then(|snapshot| snapshot.viewport_measurement)
-                        .map(|measurement| measurement.viewport_width_px)
-                        .unwrap_or(table_view.width_px);
-                    if let Some(scroll_snapshot) = scroll_snapshot
-                        && let Some(measurement) = scroll_snapshot.viewport_measurement
-                        && let Some(scrollbar) = render_table_horizontal_scrollbar(
-                            block.block_id,
-                            table_view,
-                            grid_origin,
-                            measurement,
-                            scroll_snapshot.offset_x,
-                            0.0,
-                            self.theme,
-                            view.clone(),
-                        )
-                    {
+                    if let Some(scrollbar) = render_table_horizontal_scrollbar(
+                        block.block_id,
+                        table_view,
+                        grid_origin,
+                        viewport_width_px,
+                        table_view.horizontal_scroll_offset_px,
+                        0.0,
+                        self.theme,
+                        view.clone(),
+                    ) {
                         table_overlay_elements.push(scrollbar);
                     }
                     let chrome_origins = table_chrome_viewport_origins();
@@ -290,9 +282,6 @@ impl DocumentEditorView {
                             code_theme_menu_block_id == Some(block.block_id),
                             code_highlight_theme,
                             suppress_document_text_input,
-                            table_scroll_snapshots
-                                .get(&block.block_id)
-                                .map(|snapshot| snapshot.handle.clone()),
                             html_source_block_id == Some(block.block_id),
                             source_editor_sessions.get(&block.block_id),
                             readonly,
@@ -347,7 +336,7 @@ impl DocumentEditorView {
     }
 }
 
-fn embedded_document_page_width(viewport_width_px: f32) -> f32 {
+pub(crate) fn embedded_document_page_width(viewport_width_px: f32) -> f32 {
     (viewport_width_px - DEFAULT_DOCUMENT_LEFT_INSET_PX * 2.0 - block_content_left_px(0.0))
         .max(320.0)
 }

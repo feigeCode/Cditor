@@ -9,7 +9,6 @@ use crate::gui::app::cditor_v2_view::{CditorV2View, CditorViewState, save_status
 use crate::gui::app::interaction::table_mode::GuiTableInteractionMode;
 use crate::gui::block::code::highlight::DEFAULT_CODE_HIGHLIGHT_THEME;
 use crate::gui::input::BlockDragSelectionController;
-use crate::gui::overlay::table::TableViewportMeasurement;
 use crate::gui::persistence::{
     DEFAULT_STORAGE_SAVE_DEBOUNCE, EditorSaveStatus, StoragePersistenceState,
 };
@@ -89,7 +88,6 @@ impl CditorV2View {
             editor_viewport_handle: Default::default(),
             text_layouts: HashMap::new(),
             table_cell_layouts: HashMap::new(),
-            table_scroll_state: Default::default(),
             code_highlights: Default::default(),
             code_highlight_refresh_scheduled: false,
             document_renders: Default::default(),
@@ -178,7 +176,6 @@ impl CditorV2View {
             editor_viewport_handle: Default::default(),
             text_layouts: HashMap::new(),
             table_cell_layouts: HashMap::new(),
-            table_scroll_state: Default::default(),
             code_highlights: Default::default(),
             code_highlight_refresh_scheduled: false,
             document_renders: Default::default(),
@@ -268,7 +265,6 @@ impl CditorV2View {
             editor_viewport_handle: Default::default(),
             text_layouts: HashMap::new(),
             table_cell_layouts: HashMap::new(),
-            table_scroll_state: Default::default(),
             code_highlights: Default::default(),
             code_highlight_refresh_scheduled: false,
             document_renders: Default::default(),
@@ -330,7 +326,6 @@ impl CditorV2View {
         self.last_emitted_selection = None;
         self.text_layouts.clear();
         self.table_cell_layouts.clear();
-        self.table_scroll_state.clear();
         self.code_highlights.clear();
         self.document_renders.clear();
         self.document_source_blocks.clear();
@@ -376,7 +371,6 @@ impl CditorV2View {
         self.last_emitted_selection = None;
         self.text_layouts.clear();
         self.table_cell_layouts.clear();
-        self.table_scroll_state.clear();
         self.code_highlights.clear();
         self.document_renders.clear();
         self.document_source_blocks.clear();
@@ -405,15 +399,6 @@ impl CditorV2View {
         self.projected_block_rects.clear();
     }
 
-    /// Return the persistent horizontal `ScrollHandle` used to measure a table viewport.
-    /// Horizontal position is owned by table runtime state, so the handle stays at x = 0.
-    pub(in crate::gui::app) fn table_scroll_handle(
-        &mut self,
-        block_id: BlockId,
-    ) -> gpui::ScrollHandle {
-        self.table_scroll_state.handle(block_id)
-    }
-
     pub(crate) fn scroll_table_horizontal_from_gui(
         &mut self,
         block_id: BlockId,
@@ -429,15 +414,6 @@ impl CditorV2View {
                 );
             let _ = runtime.set_table_horizontal_scroll_offset_px(block_id, offset_x);
         }
-    }
-
-    pub(in crate::gui::app) fn stable_table_viewport_measurement(
-        &mut self,
-        block_id: BlockId,
-        handle: &gpui::ScrollHandle,
-    ) -> Option<TableViewportMeasurement> {
-        self.table_scroll_state
-            .stable_viewport_measurement(block_id, handle)
     }
 
     pub fn view_state(&self) -> &CditorViewState {

@@ -35,7 +35,7 @@ pub(crate) use selection::{
 pub(crate) use style::TABLE_RESIZE_INDICATOR_THICKNESS_PX;
 pub(crate) use toolbar::{
     TableToolbarEditorOrigin, render_table_axis_toolbar, table_content_editor_origin,
-    table_toolbar_editor_origin,
+    table_content_viewport_width, table_toolbar_editor_origin,
 };
 
 fn table_trace_enabled() -> bool {

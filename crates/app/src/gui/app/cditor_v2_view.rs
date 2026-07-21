@@ -18,7 +18,7 @@ use crate::gui::app::interaction::scrollbar::GuiScrollbarDrag;
 use crate::gui::app::interaction::table_mode::GuiTableInteractionMode;
 use crate::gui::app::interaction::table_reorder::GuiTableReorderDrag;
 use crate::gui::app::interaction::table_resize::GuiTableResizeDrag;
-use crate::gui::app::interaction::table_scroll::{GuiTableHScrollDrag, GuiTableScrollState};
+use crate::gui::app::interaction::table_scroll::GuiTableHScrollDrag;
 use crate::gui::block::{CodeHighlightCache, DocumentRenderCache, WhiteboardThumbnailCache};
 use cditor_editor::scroll::ScrollAccumulator;
 
@@ -47,7 +47,6 @@ mod whiteboard;
 
 pub(in crate::gui::app) use super::persistence_bridge::save_status_for_mode;
 pub use super::state::CditorViewState;
-pub(crate) use crate::gui::app::interaction::table_scroll::TableScrollSnapshot;
 pub(in crate::gui::app) use block_actions::block_focus_offset_after_missed_hit_test;
 pub(in crate::gui::app) use formatting::formatting_toolbar_state;
 pub(crate) use platform_input::GuiPlatformInputTarget;
@@ -78,7 +77,6 @@ pub struct CditorV2View {
     pub(in crate::gui::app) editor_viewport_handle: gpui::ScrollHandle,
     pub(in crate::gui::app) text_layouts: HashMap<BlockId, RichTextPlatformLayout>,
     pub(in crate::gui::app) table_cell_layouts: HashMap<TableCellLayoutKey, RichTextPlatformLayout>,
-    pub(in crate::gui::app) table_scroll_state: GuiTableScrollState,
     pub(in crate::gui::app) code_highlights: CodeHighlightCache,
     pub(in crate::gui::app) code_highlight_refresh_scheduled: bool,
     pub(in crate::gui::app) document_renders: DocumentRenderCache,

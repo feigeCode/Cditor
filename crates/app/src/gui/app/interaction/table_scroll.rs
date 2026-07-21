@@ -1,51 +1,8 @@
-use std::collections::HashMap;
-
-use gpui::{Context, Pixels, Point, ScrollHandle, Window, point, px};
+use gpui::{Context, Pixels, Point, Window};
 
 use crate::gui::app::cditor_v2_view::CditorV2View;
 use crate::gui::app::interaction::table_mode::GuiTableInteractionMode;
-use crate::gui::overlay::table::{
-    TableViewportMeasurement, table_viewport_measurement_from_handle,
-};
 use cditor_core::ids::BlockId;
-
-#[derive(Debug, Default)]
-pub(in crate::gui::app) struct GuiTableScrollState {
-    handles: HashMap<BlockId, ScrollHandle>,
-    viewport_measurements: HashMap<BlockId, TableViewportMeasurement>,
-}
-
-impl GuiTableScrollState {
-    pub(in crate::gui::app) fn clear(&mut self) {
-        self.handles.clear();
-        self.viewport_measurements.clear();
-    }
-
-    pub(in crate::gui::app) fn handle(&mut self, block_id: BlockId) -> ScrollHandle {
-        let handle = self.handles.entry(block_id).or_default().clone();
-        handle.set_offset(point(px(0.0), handle.offset().y));
-        handle
-    }
-
-    pub(in crate::gui::app) fn stable_viewport_measurement(
-        &mut self,
-        block_id: BlockId,
-        handle: &ScrollHandle,
-    ) -> Option<TableViewportMeasurement> {
-        if let Some(measurement) = table_viewport_measurement_from_handle(handle) {
-            self.viewport_measurements.insert(block_id, measurement);
-            return Some(measurement);
-        }
-        self.viewport_measurements.get(&block_id).copied()
-    }
-}
-
-#[derive(Debug, Clone)]
-pub(crate) struct TableScrollSnapshot {
-    pub handle: ScrollHandle,
-    pub viewport_measurement: Option<TableViewportMeasurement>,
-    pub offset_x: f32,
-}
 
 #[derive(Clone)]
 pub(in crate::gui::app) struct GuiTableHScrollDrag {
@@ -183,6 +140,14 @@ pub(in crate::gui::app) fn table_scroll_offset_after_delta(
     clamped_table_scroll_offset_x(offset_x + delta_x, max_offset_x)
 }
 
+pub(in crate::gui::app) fn projected_table_scroll_offset_x(
+    content_width_px: f32,
+    viewport_width_px: f32,
+    offset_x: f32,
+) -> f32 {
+    clamped_table_scroll_offset_x(offset_x, (content_width_px - viewport_width_px).max(0.0))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -213,5 +178,18 @@ mod tests {
             table_scroll_offset_after_delta(-180.0, -40.0, 200.0),
             -200.0
         );
+    }
+
+    #[test]
+    fn projected_offset_uses_the_known_viewport_and_survives_later_frames() {
+        assert_eq!(
+            projected_table_scroll_offset_x(1200.0, 600.0, -180.0),
+            -180.0
+        );
+        assert_eq!(
+            projected_table_scroll_offset_x(1200.0, 600.0, -900.0),
+            -600.0
+        );
+        assert_eq!(projected_table_scroll_offset_x(600.0, 600.0, -180.0), 0.0);
     }
 }

@@ -1,6 +1,6 @@
 use gpui::{
-    AnyElement, Entity, InteractiveElement, IntoElement, MouseButton, ParentElement, ScrollHandle,
-    Styled, div, px, rgb,
+    AnyElement, Entity, InteractiveElement, IntoElement, MouseButton, ParentElement, Styled, div,
+    px, rgb,
 };
 
 use crate::gui::GuiTheme;
@@ -15,11 +15,6 @@ const TABLE_HSCROLLBAR_HEIGHT_PX: f32 = 8.0;
 const TABLE_HSCROLLBAR_MIN_THUMB_PX: f32 = 32.0;
 const TABLE_HSCROLLBAR_TOP_GAP_PX: f32 = 4.0;
 
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub(crate) struct TableViewportMeasurement {
-    pub viewport_width_px: f32,
-}
-
 /// Geometry of the horizontal scrollbar thumb, in viewport-local pixels.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(crate) struct TableHScrollThumb {
@@ -27,24 +22,17 @@ pub(crate) struct TableHScrollThumb {
     pub left_px: f32,
 }
 
-pub(crate) fn table_viewport_measurement_from_handle(
-    handle: &ScrollHandle,
-) -> Option<TableViewportMeasurement> {
-    let viewport_width_px = f32::from(handle.bounds().size.width);
-    (viewport_width_px > 0.5).then_some(TableViewportMeasurement { viewport_width_px })
-}
-
 pub(crate) fn render_table_horizontal_scrollbar(
     block_id: BlockId,
     table_view: &TableViewState,
     origin: TableToolbarEditorOrigin,
-    measurement: TableViewportMeasurement,
+    viewport_width_px: f32,
     offset_x: f32,
     table_gutter_px: f32,
     theme: GuiTheme,
     view: Entity<CditorV2View>,
 ) -> Option<AnyElement> {
-    let track_width_px = table_hscroll_track_width(measurement.viewport_width_px, table_gutter_px);
+    let track_width_px = table_hscroll_track_width(viewport_width_px, table_gutter_px);
     let max_offset_x = table_hscroll_scroll_max(table_view.width_px, track_width_px);
     let thumb = table_hscroll_thumb(track_width_px, table_view.width_px, max_offset_x, offset_x)?;
     let thumb_travel_px = table_hscroll_thumb_travel(track_width_px, thumb.width_px);
@@ -138,11 +126,8 @@ mod tests {
     }
 
     #[test]
-    fn table_hscrollbar_thumb_survives_zero_handle_measurement_when_cached() {
-        let cached = TableViewportMeasurement {
-            viewport_width_px: 628.0,
-        };
-        let track_width = table_hscroll_track_width(cached.viewport_width_px, 28.0);
+    fn table_hscrollbar_thumb_tracks_runtime_offset_with_known_viewport() {
+        let track_width = table_hscroll_track_width(628.0, 28.0);
         let max_offset = table_hscroll_scroll_max(1200.0, track_width);
         let thumb = table_hscroll_thumb(track_width, 1200.0, max_offset, -300.0).unwrap();
 

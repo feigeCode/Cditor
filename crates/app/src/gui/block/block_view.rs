@@ -1,6 +1,6 @@
 use gpui::{
-    AnyElement, App, Entity, FocusHandle, IntoElement, ParentElement, ScrollHandle, Styled, Window,
-    canvas, div, px, rgb,
+    AnyElement, App, Entity, FocusHandle, IntoElement, ParentElement, Styled, Window, canvas, div,
+    px, rgb,
 };
 
 use crate::gui::GuiTheme;
@@ -55,7 +55,6 @@ impl BlockView {
         code_theme_menu_open: bool,
         code_highlight_theme: &'static str,
         suppress_document_text_input: bool,
-        table_scroll_handle: Option<ScrollHandle>,
         html_source_active: bool,
         source_editor_session: Option<&crate::integration::SourceEditorSession>,
         readonly: bool,
@@ -86,7 +85,6 @@ impl BlockView {
             code_theme_menu_open,
             code_highlight_theme,
             suppress_document_text_input,
-            table_scroll_handle,
             html_source_active,
             source_editor_session,
             readonly,
@@ -194,7 +192,6 @@ fn render_kind_content(
     code_theme_menu_open: bool,
     code_highlight_theme: &'static str,
     suppress_document_text_input: bool,
-    table_scroll_handle: Option<ScrollHandle>,
     html_source_active: bool,
     source_editor_session: Option<&crate::integration::SourceEditorSession>,
     readonly: bool,
@@ -241,7 +238,6 @@ fn render_kind_content(
                 && !show_document_source),
         show_block_source,
         table_axis_selection,
-        table_scroll_handle,
         readonly,
         media_base_path,
         code_highlights,

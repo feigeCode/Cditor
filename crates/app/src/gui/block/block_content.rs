@@ -1,6 +1,6 @@
 use gpui::{
-    AnyElement, App, Entity, FocusHandle, IntoElement, ObjectFit, ParentElement, ScrollHandle,
-    Styled, StyledImage, div, img, px,
+    AnyElement, App, Entity, FocusHandle, IntoElement, ObjectFit, ParentElement, Styled,
+    StyledImage, div, img, px,
 };
 
 use crate::gui::app::CditorV2View;
@@ -12,7 +12,7 @@ use crate::gui::block::placeholder::{
 use crate::gui::block::table::render_table_block;
 use crate::gui::block::table::{
     TableAxisSelection, TableCellRangeSelection, TableReorderPreview, TableResizePreview,
-    table_view_for_available_width,
+    table_content_viewport_width, table_view_for_available_width,
 };
 use crate::gui::block::{
     CodeHighlightCache, WhiteboardThumbnailCache, render_whiteboard_thumbnail,
@@ -45,7 +45,6 @@ pub(crate) fn render_block_content(
     suppress_text_input: bool,
     show_document_source: bool,
     table_selection: Option<TableAxisSelection>,
-    table_scroll_handle: Option<ScrollHandle>,
     readonly: bool,
     media_base_path: Option<&std::path::Path>,
     code_highlights: &CodeHighlightCache,
@@ -57,7 +56,9 @@ pub(crate) fn render_block_content(
     match &block.payload {
         BlockPayloadView::Loaded(payload) => {
             if let Some(table_view) = &block.table_view {
-                let table_view = table_view_for_available_width(table_view, content_width_px);
+                let viewport_width_px =
+                    table_content_viewport_width(block, content_width_px, theme);
+                let table_view = table_view_for_available_width(table_view, viewport_width_px);
                 return render_table_block(
                     block.block_id,
                     payload.content_version,
@@ -68,7 +69,7 @@ pub(crate) fn render_block_content(
                     table_range_selection,
                     table_resize_preview,
                     table_reorder_preview,
-                    table_scroll_handle,
+                    viewport_width_px,
                     view.clone(),
                     focus.clone(),
                     media_base_path,

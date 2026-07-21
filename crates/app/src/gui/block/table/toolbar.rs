@@ -84,6 +84,20 @@ pub(crate) fn table_content_editor_origin(
     }
 }
 
+pub(crate) fn table_content_viewport_width(
+    block: &ViewBlockSnapshot,
+    document_content_width_px: f32,
+    theme: GuiTheme,
+) -> f32 {
+    let chrome = BlockChromeStyle::from_snapshot(block, theme);
+    let left_inset_px = table_content_editor_origin(block, 0.0, theme).x_px;
+    let right_inset_px = BLOCK_SHELL_BORDER_WIDTH_PX
+        + BLOCK_SHELL_OUTER_PADDING_X_PX
+        + BLOCK_CONTENT_BORDER_WIDTH_PX
+        + chrome.content_padding_right_px;
+    (document_content_width_px - left_inset_px - right_inset_px).max(0.0)
+}
+
 pub(crate) fn render_table_axis_toolbar(
     selection: TableAxisSelection,
     table_view: &TableViewState,
@@ -669,6 +683,18 @@ mod tests {
                 x_px: depth_two_table_editor_x_px(),
                 y_px: 130.0,
             }
+        );
+    }
+
+    #[test]
+    fn table_viewport_width_uses_stable_block_chrome_geometry() {
+        assert_eq!(
+            table_content_viewport_width(&table_block_with_depth(0), 1000.0, GuiTheme::light()),
+            900.0
+        );
+        assert_eq!(
+            table_content_viewport_width(&table_block_with_depth(2), 1000.0, GuiTheme::light()),
+            852.0
         );
     }
 
