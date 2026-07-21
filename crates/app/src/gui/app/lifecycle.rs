@@ -405,22 +405,28 @@ impl CditorV2View {
         self.projected_block_rects.clear();
     }
 
-    /// Return the persistent horizontal `ScrollHandle` for a table block.
-    /// The handle is a GPUI adapter; the stable offset lives in table state.
+    /// Return the persistent horizontal `ScrollHandle` used to measure a table viewport.
+    /// Horizontal position is owned by table runtime state, so the handle stays at x = 0.
     pub(in crate::gui::app) fn table_scroll_handle(
         &mut self,
         block_id: BlockId,
-        offset_x: f32,
     ) -> gpui::ScrollHandle {
-        self.table_scroll_state.handle(block_id, offset_x)
+        self.table_scroll_state.handle(block_id)
     }
 
-    pub(crate) fn set_table_horizontal_scroll_offset_from_gui(
+    pub(crate) fn scroll_table_horizontal_from_gui(
         &mut self,
         block_id: BlockId,
-        offset_x: f32,
+        delta_x: f32,
+        max_offset_x: f32,
     ) {
         if let Some(runtime) = self.ready_runtime() {
+            let offset_x =
+                crate::gui::app::interaction::table_scroll::table_scroll_offset_after_delta(
+                    runtime.table_horizontal_scroll_offset_px(block_id),
+                    delta_x,
+                    max_offset_x,
+                );
             let _ = runtime.set_table_horizontal_scroll_offset_px(block_id, offset_x);
         }
     }

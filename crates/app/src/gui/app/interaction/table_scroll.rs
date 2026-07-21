@@ -21,9 +21,9 @@ impl GuiTableScrollState {
         self.viewport_measurements.clear();
     }
 
-    pub(in crate::gui::app) fn handle(&mut self, block_id: BlockId, offset_x: f32) -> ScrollHandle {
+    pub(in crate::gui::app) fn handle(&mut self, block_id: BlockId) -> ScrollHandle {
         let handle = self.handles.entry(block_id).or_default().clone();
-        handle.set_offset(point(px(offset_x), handle.offset().y));
+        handle.set_offset(point(px(0.0), handle.offset().y));
         handle
     }
 
@@ -37,12 +37,6 @@ impl GuiTableScrollState {
             return Some(measurement);
         }
         self.viewport_measurements.get(&block_id).copied()
-    }
-
-    pub(in crate::gui::app) fn sync_handle_offset_x(&self, block_id: BlockId, offset_x: f32) {
-        if let Some(handle) = self.handles.get(&block_id) {
-            handle.set_offset(point(px(offset_x), handle.offset().y));
-        }
     }
 }
 
@@ -137,8 +131,6 @@ impl CditorV2View {
             return false;
         };
         let _ = runtime.set_table_horizontal_scroll_offset_px(block_id, next_offset_x);
-        self.table_scroll_state
-            .sync_handle_offset_x(block_id, next_offset_x);
         cx.notify();
         true
     }
@@ -183,6 +175,14 @@ pub(in crate::gui::app) fn clamped_table_scroll_offset_x(offset_x: f32, max_offs
     }
 }
 
+pub(in crate::gui::app) fn table_scroll_offset_after_delta(
+    offset_x: f32,
+    delta_x: f32,
+    max_offset_x: f32,
+) -> f32 {
+    clamped_table_scroll_offset_x(offset_x + delta_x, max_offset_x)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -203,5 +203,15 @@ mod tests {
         assert_eq!(clamped_table_scroll_offset_x(40.0, 600.0), 0.0);
         assert_eq!(clamped_table_scroll_offset_x(-900.0, 600.0), -600.0);
         assert_eq!(clamped_table_scroll_offset_x(-200.0, 0.0), 0.0);
+    }
+
+    #[test]
+    fn repeated_trackpad_deltas_accumulate_from_runtime_offset() {
+        assert_eq!(table_scroll_offset_after_delta(0.0, -40.0, 200.0), -40.0);
+        assert_eq!(table_scroll_offset_after_delta(-40.0, -40.0, 200.0), -80.0);
+        assert_eq!(
+            table_scroll_offset_after_delta(-180.0, -40.0, 200.0),
+            -200.0
+        );
     }
 }

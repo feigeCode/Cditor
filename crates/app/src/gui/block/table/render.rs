@@ -70,6 +70,9 @@ pub(crate) fn render_table_block(
     );
     let table_content = div()
         .relative()
+        .left(px(table_content_left_px(
+            table_view.horizontal_scroll_offset_px,
+        )))
         // Fixed track size so the table keeps its intrinsic width and overflows
         // the scroll viewport instead of being squeezed by the flex parent.
         .flex_none()
@@ -128,17 +131,17 @@ pub(crate) fn render_table_block(
                 .child(render_table_grid(table_view, theme)),
         );
 
-    // Always wrap in a horizontally scrollable viewport that fills the available
-    // content width. A narrow table sits at its natural width with no overflow;
-    // a table wider than the viewport overflows and can be scrolled sideways.
+    // Clip the table to the available content width. Horizontal position is applied
+    // explicitly from runtime state above; the handle only measures this viewport.
     let wheel_scroll_handle = table_scroll_handle.clone();
     let wheel_view = view.clone();
+    let wheel_content_width_px = table_view.width_px;
     let mut viewport = div()
         .id(("table_scroll_container", block_id))
         .w_full()
         .min_w(px(0.0))
         .flex()
-        .overflow_x_scroll()
+        .overflow_hidden()
         .on_scroll_wheel(move |event, _window, cx| {
             let Some(delta_x) = horizontal_table_scroll_delta(event) else {
                 return;
@@ -146,17 +149,10 @@ pub(crate) fn render_table_block(
             let Some(handle) = wheel_scroll_handle.as_ref() else {
                 return;
             };
-
-            // Apply trackpad motion explicitly. Relying on the scrollable div's
-            // internal listener makes behavior depend on listener ordering: a
-            // propagation stop can otherwise prevent the table from moving at
-            // all while the document still observes the gesture's Y noise.
-            let max_offset_x = f32::from(handle.max_offset().x).max(0.0);
-            let current_offset_x = f32::from(handle.offset().x);
-            let next_offset_x = (current_offset_x + delta_x).clamp(-max_offset_x, 0.0);
-            handle.set_offset(gpui::point(px(next_offset_x), handle.offset().y));
+            let viewport_width_px = f32::from(handle.bounds().size.width);
+            let max_offset_x = (wheel_content_width_px - viewport_width_px).max(0.0);
             wheel_view.update(cx, |view, cx| {
-                view.set_table_horizontal_scroll_offset_from_gui(block_id, next_offset_x);
+                view.scroll_table_horizontal_from_gui(block_id, delta_x, max_offset_x);
                 cx.notify();
             });
             cx.stop_propagation();
@@ -332,6 +328,10 @@ fn render_empty_table(theme: GuiTheme) -> AnyElement {
         .into_any_element()
 }
 
+fn table_content_left_px(horizontal_scroll_offset_px: f32) -> f32 {
+    horizontal_scroll_offset_px
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -342,5 +342,11 @@ mod tests {
             (table_cell_image_preview_height_px("screenshot.png", 406.0) - 217.125).abs() < 0.001
         );
         assert_eq!(table_cell_image_preview_height_px("badge.svg", 430.0), 28.0);
+    }
+
+    #[test]
+    fn table_content_uses_the_same_horizontal_offset_as_its_overlays() {
+        assert_eq!(table_content_left_px(-180.0), -180.0);
+        assert_eq!(table_content_left_px(0.0), 0.0);
     }
 }

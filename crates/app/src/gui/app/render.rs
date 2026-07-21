@@ -368,9 +368,9 @@ impl Render for CditorV2View {
                 };
                 let document_editor = DocumentEditorView::new(theme);
                 let scrollbar_dragging = self.scrollbar_drag.is_some();
-                // Pre-create persistent horizontal scroll handles for every table
-                // block in the current window, then pass a read-only snapshot down
-                // the render chain so each table can track scroll + draw its bar.
+                // Pre-create persistent measurement handles for every table block in
+                // the current window, then pass a read-only snapshot down the render
+                // chain so the content and scrollbar use the same runtime offset.
                 let table_blocks = projection
                     .blocks
                     .iter()
@@ -389,7 +389,7 @@ impl Render for CditorV2View {
                     .collect::<Vec<_>>();
                 let mut table_scroll_snapshots = std::collections::HashMap::new();
                 for (block_id, table_width_px, offset_x) in table_blocks {
-                    let handle = self.table_scroll_handle(block_id, offset_x);
+                    let handle = self.table_scroll_handle(block_id);
                     let viewport_measurement =
                         self.stable_table_viewport_measurement(block_id, &handle);
                     let mut projected_offset_x = offset_x;
@@ -406,8 +406,6 @@ impl Render for CditorV2View {
                             pending_table_scroll_offsets.push((block_id, projected_offset_x));
                         }
                     }
-                    self.table_scroll_state
-                        .sync_handle_offset_x(block_id, projected_offset_x);
                     table_scroll_snapshots.insert(
                         block_id,
                         TableScrollSnapshot {
