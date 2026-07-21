@@ -12,6 +12,7 @@ use crate::gui::block::placeholder::{
 use crate::gui::block::table::render_table_block;
 use crate::gui::block::table::{
     TableAxisSelection, TableCellRangeSelection, TableReorderPreview, TableResizePreview,
+    table_view_for_available_width,
 };
 use crate::gui::block::{
     CodeHighlightCache, WhiteboardThumbnailCache, render_whiteboard_thumbnail,
@@ -178,55 +179,6 @@ pub(crate) fn render_block_content(
         BlockPayloadView::Loading { .. } => render_loading(block, theme),
         BlockPayloadView::Error { message } => render_error(message, theme),
     }
-}
-
-fn table_view_for_available_width(
-    table: &cditor_runtime::TableViewState,
-    available_width_px: f32,
-) -> cditor_runtime::TableViewState {
-    let target_width = available_width_px.max(table.width_px);
-    let extra = target_width - table.width_px;
-    if extra <= 0.5 || table.col_count == 0 {
-        return table.clone();
-    }
-    let auto_columns = (0..table.col_count)
-        .filter(|&index| {
-            table.table.columns.get(index).is_none_or(|column| {
-                matches!(column.width, cditor_core::rich_text::TableTrackSize::Auto)
-            })
-        })
-        .collect::<Vec<_>>();
-    if auto_columns.is_empty() {
-        return table.clone();
-    }
-    let mut adjusted = table.clone();
-    let extra_per_column = extra / auto_columns.len() as f32;
-    for column in auto_columns {
-        if let Some(width) = adjusted.column_widths_px.get_mut(column) {
-            *width += extra_per_column;
-        }
-    }
-    let column_offsets = adjusted
-        .column_widths_px
-        .iter()
-        .scan(0.0, |offset, width| {
-            let start = *offset;
-            *offset += *width;
-            Some(start)
-        })
-        .collect::<Vec<_>>();
-    for cell in &mut adjusted.visible_cells {
-        cell.x_px = column_offsets
-            .get(cell.position.col)
-            .copied()
-            .unwrap_or(0.0);
-        cell.width_px = adjusted.column_widths_px
-            [cell.position.col..(cell.position.col + cell.col_span).min(adjusted.col_count)]
-            .iter()
-            .sum();
-    }
-    adjusted.width_px = adjusted.column_widths_px.iter().sum();
-    adjusted
 }
 
 fn inline_media_preview_visible(readonly: bool, focused: bool) -> bool {

@@ -7,6 +7,7 @@ mod cell_menu;
 mod chrome;
 mod grid;
 pub(crate) mod menu;
+mod projection;
 mod render;
 mod reorder;
 mod resize;
@@ -20,6 +21,7 @@ pub(crate) use chrome::{
     TableChromeOverlays, render_table_axis_overlays, render_table_chrome_viewport,
     table_chrome_viewport_origins,
 };
+pub(crate) use projection::table_view_for_available_width;
 pub(crate) use render::render_table_block;
 pub(crate) use reorder::{
     TableReorderPreview, table_axis_track_sizes, table_reorder_indicator_edge_px_for_preview,

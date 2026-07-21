@@ -29,7 +29,7 @@ pub(crate) use table::{
     TableChromeOverlays, TableReorderPreview, TableResizePreview, render_table_axis_overlays,
     render_table_axis_toolbar, render_table_cell_menu, render_table_chrome_viewport,
     render_table_resize_overlays, table_axis_track_sizes, table_chrome_viewport_origins,
-    table_content_editor_origin, table_toolbar_editor_origin,
+    table_content_editor_origin, table_toolbar_editor_origin, table_view_for_available_width,
 };
 pub(crate) use whiteboard::{
     WhiteboardThumbnailCache, render_whiteboard_thumbnail, whiteboard_style_provider_fn,

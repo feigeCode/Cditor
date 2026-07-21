@@ -17,7 +17,7 @@ use crate::gui::block::{
     render_block_drag_overlay, render_table_axis_overlays, render_table_axis_toolbar,
     render_table_cell_menu, render_table_chrome_viewport, render_table_resize_overlays,
     table_axis_track_sizes, table_chrome_viewport_origins, table_content_editor_origin,
-    table_toolbar_editor_origin,
+    table_toolbar_editor_origin, table_view_for_available_width,
 };
 use crate::gui::document::DocumentSurface;
 use crate::gui::document::{
@@ -152,6 +152,9 @@ impl DocumentEditorView {
                 let height = block.layout.effective_height();
                 block_y += height;
                 if let Some(table_view) = &block.table_view {
+                    let projected_table_view =
+                        table_view_for_available_width(table_view, content_width_px);
+                    let table_view = &projected_table_view;
                     let content_origin =
                         table_content_editor_origin(block, document_top as f32, self.theme);
                     let grid_origin =
