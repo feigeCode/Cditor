@@ -210,9 +210,11 @@ impl EditorDocument {
             });
             block.raw_fallback = None;
         }
-        parsed
-            .diagnostics
-            .retain(|diagnostic| diagnostic.code != "markdown.source.non_lossless_round_trip");
+        if !preprocessed.scenes.is_empty() {
+            parsed
+                .diagnostics
+                .retain(|diagnostic| diagnostic.code != "markdown.source.non_lossless_round_trip");
+        }
         parsed.diagnostics.extend(preprocessed.diagnostics);
         parsed.compatibility = MarkdownCompatibility::from_diagnostics(&parsed.diagnostics);
 
@@ -553,6 +555,21 @@ mod tests {
         assert_eq!(scene.camera.x, 1.0);
         assert_eq!(scene.camera.y, 2.0);
         assert!(whiteboard.scene_json.contains("future_field"));
+    }
+
+    #[test]
+    fn ordinary_markdown_keeps_non_lossless_round_trip_diagnostic() {
+        let imported = EditorDocument::from_markdown_bundle_with_report(
+            "doc-source-only",
+            "2. second",
+            &MapResolver(Default::default()),
+        )
+        .unwrap();
+
+        assert!(matches!(
+            imported.compatibility,
+            MarkdownCompatibility::SourceOnly(_)
+        ));
     }
 
     #[test]
